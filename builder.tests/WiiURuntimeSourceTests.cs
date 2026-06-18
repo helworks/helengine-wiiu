@@ -22,4 +22,24 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("WiiUApplication application {};", bootHostSource, StringComparison.Ordinal);
         Assert.Contains("return application.Run();", bootHostSource, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures the packaged bootstrap exposes explicit packaged scene helpers and the application consumes them through the scene bootstrap boundary.
+    /// </summary>
+    [Fact]
+    public void PackagedBootstrap_DeclaresPackagedSceneHelpersAndRuntimeCalls() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string bootstrapHeaderPath = Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUSceneBootstrap.hpp");
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.True(File.Exists(bootstrapHeaderPath), "Expected WiiUSceneBootstrap.hpp to exist.");
+
+        string bootstrapHeaderSource = File.ReadAllText(bootstrapHeaderPath);
+        Assert.Contains("static std::string GetPackagedContentRootPath();", bootstrapHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("static RuntimeSceneCatalog* CreatePackagedSceneCatalog();", bootstrapHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("static std::string GetPackagedStartupSceneId();", bootstrapHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("WiiUSceneBootstrap::GetPackagedContentRootPath()", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("WiiUSceneBootstrap::CreatePackagedSceneCatalog()", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("WiiUSceneBootstrap::GetPackagedStartupSceneId()", applicationSource, StringComparison.Ordinal);
+    }
 }

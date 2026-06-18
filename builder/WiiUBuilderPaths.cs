@@ -25,6 +25,19 @@ public static class WiiUBuilderPaths {
     }
 
     /// <summary>
+    /// Resolves the generated-core root used to pass packaged runtime metadata into the native Wii U build.
+    /// </summary>
+    /// <param name="request">Resolved platform build request.</param>
+    /// <returns>Absolute generated-core root path for the current build request.</returns>
+    public static string ResolveGeneratedCoreRootPath(PlatformBuildRequest request) {
+        if (request == null) {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        return Path.Combine(request.WorkingRoot, "generated-core");
+    }
+
+    /// <summary>
     /// Resolves the RPX path emitted by the native Wii U Makefile build.
     /// </summary>
     /// <param name="request">Resolved platform build request.</param>

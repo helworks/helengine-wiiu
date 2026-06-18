@@ -1,4 +1,5 @@
 using helengine.baseplatform.Builders;
+using helengine.baseplatform.Manifest;
 using helengine.baseplatform.Reporting;
 using helengine.baseplatform.Requests;
 
@@ -35,16 +36,34 @@ public static class WiiUBuildWorkspace {
 
         Directory.CreateDirectory(request.OutputRoot);
         Directory.CreateDirectory(request.WorkingRoot);
+        if (CanWriteRuntimeSceneManifest(request.Manifest)) {
+            string generatedCoreRootPath = WiiUBuilderPaths.ResolveGeneratedCoreRootPath(request);
+            Directory.CreateDirectory(generatedCoreRootPath);
+            new WiiURuntimeSceneManifestWriter().Write(generatedCoreRootPath, request.Manifest);
+            progressReporter.Report(new PlatformBuildProgressUpdate("Generate Runtime Manifest", "wiiu-runtime-scene-manifest", 1, 3, "Generated Wii U packaged runtime scene manifest."));
+        }
 
-        progressReporter.Report(new PlatformBuildProgressUpdate("Build Native Executable", WiiUBuilderPaths.RpxFileName, 1, 2, "Building native Wii U RPX."));
+        progressReporter.Report(new PlatformBuildProgressUpdate("Build Native Executable", WiiUBuilderPaths.RpxFileName, 2, 3, "Building native Wii U RPX."));
         string producedArtifactPath = await nativeBuildExecutor.BuildAsync(request, diagnosticReporter, cancellationToken);
         string destinationArtifactPath = Path.Combine(request.OutputRoot, WiiUBuilderPaths.RpxFileName);
         File.Copy(producedArtifactPath, destinationArtifactPath, true);
-        progressReporter.Report(new PlatformBuildProgressUpdate("Stage Native Artifact", WiiUBuilderPaths.RpxFileName, 2, 2, "Copied the native Wii U RPX into the output root."));
+        progressReporter.Report(new PlatformBuildProgressUpdate("Stage Native Artifact", WiiUBuilderPaths.RpxFileName, 3, 3, "Copied the native Wii U RPX into the output root."));
 
         PlatformBuildItemOutcome[] sceneOutcomes = BuildSuccessfulSceneOutcomes(request);
         PlatformBuildItemOutcome[] looseAssetOutcomes = BuildSuccessfulLooseAssetOutcomes(request);
         return new PlatformBuildReport(true, Array.Empty<PlatformBuildDiagnostic>(), sceneOutcomes, looseAssetOutcomes);
+    }
+
+    /// <summary>
+    /// Returns whether the supplied manifest contains enough packaged scene metadata to emit the Wii U runtime manifest.
+    /// </summary>
+    /// <param name="manifest">Resolved build manifest.</param>
+    /// <returns>True when the runtime scene manifest can be emitted; otherwise false.</returns>
+    static bool CanWriteRuntimeSceneManifest(PlatformBuildManifest manifest) {
+        return manifest != null
+            && !string.IsNullOrWhiteSpace(manifest.StartupSceneId)
+            && manifest.Scenes != null
+            && manifest.Scenes.Length > 0;
     }
 
     /// <summary>

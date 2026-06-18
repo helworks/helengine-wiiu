@@ -1,6 +1,8 @@
 #include "platform/wiiu/WiiUApplication.hpp"
+#include "platform/wiiu/WiiUSceneBootstrap.hpp"
 
 #include <cstring>
+#include <string>
 
 #include <coreinit/memdefaultheap.h>
 #include <coreinit/thread.h>
@@ -67,7 +69,14 @@ namespace helengine::wiiu {
 
     /// Reserves the engine-core seam without enabling generated core integration yet.
     bool WiiUApplication::InitializeEngineCore() {
+#if HELENGINE_WIIU_HAS_GENERATED_CORE
+        std::string packagedContentRootPath = WiiUSceneBootstrap::GetPackagedContentRootPath();
+        RuntimeSceneCatalog* packagedCatalog = WiiUSceneBootstrap::CreatePackagedSceneCatalog();
+        std::string packagedStartupSceneId = WiiUSceneBootstrap::GetPackagedStartupSceneId();
+        return packagedCatalog != nullptr && !packagedContentRootPath.empty() && !packagedStartupSceneId.empty();
+#else
         return true;
+#endif
     }
 
     /// Presents one frame using the current boot phase clear color on both displays.

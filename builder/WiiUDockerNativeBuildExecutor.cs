@@ -27,7 +27,8 @@ public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
         }
 
         string repositoryRootPath = WiiUBuilderPaths.ResolveRepositoryRootPath();
-        ProcessStartInfo startInfo = CreateStartInfo(repositoryRootPath);
+        string generatedCoreRootPath = WiiUBuilderPaths.ResolveGeneratedCoreRootPath(request);
+        ProcessStartInfo startInfo = CreateStartInfo(repositoryRootPath, generatedCoreRootPath);
 
         using Process process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start the Wii U Docker build process.");
         Task<string> standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
@@ -59,10 +60,13 @@ public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
     /// Creates the Docker process start info for one native Wii U build.
     /// </summary>
     /// <param name="repositoryRootPath">Absolute Wii U repository root.</param>
+    /// <param name="generatedCoreRootPath">Absolute generated-core root that should be passed into the native build.</param>
     /// <returns>Configured Docker process start info.</returns>
-    static ProcessStartInfo CreateStartInfo(string repositoryRootPath) {
+    static ProcessStartInfo CreateStartInfo(string repositoryRootPath, string generatedCoreRootPath) {
         if (string.IsNullOrWhiteSpace(repositoryRootPath)) {
             throw new ArgumentException("Repository root path is required.", nameof(repositoryRootPath));
+        } else if (string.IsNullOrWhiteSpace(generatedCoreRootPath)) {
+            throw new ArgumentException("Generated core root path is required.", nameof(generatedCoreRootPath));
         }
 
         ProcessStartInfo startInfo = new() {
@@ -74,16 +78,44 @@ public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
             RedirectStandardError = true
         };
 
+        string generatedCoreContainerPath = "/workspace/generated-core";
         startInfo.ArgumentList.Add("run");
         startInfo.ArgumentList.Add("--rm");
         startInfo.ArgumentList.Add("-v");
         startInfo.ArgumentList.Add(repositoryRootPath + ":/workspace");
+        if (!IsPathUnderRoot(generatedCoreRootPath, repositoryRootPath)) {
+            generatedCoreContainerPath = "/helengine-generated-core";
+            startInfo.ArgumentList.Add("-v");
+            startInfo.ArgumentList.Add(generatedCoreRootPath + ":" + generatedCoreContainerPath);
+        }
+
         startInfo.ArgumentList.Add("-w");
         startInfo.ArgumentList.Add("/workspace");
+        startInfo.ArgumentList.Add("-e");
+        startInfo.ArgumentList.Add("HELENGINE_CORE_CPP_ROOT=" + generatedCoreContainerPath);
         startInfo.ArgumentList.Add(WiiUBuilderPaths.DockerImageName);
         startInfo.ArgumentList.Add("sh");
         startInfo.ArgumentList.Add("-lc");
         startInfo.ArgumentList.Add("make clean && make");
         return startInfo;
+    }
+
+    /// <summary>
+    /// Returns true when one filesystem path is inside the supplied root path.
+    /// </summary>
+    /// <param name="candidatePath">Candidate filesystem path.</param>
+    /// <param name="rootPath">Containing filesystem root path.</param>
+    /// <returns>True when the candidate path is inside the supplied root path.</returns>
+    static bool IsPathUnderRoot(string candidatePath, string rootPath) {
+        if (string.IsNullOrWhiteSpace(candidatePath)) {
+            throw new ArgumentException("Candidate path is required.", nameof(candidatePath));
+        } else if (string.IsNullOrWhiteSpace(rootPath)) {
+            throw new ArgumentException("Root path is required.", nameof(rootPath));
+        }
+
+        string fullCandidatePath = Path.GetFullPath(candidatePath);
+        string fullRootPath = Path.GetFullPath(rootPath);
+        string relativePath = Path.GetRelativePath(fullRootPath, fullCandidatePath);
+        return !relativePath.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(relativePath);
     }
 }

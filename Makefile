@@ -12,7 +12,7 @@ include $(DEVKITPRO)/wut/share/wut_rules
 TARGET := helengine_wiiu
 BUILD := build
 SOURCES := src src/platform/wiiu
-# WiiUApplication.cpp and future runtime seam sources remain under src/platform/wiiu and are discovered through wildcard source enumeration.
+# WiiUApplication.cpp, WiiUSceneBootstrap.cpp, and future runtime seam sources remain under src/platform/wiiu and are discovered through wildcard source enumeration.
 DATA :=
 INCLUDES := src
 CONTENT :=
