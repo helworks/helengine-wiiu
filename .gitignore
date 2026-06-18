@@ -1,4 +1,6 @@
 build/
+**/bin/
+**/obj/
 *.elf
 *.map
 *.rpx
