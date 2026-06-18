@@ -42,4 +42,19 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("WiiUSceneBootstrap::CreatePackagedSceneCatalog()", applicationSource, StringComparison.Ordinal);
         Assert.Contains("WiiUSceneBootstrap::GetPackagedStartupSceneId()", applicationSource, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures the packaged bootstrap fallback points at the authored cube_test scene and the README documents the final verification flow.
+    /// </summary>
+    [Fact]
+    public void PackagedBootstrap_UsesCubeTestAsTheAuthoredStartupScene() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string bootstrapSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUSceneBootstrap.cpp"));
+        string readmeSource = File.ReadAllText(Path.Combine(repositoryRootPath, "README.md"));
+
+        Assert.Contains("Scenes/rendering/cube_test.helen", bootstrapSource, StringComparison.Ordinal);
+        Assert.Contains("cooked/scenes/rendering/cube_test.hasset", bootstrapSource, StringComparison.Ordinal);
+        Assert.Contains("cube_test", readmeSource, StringComparison.Ordinal);
+        Assert.Contains("launch_wiiu_rpx_in_cemu.ps1", readmeSource, StringComparison.Ordinal);
+    }
 }

@@ -63,3 +63,27 @@ The native build reserves `HELENGINE_CORE_CPP_ROOT` for later `cs2.cpp` integrat
 ## Boot check
 
 Load `build/helengine_wiiu.rpx` in Cemu. The expected result for this milestone is a stable solid red frame with no immediate crash or return to the menu.
+
+## Cube Test Verification
+
+Build the `city` project through the shared editor CLI:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ..\helengine\artifacts\build-platform.ps1 `
+  -Project ..\helprojs\city\project.heproj `
+  -Platform wiiu `
+  -Output ..\helprojs\city\wiiu-build
+```
+
+Launch the resulting RPX in Cemu:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\launch_wiiu_rpx_in_cemu.ps1 `
+  -RpxPath ..\helprojs\city\wiiu-build\helengine_wiiu.rpx
+```
+
+Expected result for this slice:
+
+- the authored `cube_test` scene is the packaged startup target
+- the generated Wii U packaged bootstrap resolves `cooked/scenes/rendering/cube_test.hasset`
+- the RPX still launches through the checked-in Cemu workflow

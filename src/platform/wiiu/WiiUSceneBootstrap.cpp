@@ -10,8 +10,8 @@
 namespace helengine::wiiu {
     namespace {
         std::string PackagedContentRootPath = "fs:/vol/content";
-        std::string PackagedStartupSceneId = "Scenes/bootstrap_placeholder.helen";
-        std::string PackagedStartupSceneCookedRelativePath = "cooked/scenes/bootstrap_placeholder.hasset";
+        std::string PackagedStartupSceneId = "Scenes/rendering/cube_test.helen";
+        std::string PackagedStartupSceneCookedRelativePath = "cooked/scenes/rendering/cube_test.hasset";
     }
 
     /// Returns the packaged Wii U content root used by content-backed startup.
