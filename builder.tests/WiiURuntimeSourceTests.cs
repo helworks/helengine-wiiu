@@ -55,6 +55,29 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("Scenes/rendering/cube_test.helen", bootstrapSource, StringComparison.Ordinal);
         Assert.Contains("cooked/scenes/rendering/cube_test.hasset", bootstrapSource, StringComparison.Ordinal);
         Assert.Contains("cube_test", readmeSource, StringComparison.Ordinal);
-        Assert.Contains("launch_wiiu_rpx_in_cemu.ps1", readmeSource, StringComparison.Ordinal);
+        Assert.Contains("launch_in_emulator.ps1", readmeSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the Wii U runtime seam advances the generated core each frame and owns explicit native bridge members.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_AdvancesGeneratedCoreWithPlatformBridges() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.Contains("bool UpdateEngineCore();", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("bool DrawEngineCore();", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("EngineCore;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("EngineRenderManager3D;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("EngineRenderManager2D;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("EnginePlatformInfo;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"Core.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"PlatformInfo.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("EngineCore->Initialize(", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("EngineCore->get_SceneManager()->LoadScene(", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("if (!UpdateEngineCore()) {", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("if (!DrawEngineCore()) {", applicationSource, StringComparison.Ordinal);
     }
 }
