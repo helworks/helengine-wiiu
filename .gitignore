@@ -6,3 +6,4 @@ build/
 *.rpx
 *.wuhb
 tmp/
+.worktrees/
