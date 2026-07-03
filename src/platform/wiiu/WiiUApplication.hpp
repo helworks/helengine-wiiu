@@ -13,6 +13,8 @@ class PlatformInfo;
 #endif
 
 namespace helengine::wiiu {
+    class WiiUGx2Presenter;
+
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
     class WiiURenderManager2D;
     class WiiURenderManager3D;
@@ -37,6 +39,9 @@ namespace helengine::wiiu {
         /// Initializes the Wii U generated core and queues the packaged startup scene.
         bool InitializeEngineCore();
 
+        /// Initializes the Wii U GX2 presenter used for steady-state rendered output.
+        bool InitializeGx2Presenter();
+
         /// Advances one generated-core update tick for the packaged Wii U runtime.
         bool UpdateEngineCore();
 
@@ -54,6 +59,9 @@ namespace helengine::wiiu {
 
         /// Copies one software surface into the currently active OSScreen work buffer for the selected display.
         void PresentSurface(OSScreenID screen, WiiUSoftwareSurface* surface);
+
+        /// Reorders one packed software-surface pixel into the channel layout expected by OSScreen presentation.
+        std::uint32_t ConvertSurfacePixelToScreenColor(std::uint32_t surfacePixel) const;
 
         /// Appends one host-readable Wii U runtime trace line to every supported trace sink.
         void AppendRuntimeTrace(const char* format, ...);
@@ -81,6 +89,9 @@ namespace helengine::wiiu {
 
         /// Stores the active clear color for frame presentation.
         std::uint32_t ClearColor;
+
+        /// Stores the GX2 presenter used for steady-state software-surface presentation.
+        WiiUGx2Presenter* Gx2Presenter;
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
         /// Tracks whether the generated core initialized far enough to enter the steady-state frame loop.
