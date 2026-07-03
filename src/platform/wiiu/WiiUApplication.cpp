@@ -1,4 +1,5 @@
 #include "platform/wiiu/WiiUApplication.hpp"
+#include "platform/wiiu/WiiUGx2Presenter.hpp"
 #include "platform/wiiu/WiiUSceneBootstrap.hpp"
 
 #include <cstdarg>
@@ -49,6 +50,7 @@ namespace helengine::wiiu {
         , DrcSurface(nullptr)
         , BootPhase(WiiUBootPhase::NativeStartup)
         , ClearColor(StartupClearColor)
+        , Gx2Presenter(nullptr)
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
         , EngineInitialized(false)
         , UpdateFrameLogCount(0)
@@ -63,6 +65,9 @@ namespace helengine::wiiu {
 
     /// Releases generated-core bridge objects and native screen buffers after the application loop finishes.
     WiiUApplication::~WiiUApplication() {
+        delete Gx2Presenter;
+        Gx2Presenter = nullptr;
+
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
         delete EngineRenderManager2D;
         delete EngineRenderManager3D;
@@ -91,6 +96,14 @@ namespace helengine::wiiu {
         if (!InitializeVideo()) {
             AppendRuntimeTrace("[WiiUFile] InitializeVideo failed.\n");
             SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
+            WHBProcShutdown();
+            return 1;
+        }
+
+        if (!InitializeGx2Presenter()) {
+            AppendRuntimeTrace("[WiiUFile] InitializeGx2Presenter failed.\n");
+            SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
+            OSScreenShutdown();
             WHBProcShutdown();
             return 1;
         }
@@ -145,6 +158,16 @@ namespace helengine::wiiu {
         TvSurface = new WiiUSoftwareSurface(TvSurfaceWidth, TvSurfaceHeight);
         DrcSurface = new WiiUSoftwareSurface(DrcSurfaceWidth, DrcSurfaceHeight);
         return true;
+    }
+
+    /// Initializes the Wii U GX2 presenter used for steady-state rendered output.
+    bool WiiUApplication::InitializeGx2Presenter() {
+        if (Gx2Presenter != nullptr) {
+            return true;
+        }
+
+        Gx2Presenter = new WiiUGx2Presenter();
+        return Gx2Presenter->Initialize();
     }
 
     /// Initializes the Wii U generated core and queues the packaged startup scene.
@@ -399,9 +422,16 @@ namespace helengine::wiiu {
         for (std::uint32_t y = 0U; y < height; y++) {
             for (std::uint32_t x = 0U; x < width; x++) {
                 const std::size_t pixelIndex = static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + x;
-                OSScreenPutPixelEx(screen, x, y, pixels[pixelIndex]);
+                OSScreenPutPixelEx(screen, x, y, ConvertSurfacePixelToScreenColor(pixels[pixelIndex]));
             }
         }
+    }
+
+    /// Reorders one packed software-surface pixel into the channel layout expected by OSScreen presentation.
+    std::uint32_t WiiUApplication::ConvertSurfacePixelToScreenColor(std::uint32_t surfacePixel) const {
+        const std::uint32_t alpha = (surfacePixel >> 24U) & 0xFFU;
+        const std::uint32_t rgb = surfacePixel & 0x00FFFFFFU;
+        return (rgb << 8U) | alpha;
     }
 
     /// Appends one host-readable Wii U runtime trace line to every supported trace sink.
