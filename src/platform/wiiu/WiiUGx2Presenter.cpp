@@ -4,10 +4,14 @@
 #include <stdexcept>
 
 #include <coreinit/memdefaultheap.h>
+#include <gx2/context.h>
 #include <gx2/display.h>
+#include <gx2/event.h>
 #include <gx2/mem.h>
 #include <gx2/registers.h>
+#include <gx2/state.h>
 #include <gx2/swap.h>
+#include <gx2/temp.h>
 
 namespace helengine::wiiu {
     namespace {
@@ -50,7 +54,7 @@ namespace helengine::wiiu {
         };
         GX2Init(initAttributes);
 
-        GX2DRCMode drcRenderMode = GX2GetSystemDRCMode();
+        GX2DrcRenderMode drcRenderMode = GX2GetSystemDRCMode();
         std::uint32_t unusedSize = 0U;
         GX2CalcTVSize(PresentationTvRenderMode, PresentationSurfaceFormat, GX2_BUFFERING_MODE_DOUBLE, &TvScanBufferSize, &unusedSize);
         GX2CalcDRCSize(drcRenderMode, PresentationSurfaceFormat, GX2_BUFFERING_MODE_DOUBLE, &DrcScanBufferSize, &unusedSize);
@@ -69,8 +73,8 @@ namespace helengine::wiiu {
 
         InitializeTvColorBuffer();
         InitializeDrcColorBuffer();
-        GX2SetTVScale(static_cast<float>(TvSurfaceWidth), static_cast<float>(TvSurfaceHeight));
-        GX2SetDRCScale(static_cast<float>(DrcSurfaceWidth), static_cast<float>(DrcSurfaceHeight));
+        GX2SetTVScale(TvSurfaceWidth, TvSurfaceHeight);
+        GX2SetDRCScale(DrcSurfaceWidth, DrcSurfaceHeight);
         GX2SetSwapInterval(1);
         IsInitialized = true;
         return true;
