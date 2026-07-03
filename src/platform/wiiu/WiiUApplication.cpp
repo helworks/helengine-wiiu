@@ -30,6 +30,10 @@
 namespace helengine::wiiu {
     namespace {
         constexpr std::uint32_t StartupClearColor = 0xFF000000;
+        constexpr std::uint32_t TvSurfaceWidth = 1280U;
+        constexpr std::uint32_t TvSurfaceHeight = 720U;
+        constexpr std::uint32_t DrcSurfaceWidth = 854U;
+        constexpr std::uint32_t DrcSurfaceHeight = 480U;
         constexpr const char* RuntimeTracePaths[] = {
             "sd:/wiiu_runtime_trace.txt",
             "wiiu_runtime_trace.txt"
@@ -138,6 +142,8 @@ namespace helengine::wiiu {
         OSScreenSetBufferEx(SCREEN_DRC, DrcBuffer);
         OSScreenEnableEx(SCREEN_TV, true);
         OSScreenEnableEx(SCREEN_DRC, true);
+        TvSurface = new WiiUSoftwareSurface(TvSurfaceWidth, TvSurfaceHeight);
+        DrcSurface = new WiiUSoftwareSurface(DrcSurfaceWidth, DrcSurfaceHeight);
         return true;
     }
 
@@ -192,9 +198,10 @@ namespace helengine::wiiu {
             EngineRenderManager3D = new WiiURenderManager3D();
             EngineRenderManager2D = new WiiURenderManager2D();
             EnginePlatformInfo = new PlatformInfo("wiiu", "1.0");
+            EngineRenderManager2D->AttachSurface(TvSurface, DrcSurface);
 
             initializationStage = "AddPrimaryWindow";
-            EngineRenderManager3D->AddWindow(0, 1280, 720);
+            EngineRenderManager3D->AddWindow(0, TvSurfaceWidth, TvSurfaceHeight);
 
             initializationStage = "InitializeCore";
             OSReport("[WiiU] Calling EngineCore->Initialize.\n");
@@ -303,7 +310,7 @@ namespace helengine::wiiu {
     /// Draws one generated-core frame for the packaged Wii U runtime.
     bool WiiUApplication::DrawEngineCore() {
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
-        if (!EngineInitialized || EngineCore == nullptr) {
+        if (!EngineInitialized || EngineCore == nullptr || EngineRenderManager2D == nullptr) {
             return false;
         }
 
@@ -314,6 +321,7 @@ namespace helengine::wiiu {
             }
             SetBootPhase(WiiUBootPhase::Running, 0xFF008000);
             EngineCore->Draw();
+            EngineRenderManager2D->Draw();
             if (DrawFrameLogCount < 2) {
                 OSReport("[WiiU] Engine draw completed frame=%u\n", DrawFrameLogCount);
                 AppendRuntimeTrace("[WiiUFile] Engine draw completed frame=%u\n", DrawFrameLogCount);
@@ -373,8 +381,27 @@ namespace helengine::wiiu {
             throw std::runtime_error("Wii U software surfaces must exist before rendered presentation can begin.");
         }
 
+        PresentSurface(SCREEN_TV, TvSurface);
+        PresentSurface(SCREEN_DRC, DrcSurface);
         OSScreenFlipBuffersEx(SCREEN_TV);
         OSScreenFlipBuffersEx(SCREEN_DRC);
+    }
+
+    /// Copies one software surface into the currently active OSScreen work buffer for the selected display.
+    void WiiUApplication::PresentSurface(OSScreenID screen, WiiUSoftwareSurface* surface) {
+        if (surface == nullptr) {
+            throw std::runtime_error("Wii U rendered presentation requires a valid software surface.");
+        }
+
+        const std::uint32_t* pixels = surface->GetPixels();
+        const std::uint32_t width = surface->GetWidth();
+        const std::uint32_t height = surface->GetHeight();
+        for (std::uint32_t y = 0U; y < height; y++) {
+            for (std::uint32_t x = 0U; x < width; x++) {
+                const std::size_t pixelIndex = static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + x;
+                OSScreenPutPixelEx(screen, x, y, pixels[pixelIndex]);
+            }
+        }
     }
 
     /// Appends one host-readable Wii U runtime trace line to every supported trace sink.
