@@ -64,9 +64,11 @@ public sealed class WiiURuntimeSourceTests {
     [Fact]
     public void RuntimeSeam_AdvancesGeneratedCoreWithPlatformBridges() {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string makefileSource = File.ReadAllText(Path.Combine(repositoryRootPath, "Makefile"));
         string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
         string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
 
+        Assert.Contains("HELENGINE_WIIU_HAS_GENERATED_RUNTIME_MODULE_REGISTRATION", makefileSource, StringComparison.Ordinal);
         Assert.Contains("bool UpdateEngineCore();", applicationHeaderSource, StringComparison.Ordinal);
         Assert.Contains("bool DrawEngineCore();", applicationHeaderSource, StringComparison.Ordinal);
         Assert.Contains("EngineCore;", applicationHeaderSource, StringComparison.Ordinal);
@@ -76,8 +78,64 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("#include \"Core.hpp\"", applicationSource, StringComparison.Ordinal);
         Assert.Contains("#include \"PlatformInfo.hpp\"", applicationSource, StringComparison.Ordinal);
         Assert.Contains("EngineCore->Initialize(", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("RegisterGeneratedRuntimeModules(EngineCore);", applicationSource, StringComparison.Ordinal);
         Assert.Contains("EngineCore->get_SceneManager()->LoadScene(", applicationSource, StringComparison.Ordinal);
         Assert.Contains("if (!UpdateEngineCore()) {", applicationSource, StringComparison.Ordinal);
         Assert.Contains("if (!DrawEngineCore()) {", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the Wii U host presents the renderer-owned frame once the generated core has initialized instead of clearing over the visible output every loop.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_PresentsRendererOwnedFrameAfterEngineStartup() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.Contains("WiiUSoftwareSurface", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("PresentBootPhaseFrame();", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("PresentRenderedFrame();", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("if (!EngineInitialized) {", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the Wii U 2D renderer no longer leaves menu draw requests as empty no-op stubs.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_RasterizesMenu2DPrimitivesThroughWiiURenderManager2D() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string renderHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager2D.hpp"));
+        string renderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager2D.cpp"));
+
+        Assert.Contains("void Draw() override;", renderHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void AttachSurface(", renderHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("Surface->Clear(", renderSource, StringComparison.Ordinal);
+        Assert.Contains("SubmitRoundedRect(", renderSource, StringComparison.Ordinal);
+        Assert.Contains("SubmitSprite(", renderSource, StringComparison.Ordinal);
+        Assert.Contains("SubmitText(", renderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("/// Ignores one rounded-rectangle draw request until the Wii U renderer is implemented.", renderSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures silent Wii U boot failures leave behind a host-readable runtime trace across the same initialization boundaries reported through OSReport.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_AddsHostReadableRuntimeTraceForSilentBootFailures() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.Contains("void AppendRuntimeTrace(const char* format, ...);", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("constexpr const char* RuntimeTracePaths[] = {", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("\"sd:/wiiu_runtime_trace.txt\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("\"wiiu_runtime_trace.txt\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("void WiiUApplication::AppendRuntimeTrace(const char* format, ...) {", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("AppendRuntimeTrace(\"\\n=== Wii U runtime session %s ===\\n\", BuildStamp);", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("AppendRuntimeTrace(\"[WiiUFile] InitializeEngineCore begin.\\n\");", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("AppendRuntimeTrace(\"[WiiUFile] Packaged content root: %s\\n\", packagedContentRootPath.c_str());", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("AppendRuntimeTrace(\"[WiiUFile] Calling EngineCore->Initialize.\\n\");", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("AppendRuntimeTrace(\"[WiiUFile] Packaged startup scene queued.\\n\");", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("AppendRuntimeTrace(\"[WiiUFile] Engine core initialization threw std::exception stage=%s message=%s\\n\", initializationStage, exception.what());", applicationSource, StringComparison.Ordinal);
     }
 }
