@@ -57,12 +57,6 @@ namespace helengine::wiiu {
         /// Presents one renderer-owned frame after the generated core has initialized.
         void PresentRenderedFrame();
 
-        /// Copies one software surface into the currently active OSScreen work buffer for the selected display.
-        void PresentSurface(OSScreenID screen, WiiUSoftwareSurface* surface);
-
-        /// Reorders one packed software-surface pixel into the channel layout expected by OSScreen presentation.
-        std::uint32_t ConvertSurfacePixelToScreenColor(std::uint32_t surfacePixel) const;
-
         /// Appends one host-readable Wii U runtime trace line to every supported trace sink.
         void AppendRuntimeTrace(const char* format, ...);
 
