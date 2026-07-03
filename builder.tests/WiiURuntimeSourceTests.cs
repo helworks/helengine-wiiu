@@ -100,16 +100,17 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures the Wii U host converts renderer-owned software-surface pixels into the OSScreen channel order instead of presenting the packed surface value directly.
+    /// Ensures the Wii U host no longer keeps the old OSScreen pixel-conversion helper once steady-state rendered frames delegate to the GX2 presenter seam.
     /// </summary>
     [Fact]
-    public void RuntimeSeam_ConvertsSoftwareSurfacePixelsBeforeOsScreenPresentation() {
+    public void RuntimeSeam_RemovesObsoleteOsScreenPixelConversionAfterGx2Presentation() {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
         string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
 
-        Assert.Contains("std::uint32_t ConvertSurfacePixelToScreenColor(std::uint32_t surfacePixel) const;", applicationHeaderSource, StringComparison.Ordinal);
-        Assert.Contains("OSScreenPutPixelEx(screen, x, y, ConvertSurfacePixelToScreenColor(pixels[pixelIndex]));", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("std::uint32_t ConvertSurfacePixelToScreenColor(std::uint32_t surfacePixel) const;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("void PresentSurface(OSScreenID screen, WiiUSoftwareSurface* surface);", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("OSScreenPutPixelEx(screen, x, y, ConvertSurfacePixelToScreenColor(pixels[pixelIndex]));", applicationSource, StringComparison.Ordinal);
         Assert.DoesNotContain("OSScreenPutPixelEx(screen, x, y, pixels[pixelIndex]);", applicationSource, StringComparison.Ordinal);
     }
 

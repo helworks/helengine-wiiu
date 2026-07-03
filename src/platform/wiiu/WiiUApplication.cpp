@@ -402,36 +402,11 @@ namespace helengine::wiiu {
     void WiiUApplication::PresentRenderedFrame() {
         if (TvSurface == nullptr || DrcSurface == nullptr) {
             throw std::runtime_error("Wii U software surfaces must exist before rendered presentation can begin.");
+        } else if (Gx2Presenter == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter must exist before rendered presentation can begin.");
         }
 
-        PresentSurface(SCREEN_TV, TvSurface);
-        PresentSurface(SCREEN_DRC, DrcSurface);
-        OSScreenFlipBuffersEx(SCREEN_TV);
-        OSScreenFlipBuffersEx(SCREEN_DRC);
-    }
-
-    /// Copies one software surface into the currently active OSScreen work buffer for the selected display.
-    void WiiUApplication::PresentSurface(OSScreenID screen, WiiUSoftwareSurface* surface) {
-        if (surface == nullptr) {
-            throw std::runtime_error("Wii U rendered presentation requires a valid software surface.");
-        }
-
-        const std::uint32_t* pixels = surface->GetPixels();
-        const std::uint32_t width = surface->GetWidth();
-        const std::uint32_t height = surface->GetHeight();
-        for (std::uint32_t y = 0U; y < height; y++) {
-            for (std::uint32_t x = 0U; x < width; x++) {
-                const std::size_t pixelIndex = static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + x;
-                OSScreenPutPixelEx(screen, x, y, ConvertSurfacePixelToScreenColor(pixels[pixelIndex]));
-            }
-        }
-    }
-
-    /// Reorders one packed software-surface pixel into the channel layout expected by OSScreen presentation.
-    std::uint32_t WiiUApplication::ConvertSurfacePixelToScreenColor(std::uint32_t surfacePixel) const {
-        const std::uint32_t alpha = (surfacePixel >> 24U) & 0xFFU;
-        const std::uint32_t rgb = surfacePixel & 0x00FFFFFFU;
-        return (rgb << 8U) | alpha;
+        Gx2Presenter->Present(TvSurface, DrcSurface);
     }
 
     /// Appends one host-readable Wii U runtime trace line to every supported trace sink.
