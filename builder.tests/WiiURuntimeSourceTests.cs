@@ -100,6 +100,20 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
+    /// Ensures the Wii U host converts renderer-owned software-surface pixels into the OSScreen channel order instead of presenting the packed surface value directly.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_ConvertsSoftwareSurfacePixelsBeforeOsScreenPresentation() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.Contains("std::uint32_t ConvertSurfacePixelToScreenColor(std::uint32_t surfacePixel) const;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("OSScreenPutPixelEx(screen, x, y, ConvertSurfacePixelToScreenColor(pixels[pixelIndex]));", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("OSScreenPutPixelEx(screen, x, y, pixels[pixelIndex]);", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures the Wii U 2D renderer no longer leaves menu draw requests as empty no-op stubs.
     /// </summary>
     [Fact]
@@ -137,5 +151,25 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("AppendRuntimeTrace(\"[WiiUFile] Calling EngineCore->Initialize.\\n\");", applicationSource, StringComparison.Ordinal);
         Assert.Contains("AppendRuntimeTrace(\"[WiiUFile] Packaged startup scene queued.\\n\");", applicationSource, StringComparison.Ordinal);
         Assert.Contains("AppendRuntimeTrace(\"[WiiUFile] Engine core initialization threw std::exception stage=%s message=%s\\n\", initializationStage, exception.what());", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures rendered Wii U frames delegate to a dedicated GX2 presenter seam instead of issuing steady-state OSScreen per-pixel writes inline.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_PresentsRenderedFramesThroughGx2Presenter() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterHeaderPath = Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp");
+        string presenterSourcePath = Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp");
+        string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.True(File.Exists(presenterHeaderPath), "Expected WiiUGx2Presenter.hpp to exist.");
+        Assert.True(File.Exists(presenterSourcePath), "Expected WiiUGx2Presenter.cpp to exist.");
+        Assert.Contains("class WiiUGx2Presenter;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("WiiUGx2Presenter* Gx2Presenter;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"platform/wiiu/WiiUGx2Presenter.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("Gx2Presenter->Present(TvSurface, DrcSurface);", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("OSScreenPutPixelEx(screen, x, y, ConvertSurfacePixelToScreenColor(pixels[pixelIndex]));", applicationSource, StringComparison.Ordinal);
     }
 }
