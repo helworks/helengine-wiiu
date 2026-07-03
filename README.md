@@ -15,7 +15,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ..\helengine\artifacts\build
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\launch_in_emulator.ps1 `
-  -ArtifactPath ..\helprojs\city\wiiu-build\helengine_wiiu.rpx
+  -ArtifactPath ..\helprojs\city\wiiu-build\helengine_wiiu.wuhb
 ```
 
 ## More Docs

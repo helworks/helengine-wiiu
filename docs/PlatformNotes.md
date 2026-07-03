@@ -16,4 +16,4 @@ Load `build/helengine_wiiu.rpx` in Cemu. The expected result for this milestone 
 
 ## Cube Test Verification
 
-Build the `city` project through the shared editor CLI, then launch the resulting RPX through `scripts/launch_in_emulator.ps1`. The expected result for this slice is that the authored `cube_test` scene is the packaged startup target and the RPX still launches through the checked-in Cemu workflow.
+Build the `city` project through the shared editor CLI, then launch the resulting WUHB through `scripts/launch_in_emulator.ps1`. The expected result for this slice is that the authored `cube_test` scene is the packaged startup target and the packaged title still launches through the checked-in Cemu workflow.
