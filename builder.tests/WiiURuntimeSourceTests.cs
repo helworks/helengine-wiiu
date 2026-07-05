@@ -437,7 +437,7 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("gl_Position = uTransform * aPosition;", shaderVertexSource, StringComparison.Ordinal);
         Assert.Contains("GX2RBuffer DiagnosticTriangleTransformBuffer;", presenterHeaderSource, StringComparison.Ordinal);
         Assert.Contains("InitializeDiagnosticTriangleTransformBuffer", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("GX2RSetVertexUniformBlock", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2SetVertexUniformBlock", presenterSource, StringComparison.Ordinal);
         Assert.Contains("DiagnosticTriangleTransformBuffer", presenterSource, StringComparison.Ordinal);
     }
 }

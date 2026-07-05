@@ -2,13 +2,20 @@
 
 #include <cstdint>
 
+#include <gx2/context.h>
 #include <gx2/display.h>
+#include <gx2/sampler.h>
+#include <gx2/shaders.h>
 #include <gx2/surface.h>
+#include <gx2/texture.h>
+#include <gx2r/buffer.h>
+#include <whb/gfx.h>
 
-#include "platform/wiiu/WiiUSoftwareSurface.hpp"
+#include "platform/wiiu/WiiUGx2RenderFrame.hpp"
+#include "platform/wiiu/WiiUGx2TextureHandle.hpp"
 
 namespace helengine::wiiu {
-    /// Owns the minimal GX2 presentation seam that uploads CPU-rendered TV and DRC software surfaces into GX2-owned display buffers.
+    /// Owns the minimal GX2 presentation seam that renders captured Wii U 2D frames into GX2-owned display buffers.
     class WiiUGx2Presenter {
     public:
         /// Creates one uninitialized GX2 presenter.
@@ -20,8 +27,17 @@ namespace helengine::wiiu {
         /// Initializes the GX2 presentation path for TV and DRC output.
         bool Initialize();
 
-        /// Uploads and presents the supplied TV and DRC software surfaces.
-        void Present(WiiUSoftwareSurface* tvSurface, WiiUSoftwareSurface* drcSurface);
+        /// Renders and presents one captured Wii U 2D frame.
+        void RenderFrame(const WiiUGx2RenderFrame& frame);
+
+        /// Renders one presenter-owned pure GX2 clear-only frame for early bring-up verification.
+        void RenderDiagnosticClearFrame();
+
+        /// Renders one presenter-owned pure GX2 clear-plus-square frame for bring-up verification.
+        void RenderDiagnosticSquareFrame();
+
+        /// Renders one presenter-owned pure GX2 clear-plus-triangle frame for first 3D shader verification.
+        void RenderDiagnosticTriangleFrame();
 
     private:
         /// Releases all allocated GX2 resources and returns the presenter to the uninitialized state.
@@ -33,8 +49,56 @@ namespace helengine::wiiu {
         /// Initializes the DRC color buffer used for software-surface upload and presentation.
         void InitializeDrcColorBuffer();
 
-        /// Uploads one packed ARGB8888 software surface into one GX2 color buffer image.
-        void UploadSurface(WiiUSoftwareSurface* sourceSurface, GX2ColorBuffer* destinationBuffer);
+        /// Initializes the presenter-owned shader and vertex buffers used by the diagnostic GX2 square path.
+        void InitializeDiagnosticSquareResources();
+
+        /// Releases the presenter-owned shader and vertex buffers used by the diagnostic GX2 square path.
+        void DestroyDiagnosticSquareResources();
+
+        /// Initializes one presenter-owned diagnostic vertex buffer from immutable float vertex data.
+        void InitializeDiagnosticSquareBuffer(GX2RBuffer* buffer, const float* sourceData, std::uint32_t vertexCount);
+
+        /// Initializes the presenter-owned shader and vertex buffers used by the diagnostic GX2 triangle path.
+        void InitializeDiagnosticTriangleResources();
+
+        /// Releases the presenter-owned shader and vertex buffers used by the diagnostic GX2 triangle path.
+        void DestroyDiagnosticTriangleResources();
+
+        /// Initializes one presenter-owned diagnostic vertex buffer from immutable float vertex data for triangle rendering.
+        void InitializeDiagnosticTriangleBuffer(GX2RBuffer* buffer, const float* sourceData, std::uint32_t vertexCount);
+
+        /// Initializes the presenter-owned uniform buffer that stores the fixed transform used by the translated diagnostic triangle.
+        void InitializeDiagnosticTriangleTransformBuffer();
+
+        /// Initializes the presenter-owned shader, buffers, and fallback texture used by the pure GX2 UI path.
+        void InitializeUiQuadResources();
+
+        /// Releases the presenter-owned shader, buffers, and fallback texture used by the pure GX2 UI path.
+        void DestroyUiQuadResources();
+
+        /// Initializes one presenter-owned UI vertex buffer for dynamic quad data.
+        void InitializeUiQuadBuffer(GX2RBuffer* buffer, std::uint32_t elementSize, std::uint32_t elementCount);
+
+        /// Grows the presenter-owned UI buffers so one full captured frame can be uploaded without overwriting in-flight quad data.
+        void EnsureUiQuadBufferCapacity(std::uint32_t requiredVertexCount);
+
+        /// Initializes the presenter-owned 1x1 white texture used for solid-color quad rendering.
+        void InitializeUiSolidWhiteTexture();
+
+        /// Releases one presenter-owned texture handle.
+        void DestroyTextureHandle(WiiUGx2TextureHandle* textureHandle);
+
+        /// Renders one captured frame into one target color buffer.
+        void RenderFrameToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer, const WiiUGx2RenderFrame& frame, std::uint32_t targetWidth, std::uint32_t targetHeight);
+
+        /// Renders one captured quad command into one target color buffer using the already-uploaded vertex data for the supplied quad index.
+        void RenderQuadCommandToColorBuffer(const WiiUGx2QuadCommand& command, std::uint32_t quadIndex, std::uint32_t logicalWidth, std::uint32_t logicalHeight, std::uint32_t targetWidth, std::uint32_t targetHeight);
+
+        /// Renders the presenter-owned diagnostic square into one target color buffer with the supplied GX2 context state.
+        void RenderDiagnosticSquareToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer);
+
+        /// Renders the presenter-owned diagnostic triangle into one target color buffer with the supplied GX2 context state.
+        void RenderDiagnosticTriangleToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer);
 
         /// Presents the current TV and DRC color buffers to their scan buffers.
         void PresentScanBuffers();
@@ -48,11 +112,65 @@ namespace helengine::wiiu {
         /// Stores the DRC scan buffer pointer returned by the GX2 allocation path.
         void* DrcScanBuffer;
 
+        /// Stores the command buffer pool required by GX2 command submission.
+        void* CommandBufferPool;
+
         /// Stores the TV color buffer used for steady-state presentation.
         GX2ColorBuffer TvColorBuffer;
 
         /// Stores the DRC color buffer used for steady-state presentation.
         GX2ColorBuffer DrcColorBuffer;
+
+        /// Stores the TV GX2 context state used before copying the TV color buffer to the scan buffer.
+        GX2ContextState* TvContextState;
+
+        /// Stores the DRC GX2 context state used before copying the DRC color buffer to the scan buffer.
+        GX2ContextState* DrcContextState;
+
+        /// Tracks whether the diagnostic shader group and vertex buffers were initialized successfully.
+        bool AreDiagnosticSquareResourcesInitialized;
+
+        /// Stores the presenter-owned diagnostic shader group loaded from the embedded Wii U sample shader blob.
+        WHBGfxShaderGroup DiagnosticSquareShaderGroup;
+
+        /// Stores the presenter-owned diagnostic position buffer used for square vertices.
+        GX2RBuffer DiagnosticSquarePositionBuffer;
+
+        /// Stores the presenter-owned diagnostic color buffer used for square vertex colors.
+        GX2RBuffer DiagnosticSquareColorBuffer;
+
+        /// Tracks whether the diagnostic triangle shader group and vertex buffers were initialized successfully.
+        bool AreDiagnosticTriangleResourcesInitialized;
+
+        /// Stores the presenter-owned diagnostic shader group loaded from the embedded triangle shader blob.
+        WHBGfxShaderGroup DiagnosticTriangleShaderGroup;
+
+        /// Stores the presenter-owned diagnostic position buffer used for triangle vertices.
+        GX2RBuffer DiagnosticTrianglePositionBuffer;
+
+        /// Stores the presenter-owned diagnostic color buffer used for triangle vertex colors.
+        GX2RBuffer DiagnosticTriangleColorBuffer;
+
+        /// Stores the presenter-owned uniform buffer used to translate the diagnostic triangle through the vertex shader.
+        GX2RBuffer DiagnosticTriangleTransformBuffer;
+
+        /// Tracks whether the pure GX2 UI shader, buffers, and fallback texture were initialized successfully.
+        bool AreUiQuadResourcesInitialized;
+
+        /// Stores the presenter-owned GX2 shader group used for textured UI quads.
+        WHBGfxShaderGroup UiQuadShaderGroup;
+
+        /// Stores the presenter-owned dynamic position buffer used for textured UI quads.
+        GX2RBuffer UiQuadPositionBuffer;
+
+        /// Stores the presenter-owned dynamic texture-coordinate buffer used for textured UI quads.
+        GX2RBuffer UiQuadTexCoordBuffer;
+
+        /// Stores the presenter-owned dynamic vertex-color buffer used for textured UI quads.
+        GX2RBuffer UiQuadColorBuffer;
+
+        /// Stores the presenter-owned 1x1 white texture used for solid-color quad rendering.
+        WiiUGx2TextureHandle UiSolidWhiteTextureHandle;
 
         /// Stores the raw scan-buffer size required for TV presentation.
         std::uint32_t TvScanBufferSize;
