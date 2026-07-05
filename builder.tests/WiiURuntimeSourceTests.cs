@@ -93,10 +93,12 @@ public sealed class WiiURuntimeSourceTests {
         string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
         string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
 
-        Assert.Contains("WiiUSoftwareSurface", applicationHeaderSource, StringComparison.Ordinal);
         Assert.Contains("PresentBootPhaseFrame();", applicationSource, StringComparison.Ordinal);
         Assert.Contains("PresentRenderedFrame();", applicationSource, StringComparison.Ordinal);
         Assert.Contains("if (!EngineInitialized) {", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("WiiUSoftwareSurface", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("TvSurface = new WiiUSoftwareSurface(", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("DrcSurface = new WiiUSoftwareSurface(", applicationSource, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -118,17 +120,23 @@ public sealed class WiiURuntimeSourceTests {
     /// Ensures the Wii U 2D renderer no longer leaves menu draw requests as empty no-op stubs.
     /// </summary>
     [Fact]
-    public void RuntimeSeam_RasterizesMenu2DPrimitivesThroughWiiURenderManager2D() {
+    public void RuntimeSeam_CapturesMenu2DPrimitivesForPureGx2Presentation() {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string renderHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager2D.hpp"));
         string renderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager2D.cpp"));
+        string frameHeaderPath = Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2RenderFrame.hpp");
 
+        Assert.True(File.Exists(frameHeaderPath), "Expected WiiUGx2RenderFrame.hpp to exist.");
         Assert.Contains("void Draw() override;", renderHeaderSource, StringComparison.Ordinal);
-        Assert.Contains("void AttachSurface(", renderHeaderSource, StringComparison.Ordinal);
-        Assert.Contains("Surface->Clear(", renderSource, StringComparison.Ordinal);
+        Assert.Contains("const WiiUGx2RenderFrame& GetCurrentFrame() const;", renderHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("WiiUGx2RenderFrame CurrentFrame;", renderHeaderSource, StringComparison.Ordinal);
         Assert.Contains("SubmitRoundedRect(", renderSource, StringComparison.Ordinal);
         Assert.Contains("SubmitSprite(", renderSource, StringComparison.Ordinal);
         Assert.Contains("SubmitText(", renderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("void AttachSurface(", renderHeaderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Surface->Clear(", renderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("DrawSolidQuadToSurface(", renderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("DrawTexturedQuadToSurface(", renderSource, StringComparison.Ordinal);
         Assert.DoesNotContain("/// Ignores one rounded-rectangle draw request until the Wii U renderer is implemented.", renderSource, StringComparison.Ordinal);
     }
 
@@ -155,10 +163,10 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures rendered Wii U frames delegate to a dedicated GX2 presenter seam instead of issuing steady-state OSScreen per-pixel writes inline.
+    /// Ensures rendered Wii U frames delegate to a dedicated presenter-owned GX2 diagnostic draw path instead of issuing steady-state OSScreen per-pixel writes inline.
     /// </summary>
     [Fact]
-    public void RuntimeSeam_PresentsRenderedFramesThroughGx2Presenter() {
+    public void RuntimeSeam_PresentsCapturedGx2FrameThroughDedicatedPresenter() {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string presenterHeaderPath = Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp");
         string presenterSourcePath = Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp");
@@ -170,7 +178,247 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("class WiiUGx2Presenter;", applicationHeaderSource, StringComparison.Ordinal);
         Assert.Contains("WiiUGx2Presenter* Gx2Presenter;", applicationHeaderSource, StringComparison.Ordinal);
         Assert.Contains("#include \"platform/wiiu/WiiUGx2Presenter.hpp\"", applicationSource, StringComparison.Ordinal);
-        Assert.Contains("Gx2Presenter->Present(TvSurface, DrcSurface);", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("void RenderFrame(const WiiUGx2RenderFrame& frame);", File.ReadAllText(presenterHeaderPath), StringComparison.Ordinal);
+        Assert.Contains("Gx2Presenter->RenderFrame(EngineRenderManager2D->GetCurrentFrame());", applicationSource, StringComparison.Ordinal);
         Assert.DoesNotContain("OSScreenPutPixelEx(screen, x, y, ConvertSurfacePixelToScreenColor(pixels[pixelIndex]));", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the Wii U 2D bridge builds GPU-backed textures and samplers for steady-state GX2 submission instead of retaining software-renderer pixel buffers.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_BuildsGpuBackedTexturesForPureGx2UiRendering() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string renderHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager2D.hpp"));
+        string renderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager2D.cpp"));
+
+        Assert.Contains("#include <gx2/texture.h>", renderHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("WiiUGx2TextureHandle Gx2TextureHandle;", renderHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RCreateSurface(", renderSource, StringComparison.Ordinal);
+        Assert.Contains("GX2InitTextureRegs(", renderSource, StringComparison.Ordinal);
+        Assert.Contains("GX2InitSampler(", renderSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RLockSurfaceEx(", renderSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RUnlockSurfaceEx(", renderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("std::vector<std::uint32_t> Pixels;", renderHeaderSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the Wii U texture uploader rotates decoded ARGB words into one GX2 RGBA word layout so sampled alpha does not come from the authored red channel.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_RotatesDecodedArgbPixelsIntoGx2RgbaWordOrderDuringTextureUpload() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string renderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager2D.cpp"));
+
+        Assert.Contains("textureHandle->Texture.surface.format = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;", renderSource, StringComparison.Ordinal);
+        Assert.Contains("destinationPixels[(row * destinationPitch) + column] = (sourcePixel << 8U)", renderSource, StringComparison.Ordinal);
+        Assert.Contains("| ((sourcePixel >> 24U) & 0x000000FFU);", renderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("destinationPixels[(row * destinationPitch) + column] = (sourcePixel & 0xFF00FF00U)", renderSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the GX2 presenter follows the official context-state initialization path before copying color buffers to the TV and DRC scan buffers.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_InitializesGx2CommandBufferAndContextStateForPresentation() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp"));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        Assert.Contains("void* CommandBufferPool;", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("GX2ContextState* TvContextState;", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("GX2ContextState* DrcContextState;", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("GX2_INIT_CMD_BUF_BASE", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2_INIT_CMD_BUF_POOL_SIZE", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2SetupContextStateEx(TvContextState, TRUE);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2SetupContextStateEx(DrcContextState, TRUE);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2SetContextState(TvContextState);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2SetContextState(DrcContextState);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2SetColorBuffer(&TvColorBuffer, GX2_RENDER_TARGET_0);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2SetColorBuffer(&DrcColorBuffer, GX2_RENDER_TARGET_0);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2CopyColorBufferToScanBuffer(&TvColorBuffer, GX2_SCAN_TARGET_TV);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2CopyColorBufferToScanBuffer(&DrcColorBuffer, GX2_SCAN_TARGET_DRC);", presenterSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the earlier clear-only bring-up slice remains available as a presenter-owned GX2 diagnostic step even though the active frame path now uses the square draw.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UsesPresenterOwnedPureGx2ClearFrameForVisibleOutput() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp"));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.Contains("void RenderDiagnosticClearFrame();", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("GX2ClearColor(&TvColorBuffer", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2ClearColor(&DrcColorBuffer", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("Gx2Presenter->RenderFrame(EngineRenderManager2D->GetCurrentFrame());", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Gx2Presenter->RenderDiagnosticClearFrame();", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Gx2Presenter->Present(", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("if (quadCommands.empty()) {", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("EnsureUiQuadBufferCapacity(totalVertexCount);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("static_cast<float>(clearColor.Red) / 255.0f", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("RenderQuadCommandToColorBuffer(quadCommands[commandIndex], static_cast<std::uint32_t>(commandIndex)", presenterSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures steady-state menu presentation uses the authored demo-disc menu background clear color instead of a temporary diagnostic color.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UsesAuthoredMenuBackgroundClearColorForCapturedMenuFrames() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string renderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager2D.cpp"));
+
+        Assert.Contains("CurrentFrame.SetClearColor(WiiUGx2Color { 30U, 17U, 41U, 255U });", renderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("CurrentFrame.SetClearColor(WiiUGx2Color { 0U, 255U, 0U, 255U });", renderSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the second pure GX2 bring-up slice renders a presenter-owned centered square through one real GX2 draw call instead of software-surface upload.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UsesPresenterOwnedPureGx2SquareFrameForVisibleOutput() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp"));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.Contains("void RenderDiagnosticSquareFrame();", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void RenderFrame(const WiiUGx2RenderFrame& frame);", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("WHBGfxLoadGFDShaderGroup(&DiagnosticSquareShaderGroup, 0, diagnostic_square_shader_bin)", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RCreateBuffer(buffer)", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RSetAttributeBuffer(&DiagnosticSquarePositionBuffer, 0, DiagnosticSquarePositionBuffer.elemSize, 0);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RSetAttributeBuffer(&DiagnosticSquareColorBuffer, 1, DiagnosticSquareColorBuffer.elemSize, 0);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, DiagnosticSquareVertexCount, 0, 1);", presenterSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Gx2Presenter->RenderDiagnosticSquareFrame();", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the Wii U runtime returns to the full generated-core frame loop after diagnostic measurement is complete.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UsesFullEngineFrameLoopAfterDiagnosticMeasurement() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.Contains("enum class DiagnosticFrameLoopMode {", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("FullEngine", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("constexpr DiagnosticFrameLoopMode DiagnosticFrameLoopModeValue = DiagnosticFrameLoopMode::FullEngine;", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("if (DiagnosticFrameLoopModeValue == DiagnosticFrameLoopMode::PresentOnly) {", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("if (DiagnosticFrameLoopModeValue == DiagnosticFrameLoopMode::DrawOnly) {", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("if (!DrawEngineCore()) {", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("PresentFrame();", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("continue;", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("if (!UpdateEngineCore()) {", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("OSSleepTicks(OSMillisecondsToTicks(16));", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the draw-only diagnostic toggle is restored so steady-state builds still run the Wii U 2D render manager.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_FullEngineLoopDoesNotKeepSkipping2DRendererSubmission() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.Contains("constexpr bool RunDiagnosticRenderManager2DDrawInDrawOnlyMode = true;", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("if (DiagnosticFrameLoopModeValue != DiagnosticFrameLoopMode::DrawOnly || RunDiagnosticRenderManager2DDrawInDrawOnlyMode) {", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("EngineRenderManager2D->Draw();", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the Wii U runtime owns a dedicated input backend and passes it into the generated core instead of leaving gameplay with a null input seam.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_WiresDedicatedWiiUInputBackendIntoGeneratedCore() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string makefileSource = File.ReadAllText(Path.Combine(repositoryRootPath, "Makefile"));
+        string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+        string inputHeaderPath = Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUInputBackend.hpp");
+        string inputSourcePath = Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUInputBackend.cpp");
+
+        Assert.True(File.Exists(inputHeaderPath), "Expected WiiUInputBackend.hpp to exist.");
+        Assert.True(File.Exists(inputSourcePath), "Expected WiiUInputBackend.cpp to exist.");
+        Assert.Contains("WiiUInputBackend.cpp", makefileSource, StringComparison.Ordinal);
+        Assert.Contains("class WiiUInputBackend;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("WiiUInputBackend* EngineInputBackend;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"platform/wiiu/WiiUInputBackend.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("EngineInputBackend = new WiiUInputBackend();", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("EngineCore->Initialize(EngineRenderManager3D, EngineRenderManager2D, EngineInputBackend, EnginePlatformInfo, initializationOptions);", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("EngineCore->Initialize(EngineRenderManager3D, EngineRenderManager2D, nullptr, EnginePlatformInfo, initializationOptions);", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures each Wii U input capture returns a fresh gamepad snapshot so previous-frame edge detection does not alias the current-frame state.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_CapturesFreshGamepadSnapshotsForButtonEdgeDetection() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string inputHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUInputBackend.hpp"));
+        string inputSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUInputBackend.cpp"));
+
+        Assert.DoesNotContain("::InputFrameState FrameState;", inputHeaderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Array<::InputGamepadState>* GamepadStates;", inputHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("static constexpr std::uint32_t SnapshotBufferCount = 2U;", inputHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("std::uint32_t ActiveSnapshotIndex;", inputHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("Array<::InputGamepadState>* GamepadStateSnapshots[SnapshotBufferCount];", inputHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("InputFrameState frameState {};", inputSource, StringComparison.Ordinal);
+        Assert.Contains("ActiveSnapshotIndex = (ActiveSnapshotIndex + 1U) % SnapshotBufferCount;", inputSource, StringComparison.Ordinal);
+        Assert.Contains("Array<InputGamepadState>* gamepadStates = GamepadStateSnapshots[ActiveSnapshotIndex];", inputSource, StringComparison.Ordinal);
+        Assert.Contains("frameState.set_Gamepads(gamepadStates);", inputSource, StringComparison.Ordinal);
+        Assert.Contains("(*gamepadStates)[0] = gamepadState;", inputSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("FrameState.set_Gamepads(GamepadStates);", inputSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("(*GamepadStates)[0] = gamepadState;", inputSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the Wii U host loads the generated standard-platform input manifest and assigns it into core initialization so Accept and Return actions reach gameplay code.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_LoadsGeneratedStandardPlatformInputConfigurationIntoCoreInitialization() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.Contains("StandardPlatformInputConfiguration* CreateStandardPlatformInputConfiguration() const;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"StandardPlatformAction.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"StandardPlatformActionBinding.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"StandardPlatformInputConfiguration.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"InputControlId.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"InputControlKind.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"InputDeviceKind.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"runtime/native_list.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"runtime/runtime_standard_platform_input_manifest.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("initializationOptions->StandardPlatformInputConfiguration = CreateStandardPlatformInputConfiguration();", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("StandardPlatformInputConfiguration* WiiUApplication::CreateStandardPlatformInputConfiguration() const {", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("const HERuntimeStandardPlatformActionEntry* actionEntries = he_runtime_standard_platform_action_entries(&actionEntryCount);", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("List<StandardPlatformActionBinding*>* bindings = new List<StandardPlatformActionBinding*>();", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("bindings->Add(new StandardPlatformActionBinding(", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the first Wii U 3D bring-up slice renders one presenter-owned diagnostic triangle through offline-compiled GX2 shaders.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UsesPresenterOwnedDiagnosticTriangleFrameForFirst3dShaderBringUp() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp"));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+        string shaderVertexPath = Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "diagnostic_triangle.vs");
+        string shaderPixelPath = Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "diagnostic_triangle.ps");
+        string shaderBinaryPath = Path.Combine(repositoryRootPath, "data", "diagnostic_triangle_shader.bin");
+
+        Assert.True(File.Exists(shaderVertexPath), "Expected diagnostic_triangle.vs to exist.");
+        Assert.True(File.Exists(shaderPixelPath), "Expected diagnostic_triangle.ps to exist.");
+        Assert.True(File.Exists(shaderBinaryPath), "Expected diagnostic_triangle_shader.bin to exist.");
+        Assert.Contains("void RenderDiagnosticTriangleFrame();", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"diagnostic_triangle_shader_bin.h\"", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("WHBGfxLoadGFDShaderGroup(&DiagnosticTriangleShaderGroup, 0, diagnostic_triangle_shader_bin)", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, DiagnosticTriangleVertexCount, 0, 1);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("Gx2Presenter->RenderDiagnosticTriangleFrame();", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Gx2Presenter->RenderFrame(EngineRenderManager2D->GetCurrentFrame());", applicationSource, StringComparison.Ordinal);
     }
 }
