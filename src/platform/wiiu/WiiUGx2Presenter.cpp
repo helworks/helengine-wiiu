@@ -2,11 +2,14 @@
 
 #include "diagnostic_triangle_shader_bin.h"
 #include "diagnostic_square_shader_bin.h"
+#include "scene_cube_flat_color_shader_bin.h"
 #include "ui_quad_shader_bin.h"
 
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
+
+#include "platform/wiiu/WiiURuntimeModel.hpp"
 
 #include <coreinit/memdefaultheap.h>
 #include <gfd.h>
@@ -43,6 +46,8 @@ namespace helengine::wiiu {
         constexpr GX2RResourceFlags NoGx2rResourceFlags = static_cast<GX2RResourceFlags>(0);
         constexpr GX2RResourceFlags DiagnosticVertexBufferFlags = static_cast<GX2RResourceFlags>(
             GX2R_RESOURCE_BIND_VERTEX_BUFFER | GX2R_RESOURCE_USAGE_CPU_READ | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ);
+        constexpr GX2RResourceFlags DiagnosticIndexBufferFlags = static_cast<GX2RResourceFlags>(
+            GX2R_RESOURCE_BIND_INDEX_BUFFER | GX2R_RESOURCE_USAGE_CPU_READ | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ);
         constexpr GX2RResourceFlags DiagnosticUniformBufferFlags = static_cast<GX2RResourceFlags>(
             GX2R_RESOURCE_BIND_UNIFORM_BLOCK | GX2R_RESOURCE_USAGE_CPU_READ | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ);
         constexpr GX2RResourceFlags TextureSurfaceFlags = static_cast<GX2RResourceFlags>(
@@ -72,6 +77,9 @@ namespace helengine::wiiu {
         constexpr std::uint32_t DiagnosticTriangleVertexCount = 3U;
         constexpr std::uint32_t DiagnosticTriangleVertexElementSize = 4U * sizeof(float);
         constexpr std::uint32_t DiagnosticTriangleTransformSizeInBytes = 16U * sizeof(float);
+        constexpr std::uint32_t SceneCubeVertexElementSize = 4U * sizeof(float);
+        constexpr std::uint32_t SceneCubeIndexElementSize = sizeof(std::uint16_t);
+        constexpr std::uint32_t SceneCubeTransformSizeInBytes = 16U * sizeof(float);
         constexpr std::uint32_t UiQuadVertexCount = 6U;
         constexpr std::uint32_t UiQuadPositionElementSize = 2U * sizeof(float);
         constexpr std::uint32_t UiQuadTexCoordElementSize = 2U * sizeof(float);
@@ -109,6 +117,12 @@ namespace helengine::wiiu {
             0.0f, 0.0f, 1.0f, 0.0f,
             0.25f, 0.20f, 0.0f, 1.0f
         };
+        const float SceneCubeTransformData[] = {
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f
+        };
     }
 
     /// Creates one uninitialized GX2 presenter.
@@ -130,6 +144,13 @@ namespace helengine::wiiu {
         , DiagnosticTrianglePositionBuffer()
         , DiagnosticTriangleColorBuffer()
         , DiagnosticTriangleTransformBuffer()
+        , AreSceneCubeResourcesInitialized(false)
+        , IsSceneCubeMeshConfigured(false)
+        , SceneCubeShaderGroup()
+        , SceneCubePositionBuffer()
+        , SceneCubeIndexBuffer()
+        , SceneCubeTransformBuffer()
+        , SceneCubeIndexCount(0U)
         , AreUiQuadResourcesInitialized(false)
         , UiQuadShaderGroup()
         , UiQuadPositionBuffer()
@@ -147,6 +168,10 @@ namespace helengine::wiiu {
         std::memset(&DiagnosticTrianglePositionBuffer, 0, sizeof(DiagnosticTrianglePositionBuffer));
         std::memset(&DiagnosticTriangleColorBuffer, 0, sizeof(DiagnosticTriangleColorBuffer));
         std::memset(&DiagnosticTriangleTransformBuffer, 0, sizeof(DiagnosticTriangleTransformBuffer));
+        std::memset(&SceneCubeShaderGroup, 0, sizeof(SceneCubeShaderGroup));
+        std::memset(&SceneCubePositionBuffer, 0, sizeof(SceneCubePositionBuffer));
+        std::memset(&SceneCubeIndexBuffer, 0, sizeof(SceneCubeIndexBuffer));
+        std::memset(&SceneCubeTransformBuffer, 0, sizeof(SceneCubeTransformBuffer));
         std::memset(&UiQuadShaderGroup, 0, sizeof(UiQuadShaderGroup));
         std::memset(&UiQuadPositionBuffer, 0, sizeof(UiQuadPositionBuffer));
         std::memset(&UiQuadTexCoordBuffer, 0, sizeof(UiQuadTexCoordBuffer));
@@ -218,6 +243,7 @@ namespace helengine::wiiu {
         GX2SetScissor(0, 0, DrcColorBuffer.surface.width, DrcColorBuffer.surface.height);
         InitializeDiagnosticSquareResources();
         InitializeDiagnosticTriangleResources();
+        InitializeSceneCubeResources();
         InitializeUiQuadResources();
         GX2SetTVScale(TvSurfaceWidth, TvSurfaceHeight);
         GX2SetDRCScale(DrcSurfaceWidth, DrcSurfaceHeight);
@@ -274,9 +300,53 @@ namespace helengine::wiiu {
         PresentScanBuffers();
     }
 
+    /// Uploads one runtime model into the temporary scene-cube GX2 mesh path.
+    void WiiUGx2Presenter::ConfigureSceneCubeMesh(const WiiURuntimeModel& runtimeModel) {
+        const std::vector<float>& positionData = runtimeModel.GetPositionData();
+        const std::vector<std::uint16_t>& indexData = runtimeModel.GetIndexData();
+        if (!AreSceneCubeResourcesInitialized) {
+            throw std::runtime_error("Wii U GX2 presenter must initialize scene cube resources before uploading geometry.");
+        } else if (positionData.empty()) {
+            throw std::runtime_error("Wii U GX2 presenter requires non-empty scene cube position data.");
+        } else if (indexData.empty()) {
+            throw std::runtime_error("Wii U GX2 presenter requires non-empty scene cube index data.");
+        }
+
+        if (SceneCubePositionBuffer.buffer != nullptr) {
+            GX2RDestroyBufferEx(&SceneCubePositionBuffer, NoGx2rResourceFlags);
+            std::memset(&SceneCubePositionBuffer, 0, sizeof(SceneCubePositionBuffer));
+        }
+
+        if (SceneCubeIndexBuffer.buffer != nullptr) {
+            GX2RDestroyBufferEx(&SceneCubeIndexBuffer, NoGx2rResourceFlags);
+            std::memset(&SceneCubeIndexBuffer, 0, sizeof(SceneCubeIndexBuffer));
+        }
+
+        InitializeSceneCubeVertexBuffer(&SceneCubePositionBuffer, positionData.data(), static_cast<std::uint32_t>(positionData.size()));
+        InitializeSceneCubeIndexBuffer(&SceneCubeIndexBuffer, indexData.data(), static_cast<std::uint32_t>(indexData.size()));
+        SceneCubeIndexCount = static_cast<std::uint32_t>(indexData.size());
+        IsSceneCubeMeshConfigured = true;
+    }
+
+    /// Renders the configured scene-cube mesh to both displays.
+    void WiiUGx2Presenter::RenderSceneCubeFrame() {
+        if (!IsInitialized) {
+            throw std::runtime_error("Wii U GX2 presenter must be initialized before RenderSceneCubeFrame.");
+        } else if (!AreSceneCubeResourcesInitialized) {
+            throw std::runtime_error("Wii U GX2 presenter must initialize scene cube resources before RenderSceneCubeFrame.");
+        } else if (!IsSceneCubeMeshConfigured) {
+            throw std::runtime_error("Wii U GX2 presenter must upload scene cube geometry before RenderSceneCubeFrame.");
+        }
+
+        RenderSceneCubeToColorBuffer(TvContextState, &TvColorBuffer);
+        RenderSceneCubeToColorBuffer(DrcContextState, &DrcColorBuffer);
+        PresentScanBuffers();
+    }
+
     /// Releases all allocated GX2 resources and returns the presenter to the uninitialized state.
     void WiiUGx2Presenter::Shutdown() {
         DestroyUiQuadResources();
+        DestroySceneCubeResources();
         DestroyDiagnosticTriangleResources();
         DestroyDiagnosticSquareResources();
 
@@ -529,6 +599,152 @@ namespace helengine::wiiu {
         std::memcpy(uploadBuffer, DiagnosticTriangleTransformData, transformUniformBlock->size);
         GX2RUnlockBufferEx(&DiagnosticTriangleTransformBuffer, NoGx2rResourceFlags);
         GX2RInvalidateBuffer(&DiagnosticTriangleTransformBuffer, GX2R_RESOURCE_USAGE_CPU_WRITE);
+    }
+
+    /// Initializes the presenter-owned shader resources used by the temporary scene-cube GX2 mesh path.
+    void WiiUGx2Presenter::InitializeSceneCubeResources() {
+        if (AreSceneCubeResourcesInitialized) {
+            return;
+        }
+
+        try {
+            if (!WHBGfxLoadGFDShaderGroup(&SceneCubeShaderGroup, 0, scene_cube_flat_color_shader_bin)) {
+                throw std::runtime_error("Wii U GX2 presenter could not load the embedded scene cube shader group.");
+            }
+
+            if (!WHBGfxInitShaderAttribute(&SceneCubeShaderGroup, "aPosition", 0, 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32)) {
+                throw std::runtime_error("Wii U GX2 presenter could not bind the scene cube position shader attribute.");
+            }
+
+            if (!WHBGfxInitFetchShader(&SceneCubeShaderGroup)) {
+                throw std::runtime_error("Wii U GX2 presenter could not initialize the scene cube fetch shader.");
+            }
+
+            GX2Invalidate(GX2_INVALIDATE_MODE_CPU_SHADER, SceneCubeShaderGroup.vertexShader->program, SceneCubeShaderGroup.vertexShader->size);
+            GX2Invalidate(GX2_INVALIDATE_MODE_CPU_SHADER, SceneCubeShaderGroup.pixelShader->program, SceneCubeShaderGroup.pixelShader->size);
+            GX2Invalidate(GX2_INVALIDATE_MODE_CPU_SHADER, SceneCubeShaderGroup.fetchShader.program, SceneCubeShaderGroup.fetchShader.size);
+            InitializeSceneCubeTransformBuffer();
+            AreSceneCubeResourcesInitialized = true;
+        } catch (...) {
+            DestroySceneCubeResources();
+            throw;
+        }
+    }
+
+    /// Releases the presenter-owned shader resources used by the temporary scene-cube GX2 mesh path.
+    void WiiUGx2Presenter::DestroySceneCubeResources() {
+        if (SceneCubeTransformBuffer.buffer != nullptr) {
+            GX2RDestroyBufferEx(&SceneCubeTransformBuffer, NoGx2rResourceFlags);
+            std::memset(&SceneCubeTransformBuffer, 0, sizeof(SceneCubeTransformBuffer));
+        }
+
+        if (SceneCubePositionBuffer.buffer != nullptr) {
+            GX2RDestroyBufferEx(&SceneCubePositionBuffer, NoGx2rResourceFlags);
+            std::memset(&SceneCubePositionBuffer, 0, sizeof(SceneCubePositionBuffer));
+        }
+
+        if (SceneCubeIndexBuffer.buffer != nullptr) {
+            GX2RDestroyBufferEx(&SceneCubeIndexBuffer, NoGx2rResourceFlags);
+            std::memset(&SceneCubeIndexBuffer, 0, sizeof(SceneCubeIndexBuffer));
+        }
+
+        if (SceneCubeShaderGroup.vertexShader != nullptr || SceneCubeShaderGroup.pixelShader != nullptr || SceneCubeShaderGroup.fetchShaderProgram != nullptr) {
+            WHBGfxFreeShaderGroup(&SceneCubeShaderGroup);
+            std::memset(&SceneCubeShaderGroup, 0, sizeof(SceneCubeShaderGroup));
+        }
+
+        SceneCubeIndexCount = 0U;
+        IsSceneCubeMeshConfigured = false;
+        AreSceneCubeResourcesInitialized = false;
+    }
+
+    /// Initializes one presenter-owned scene-cube vertex buffer from immutable float vertex data.
+    void WiiUGx2Presenter::InitializeSceneCubeVertexBuffer(GX2RBuffer* buffer, const float* sourceData, std::uint32_t floatCount) {
+        if (buffer == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires a valid scene cube position buffer.");
+        } else if (sourceData == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires valid scene cube position data.");
+        } else if (floatCount == 0U || (floatCount % 4U) != 0U) {
+            throw std::runtime_error("Wii U GX2 presenter requires scene cube position data stored as XYZW float quads.");
+        }
+
+        std::memset(buffer, 0, sizeof(GX2RBuffer));
+        buffer->flags = DiagnosticVertexBufferFlags;
+        buffer->elemSize = SceneCubeVertexElementSize;
+        buffer->elemCount = floatCount / 4U;
+        if (!GX2RCreateBuffer(buffer)) {
+            throw std::runtime_error("Wii U GX2 presenter could not allocate a scene cube position buffer.");
+        }
+
+        void* uploadBuffer = GX2RLockBufferEx(buffer, NoGx2rResourceFlags);
+        if (uploadBuffer == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter could not lock a scene cube position buffer.");
+        }
+
+        std::memcpy(uploadBuffer, sourceData, static_cast<std::size_t>(buffer->elemSize) * static_cast<std::size_t>(buffer->elemCount));
+        GX2RUnlockBufferEx(buffer, NoGx2rResourceFlags);
+        GX2RInvalidateBuffer(buffer, GX2R_RESOURCE_USAGE_CPU_WRITE);
+    }
+
+    /// Initializes one presenter-owned scene-cube index buffer from immutable 16-bit index data.
+    void WiiUGx2Presenter::InitializeSceneCubeIndexBuffer(GX2RBuffer* buffer, const std::uint16_t* sourceData, std::uint32_t indexCount) {
+        if (buffer == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires a valid scene cube index buffer.");
+        } else if (sourceData == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires valid scene cube index data.");
+        } else if (indexCount == 0U) {
+            throw std::runtime_error("Wii U GX2 presenter requires at least one scene cube index.");
+        }
+
+        std::memset(buffer, 0, sizeof(GX2RBuffer));
+        buffer->flags = DiagnosticIndexBufferFlags;
+        buffer->elemSize = SceneCubeIndexElementSize;
+        buffer->elemCount = indexCount;
+        if (!GX2RCreateBuffer(buffer)) {
+            throw std::runtime_error("Wii U GX2 presenter could not allocate a scene cube index buffer.");
+        }
+
+        void* uploadBuffer = GX2RLockBufferEx(buffer, NoGx2rResourceFlags);
+        if (uploadBuffer == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter could not lock a scene cube index buffer.");
+        }
+
+        std::memcpy(uploadBuffer, sourceData, static_cast<std::size_t>(SceneCubeIndexElementSize) * static_cast<std::size_t>(indexCount));
+        GX2RUnlockBufferEx(buffer, NoGx2rResourceFlags);
+        GX2RInvalidateBuffer(buffer, GX2R_RESOURCE_USAGE_CPU_WRITE);
+    }
+
+    /// Initializes the presenter-owned uniform buffer that stores the fixed transform used by the scene-cube path.
+    void WiiUGx2Presenter::InitializeSceneCubeTransformBuffer() {
+        if (SceneCubeShaderGroup.vertexShader == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires a valid scene cube vertex shader before allocating the transform buffer.");
+        } else if (SceneCubeShaderGroup.vertexShader->uniformBlockCount == 0U || SceneCubeShaderGroup.vertexShader->uniformBlocks == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires one scene cube TransformBlock uniform block.");
+        }
+
+        GX2UniformBlock* transformUniformBlock = GX2GetVertexUniformBlock(SceneCubeShaderGroup.vertexShader, "TransformBlock");
+        if (transformUniformBlock == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires the scene cube TransformBlock uniform block.");
+        } else if (transformUniformBlock->size != SceneCubeTransformSizeInBytes) {
+            throw std::runtime_error("Wii U GX2 presenter requires the scene cube transform buffer to match one 4x4 matrix.");
+        }
+
+        std::memset(&SceneCubeTransformBuffer, 0, sizeof(SceneCubeTransformBuffer));
+        SceneCubeTransformBuffer.flags = DiagnosticUniformBufferFlags;
+        SceneCubeTransformBuffer.elemSize = transformUniformBlock->size;
+        SceneCubeTransformBuffer.elemCount = 1U;
+        if (!GX2RCreateBuffer(&SceneCubeTransformBuffer)) {
+            throw std::runtime_error("Wii U GX2 presenter could not allocate a scene cube transform buffer.");
+        }
+
+        void* uploadBuffer = GX2RLockBufferEx(&SceneCubeTransformBuffer, NoGx2rResourceFlags);
+        if (uploadBuffer == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter could not lock the scene cube transform buffer.");
+        }
+
+        std::memcpy(uploadBuffer, SceneCubeTransformData, transformUniformBlock->size);
+        GX2RUnlockBufferEx(&SceneCubeTransformBuffer, NoGx2rResourceFlags);
+        GX2RInvalidateBuffer(&SceneCubeTransformBuffer, GX2R_RESOURCE_USAGE_CPU_WRITE);
     }
 
     /// Initializes the presenter-owned shader, buffers, and fallback texture used by the pure GX2 UI path.
@@ -975,6 +1191,37 @@ namespace helengine::wiiu {
         GX2RSetAttributeBuffer(&DiagnosticTrianglePositionBuffer, 0, DiagnosticTrianglePositionBuffer.elemSize, 0);
         GX2RSetAttributeBuffer(&DiagnosticTriangleColorBuffer, 1, DiagnosticTriangleColorBuffer.elemSize, 0);
         GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, DiagnosticTriangleVertexCount, 0, 1);
+    }
+
+    /// Renders the configured scene-cube mesh into one target color buffer with the supplied GX2 context state.
+    void WiiUGx2Presenter::RenderSceneCubeToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer) {
+        if (contextState == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires a valid scene cube context state.");
+        } else if (colorBuffer == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires a valid scene cube color buffer.");
+        } else if (!AreSceneCubeResourcesInitialized) {
+            throw std::runtime_error("Wii U GX2 presenter must initialize scene cube resources before drawing.");
+        } else if (!IsSceneCubeMeshConfigured) {
+            throw std::runtime_error("Wii U GX2 presenter must upload scene cube geometry before drawing.");
+        }
+
+        GX2SetContextState(contextState);
+        GX2SetColorBuffer(colorBuffer, GX2_RENDER_TARGET_0);
+        GX2SetViewport(0.0f, 0.0f, static_cast<float>(colorBuffer->surface.width), static_cast<float>(colorBuffer->surface.height), 0.0f, 1.0f);
+        GX2SetScissor(0, 0, colorBuffer->surface.width, colorBuffer->surface.height);
+        GX2ClearColor(colorBuffer, DiagnosticClearRed, DiagnosticClearGreen, DiagnosticClearBlue, DiagnosticClearAlpha);
+        GX2SetFetchShader(&SceneCubeShaderGroup.fetchShader);
+        GX2SetVertexShader(SceneCubeShaderGroup.vertexShader);
+        GX2SetPixelShader(SceneCubeShaderGroup.pixelShader);
+        GX2SetShaderMode(GX2_SHADER_MODE_UNIFORM_BLOCK);
+        GX2UniformBlock* transformUniformBlock = GX2GetVertexUniformBlock(SceneCubeShaderGroup.vertexShader, "TransformBlock");
+        if (transformUniformBlock == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires the scene cube TransformBlock uniform block before drawing.");
+        }
+
+        GX2RSetVertexUniformBlock(&SceneCubeTransformBuffer, transformUniformBlock->offset, 0);
+        GX2RSetAttributeBuffer(&SceneCubePositionBuffer, 0, SceneCubePositionBuffer.elemSize, 0);
+        GX2DrawIndexedEx(GX2_PRIMITIVE_MODE_TRIANGLES, SceneCubeIndexCount, GX2_INDEX_TYPE_U16, SceneCubeIndexBuffer.buffer, 0, 1);
     }
 
     /// Presents the current TV and DRC color buffers to their scan buffers.
