@@ -94,9 +94,9 @@ namespace helengine::wiiu {
             DiagnosticSquareRed, DiagnosticSquareGreen, DiagnosticSquareBlue, DiagnosticSquareAlpha
         };
         const float DiagnosticTrianglePositionData[] = {
-            0.0f, 0.65f, 0.0f, 1.0f,
-            -0.65f, -0.55f, 0.0f, 1.0f,
-            0.65f, -0.55f, 0.0f, 1.0f
+            0.25f, 0.85f, 0.0f, 1.0f,
+            -0.40f, -0.35f, 0.0f, 1.0f,
+            0.90f, -0.35f, 0.0f, 1.0f
         };
         const float DiagnosticTriangleColorData[] = {
             DiagnosticTriangleTopRed, DiagnosticTriangleTopGreen, DiagnosticTriangleTopBlue, DiagnosticTriangleTopAlpha,
@@ -216,7 +216,6 @@ namespace helengine::wiiu {
         GX2SetColorBuffer(&DrcColorBuffer, GX2_RENDER_TARGET_0);
         GX2SetViewport(0.0f, 0.0f, static_cast<float>(DrcColorBuffer.surface.width), static_cast<float>(DrcColorBuffer.surface.height), 0.0f, 1.0f);
         GX2SetScissor(0, 0, DrcColorBuffer.surface.width, DrcColorBuffer.surface.height);
-
         InitializeDiagnosticSquareResources();
         InitializeDiagnosticTriangleResources();
         InitializeUiQuadResources();
@@ -438,7 +437,9 @@ namespace helengine::wiiu {
 
             InitializeDiagnosticTriangleBuffer(&DiagnosticTrianglePositionBuffer, DiagnosticTrianglePositionData, DiagnosticTriangleVertexCount);
             InitializeDiagnosticTriangleBuffer(&DiagnosticTriangleColorBuffer, DiagnosticTriangleColorData, DiagnosticTriangleVertexCount);
-            InitializeDiagnosticTriangleTransformBuffer();
+            if (DiagnosticTriangleShaderGroup.vertexShader->uniformBlockCount != 0U) {
+                InitializeDiagnosticTriangleTransformBuffer();
+            }
             AreDiagnosticTriangleResourcesInitialized = true;
         } catch (...) {
             DestroyDiagnosticTriangleResources();
@@ -502,17 +503,19 @@ namespace helengine::wiiu {
         if (DiagnosticTriangleShaderGroup.vertexShader == nullptr) {
             throw std::runtime_error("Wii U GX2 presenter requires a valid diagnostic triangle vertex shader before allocating the transform buffer.");
         } else if (DiagnosticTriangleShaderGroup.vertexShader->uniformBlockCount == 0U || DiagnosticTriangleShaderGroup.vertexShader->uniformBlocks == nullptr) {
-            throw std::runtime_error("Wii U GX2 presenter requires one diagnostic triangle vertex uniform block.");
+            return;
         }
 
-        const GX2UniformBlock& transformUniformBlock = DiagnosticTriangleShaderGroup.vertexShader->uniformBlocks[0];
-        if (transformUniformBlock.size != DiagnosticTriangleTransformSizeInBytes) {
+        GX2UniformBlock* transformUniformBlock = GX2GetVertexUniformBlock(DiagnosticTriangleShaderGroup.vertexShader, "TransformBlock");
+        if (transformUniformBlock == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires the diagnostic triangle TransformBlock uniform block.");
+        } else if (transformUniformBlock->size != DiagnosticTriangleTransformSizeInBytes) {
             throw std::runtime_error("Wii U GX2 presenter requires the diagnostic triangle transform buffer to match one 4x4 matrix.");
         }
 
         std::memset(&DiagnosticTriangleTransformBuffer, 0, sizeof(DiagnosticTriangleTransformBuffer));
         DiagnosticTriangleTransformBuffer.flags = DiagnosticUniformBufferFlags;
-        DiagnosticTriangleTransformBuffer.elemSize = transformUniformBlock.size;
+        DiagnosticTriangleTransformBuffer.elemSize = transformUniformBlock->size;
         DiagnosticTriangleTransformBuffer.elemCount = 1U;
         if (!GX2RCreateBuffer(&DiagnosticTriangleTransformBuffer)) {
             throw std::runtime_error("Wii U GX2 presenter could not allocate a diagnostic triangle transform buffer.");
@@ -523,7 +526,7 @@ namespace helengine::wiiu {
             throw std::runtime_error("Wii U GX2 presenter could not lock the diagnostic triangle transform buffer.");
         }
 
-        std::memcpy(uploadBuffer, DiagnosticTriangleTransformData, transformUniformBlock.size);
+        std::memcpy(uploadBuffer, DiagnosticTriangleTransformData, transformUniformBlock->size);
         GX2RUnlockBufferEx(&DiagnosticTriangleTransformBuffer, NoGx2rResourceFlags);
         GX2RInvalidateBuffer(&DiagnosticTriangleTransformBuffer, GX2R_RESOURCE_USAGE_CPU_WRITE);
     }
@@ -960,11 +963,15 @@ namespace helengine::wiiu {
         GX2SetFetchShader(&DiagnosticTriangleShaderGroup.fetchShader);
         GX2SetVertexShader(DiagnosticTriangleShaderGroup.vertexShader);
         GX2SetPixelShader(DiagnosticTriangleShaderGroup.pixelShader);
-        GX2SetShaderMode(GX2_SHADER_MODE_UNIFORM_BLOCK);
-        GX2SetVertexUniformBlock(
-            DiagnosticTriangleShaderGroup.vertexShader->uniformBlocks[0].offset,
-            DiagnosticTriangleShaderGroup.vertexShader->uniformBlocks[0].size,
-            DiagnosticTriangleTransformBuffer.buffer);
+        if (DiagnosticTriangleShaderGroup.vertexShader->uniformBlockCount != 0U && DiagnosticTriangleTransformBuffer.buffer != nullptr) {
+            GX2SetShaderMode(GX2_SHADER_MODE_UNIFORM_BLOCK);
+            GX2UniformBlock* transformUniformBlock = GX2GetVertexUniformBlock(DiagnosticTriangleShaderGroup.vertexShader, "TransformBlock");
+            if (transformUniformBlock == nullptr) {
+                throw std::runtime_error("Wii U GX2 presenter requires the diagnostic triangle TransformBlock uniform block before drawing.");
+            }
+
+            GX2RSetVertexUniformBlock(&DiagnosticTriangleTransformBuffer, transformUniformBlock->offset, 0);
+        }
         GX2RSetAttributeBuffer(&DiagnosticTrianglePositionBuffer, 0, DiagnosticTrianglePositionBuffer.elemSize, 0);
         GX2RSetAttributeBuffer(&DiagnosticTriangleColorBuffer, 1, DiagnosticTriangleColorBuffer.elemSize, 0);
         GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, DiagnosticTriangleVertexCount, 0, 1);

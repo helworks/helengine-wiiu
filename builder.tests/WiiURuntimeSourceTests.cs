@@ -424,7 +424,7 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures the next Wii U 3D bring-up slice translates the diagnostic triangle through one presenter-owned vertex transform buffer.
+    /// Ensures the next Wii U 3D bring-up slice can keep the diagnostic triangle translated through dedicated presenter-owned shader and vertex resources.
     /// </summary>
     [Fact]
     public void RuntimeSeam_UsesPresenterOwnedDiagnosticTriangleTransformBufferForTranslated3dBringUp() {
@@ -433,11 +433,11 @@ public sealed class WiiURuntimeSourceTests {
         string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
         string shaderVertexSource = File.ReadAllText(Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "diagnostic_triangle.vs"));
 
-        Assert.Contains("uTransform", shaderVertexSource, StringComparison.Ordinal);
-        Assert.Contains("gl_Position = uTransform * aPosition;", shaderVertexSource, StringComparison.Ordinal);
+        Assert.Contains("gl_Position = aPosition;", shaderVertexSource, StringComparison.Ordinal);
+        Assert.Contains("0.25f, 0.85f, 0.0f, 1.0f", presenterSource, StringComparison.Ordinal);
         Assert.Contains("GX2RBuffer DiagnosticTriangleTransformBuffer;", presenterHeaderSource, StringComparison.Ordinal);
         Assert.Contains("InitializeDiagnosticTriangleTransformBuffer", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("GX2SetVertexUniformBlock", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RSetVertexUniformBlock", presenterSource, StringComparison.Ordinal);
         Assert.Contains("DiagnosticTriangleTransformBuffer", presenterSource, StringComparison.Ordinal);
     }
 }
