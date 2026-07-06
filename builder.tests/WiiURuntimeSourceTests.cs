@@ -440,4 +440,32 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("GX2RSetVertexUniformBlock", presenterSource, StringComparison.Ordinal);
         Assert.Contains("DiagnosticTriangleTransformBuffer", presenterSource, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures the first cube_test 3D slice routes one real runtime model into a dedicated presenter-owned flat-color scene cube path.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UsesSceneCubePresenterPathForFirstCubeTestMeshBringUp() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+        string presenterHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp"));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+        string renderManagerHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.hpp"));
+        string runtimeModelHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURuntimeModel.hpp"));
+        string shaderVertexSource = File.ReadAllText(Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_cube_flat_color.vs"));
+        string shaderPixelSource = File.ReadAllText(Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_cube_flat_color.ps"));
+
+        Assert.Contains("WiiURuntimeModel* GetLatestRuntimeModel() const;", renderManagerHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void SetGeometry(std::vector<float> positionData, std::vector<std::uint16_t> indexData);", runtimeModelHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("const std::vector<float>& GetPositionData() const;", runtimeModelHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("const std::vector<std::uint16_t>& GetIndexData() const;", runtimeModelHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void ConfigureSceneCubeMesh(const WiiURuntimeModel& runtimeModel);", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void RenderSceneCubeFrame();", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("GX2DrawIndexedEx(", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("Gx2Presenter->ConfigureSceneCubeMesh(*EngineRenderManager3D->GetLatestRuntimeModel());", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("Gx2Presenter->RenderSceneCubeFrame();", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Gx2Presenter->RenderDiagnosticTriangleFrame();", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("gl_Position = uTransform * aPosition;", shaderVertexSource, StringComparison.Ordinal);
+        Assert.Contains("passColor = vec4(", shaderPixelSource, StringComparison.Ordinal);
+    }
 }
