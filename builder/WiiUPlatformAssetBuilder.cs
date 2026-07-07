@@ -17,6 +17,11 @@ public sealed class WiiUPlatformAssetBuilder : IPlatformAssetBuilder {
     readonly IWiiUNativeBuildExecutor NativeBuildExecutor;
 
     /// <summary>
+    /// Material cooker that translates authored Wii U material schemas into platform-owned cooked payloads.
+    /// </summary>
+    readonly WiiUMaterialCooker MaterialCooker;
+
+    /// <summary>
     /// Initializes one Wii U builder instance with the current platform metadata.
     /// </summary>
     public WiiUPlatformAssetBuilder()
@@ -29,6 +34,7 @@ public sealed class WiiUPlatformAssetBuilder : IPlatformAssetBuilder {
     /// <param name="nativeBuildExecutor">Native build executor used by the Wii U builder workspace.</param>
     public WiiUPlatformAssetBuilder(IWiiUNativeBuildExecutor nativeBuildExecutor) {
         NativeBuildExecutor = nativeBuildExecutor ?? throw new ArgumentNullException(nameof(nativeBuildExecutor));
+        MaterialCooker = new WiiUMaterialCooker();
         Descriptor = new PlatformBuilderDescriptor(
             "helengine.wiiu.builder",
             "1.0.0",
@@ -51,12 +57,16 @@ public sealed class WiiUPlatformAssetBuilder : IPlatformAssetBuilder {
     public PlatformDefinition Definition { get; }
 
     /// <summary>
-    /// The first Wii U slice does not implement material cooking yet.
+    /// Translates one Wii U material schema request into the current cooked payload contract.
     /// </summary>
     /// <param name="request">Material translation request for the Wii U builder.</param>
-    /// <returns>No result because Wii U material cooking is not implemented in this slice.</returns>
+    /// <returns>Minimal cooked material payload plus referenced shader dependencies.</returns>
     public PlatformMaterialCookResult CookMaterial(PlatformMaterialCookRequest request) {
-        throw new InvalidOperationException("The first Wii U slice does not add Wii U material cooking yet.");
+        if (request == null) {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        return MaterialCooker.Cook(request);
     }
 
     /// <summary>

@@ -1,0 +1,11 @@
+In file included from /workspace/src/platform/wiiu/WiiURenderManager2D.cpp:38:
+/helengine-generated-core/runtime/native_cast.hpp: In function 'std::conditional_t<((bool)is_pointer_v<TTarget>), TTarget, TTarget*> he_cpp_try_cast(TSource*)':
+/helengine-generated-core/runtime/native_cast.hpp:16:15: warning: typedef 'using target_value_type = std::remove_pointer_t<_Tp>' locally defined but not used [-Wunused-local-typedefs]
+   16 |         using target_value_type = std::remove_pointer_t<TTarget>;
+      |               ^~~~~~~~~~~~~~~~~
+/workspace/src/platform/wiiu/WiiURenderManager3D.cpp: In member function 'virtual RuntimeModel* helengine::wiiu::WiiURenderManager3D::BuildModelFromCooked(std::string)':
+/workspace/src/platform/wiiu/WiiURenderManager3D.cpp:80:34: error: 'he_cpp_try_cast' was not declared in this scope
+   80 |         ModelAsset* modelAsset = he_cpp_try_cast<ModelAsset>(asset);
+      |                                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+make[1]: *** [/opt/devkitpro/devkitPPC/base_rules:15: WiiURenderManager3D.o] Error 1
+make: *** [Makefile:96: build] Error 2

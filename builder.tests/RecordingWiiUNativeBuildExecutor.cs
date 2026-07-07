@@ -6,29 +6,37 @@ using helengine.wiiu.builder;
 namespace helengine.wiiu.builder.tests;
 
 /// <summary>
-/// Records the produced RPX path for the first builder artifact-flow tests.
+/// Records the produced packaged artifact paths for the Wii U builder artifact-flow tests.
 /// </summary>
 public sealed class RecordingWiiUNativeBuildExecutor : IWiiUNativeBuildExecutor {
     /// <summary>
-    /// Gets the last produced native artifact path.
+    /// Gets the last produced native RPX artifact path.
     /// </summary>
     public string LastProducedArtifactPath { get; private set; } = string.Empty;
 
     /// <summary>
-    /// Writes one fake RPX into the intermediate root and returns that path.
+    /// Gets the last produced native WUHB bundle path.
+    /// </summary>
+    public string LastProducedBundlePath { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// Writes fake native Wii U packaged artifacts into the intermediate root and returns their paths.
     /// </summary>
     /// <param name="request">Build request under test.</param>
     /// <param name="diagnosticReporter">Diagnostic reporter passed through the builder contract.</param>
     /// <param name="cancellationToken">Cancellation token passed through the builder contract.</param>
-    /// <returns>Absolute path to the fake RPX artifact.</returns>
-    public Task<string> BuildAsync(
+    /// <returns>Absolute paths to the fake RPX and WUHB artifacts.</returns>
+    public Task<WiiUNativeBuildResult> BuildAsync(
         PlatformBuildRequest request,
         IPlatformBuildDiagnosticReporter diagnosticReporter,
         CancellationToken cancellationToken) {
         string artifactPath = Path.Combine(request.WorkingRoot, "native-build", "helengine_wiiu.rpx");
+        string bundlePath = Path.Combine(request.WorkingRoot, "native-build", "helengine_wiiu.wuhb");
         Directory.CreateDirectory(Path.GetDirectoryName(artifactPath) ?? throw new InvalidOperationException("Artifact directory path could not be resolved."));
         File.WriteAllText(artifactPath, "fake-rpx");
+        File.WriteAllText(bundlePath, "fake-wuhb");
         LastProducedArtifactPath = artifactPath;
-        return Task.FromResult(artifactPath);
+        LastProducedBundlePath = bundlePath;
+        return Task.FromResult(new WiiUNativeBuildResult(artifactPath, bundlePath));
     }
 }

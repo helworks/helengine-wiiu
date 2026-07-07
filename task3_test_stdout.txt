@@ -1,0 +1,38 @@
+helengine.core -> C:\dev\helworks\helengine\engine\helengine.core\bin\Debug\net9.0\helengine.core.dll
+  helengine.baseplatform -> C:\dev\helworks\helengine\engine\helengine.baseplatform\bin\Debug\net9.0\helengine.baseplatform.dll
+  helengine.shader -> C:\dev\helworks\helengine\engine\helengine.shader\bin\Debug\net9.0\helengine.shader.dll
+  helengine.files -> C:\dev\helworks\helengine\engine\helengine.files\bin\Debug\net9.0\helengine.files.dll
+  helengine.wiiu.builder -> C:\dev\helworks\helengine-wiiu\builder\bin\Debug\net9.0-windows\helengine.wiiu.builder.dll
+  helengine.wiiu.builder.tests -> C:\dev\helworks\helengine-wiiu\builder.tests\bin\Debug\net9.0-windows\helengine.wiiu.builder.tests.dll
+Test run for C:\dev\helworks\helengine-wiiu\builder.tests\bin\Debug\net9.0-windows\helengine.wiiu.builder.tests.dll (.NETCoreApp,Version=v9.0)
+A total of 1 test files matched the specified pattern.
+  Failed helengine.wiiu.builder.tests.WiiURuntimeSourceTests.RuntimeSeam_UsesSceneCubePresenterPathForFirstCubeTestMeshBringUp [9 ms]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "#include "platform/wiiu/WiiUApplication.h"···
+Not found: "Gx2Presenter->ConfigureSceneCubeMesh(*Eng"···
+  Stack Trace:
+     at helengine.wiiu.builder.tests.WiiURuntimeSourceTests.RuntimeSeam_UsesSceneCubePresenterPathForFirstCubeTestMeshBringUp() in C:\dev\helworks\helengine-wiiu\builder.tests\WiiURuntimeSourceTests.cs:line 465
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+Results File: C:\Users\Helena\AppData\Local\Temp\rtk_dotnet_testresults_19f39c7efeb4ea41\Helena_DESKTOP-HELENA_2026-07-06_20_33_57_net9.0.trx
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 9 ms - helengine.wiiu.builder.tests.dll (net9.0)
+
+fail dotnet test: 0 passed, 1 failed, 0 skipped, 0 warnings in 1 projects (1.1 s)
+---------------------------------------
+
+Failed Tests:
+  helengine.wiiu.builder.tests.WiiURuntimeSourceTests.RuntimeSeam_UsesSceneCubePresenterPathForFirstCubeTestMeshBringUp
+    Error Message:
+    Assert.Contains() Failure: Sub-string not found
+    String:    "#include "platform/wiiu/WiiUApplication.h"···
+    Not found: "Gx2Presenter->ConfigureSceneCubeMesh(*Eng"···
+    Stack Trace:
+    at helengine.wiiu.builder.tests.WiiURuntimeSourceTests.RuntimeSeam_UsesSceneCubePresenterPathForFirstCubeTestMeshBringUp() in C:\dev\helworks\helengine-wiiu\builder.tests\WiiURuntimeSourceTests.cs:line 465
+    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+    Results File: C:\Users\Helena\AppData\Local\Temp\rtk_dotnet_testresults_19f39c7efeb4ea41\Helena_DESKTOP-HELENA_2026-07-06_20_33_57_net9.0.trx
+    
+
+

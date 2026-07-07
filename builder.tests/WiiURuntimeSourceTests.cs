@@ -163,7 +163,7 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures visible Wii U output delegates to a dedicated presenter-owned GX2 path instead of issuing OSScreen per-pixel writes inline.
+    /// Ensures visible Wii U output delegates to dedicated presenter-owned GX2 frame paths instead of issuing OSScreen per-pixel writes inline.
     /// </summary>
     [Fact]
     public void RuntimeSeam_RoutesVisibleOutputThroughDedicatedPresenterOwnedGx2Path() {
@@ -178,9 +178,10 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("class WiiUGx2Presenter;", applicationHeaderSource, StringComparison.Ordinal);
         Assert.Contains("WiiUGx2Presenter* Gx2Presenter;", applicationHeaderSource, StringComparison.Ordinal);
         Assert.Contains("#include \"platform/wiiu/WiiUGx2Presenter.hpp\"", applicationSource, StringComparison.Ordinal);
-        Assert.Contains("void RenderFrame(const WiiUGx2RenderFrame& frame);", File.ReadAllText(presenterHeaderPath), StringComparison.Ordinal);
-        Assert.Contains("void RenderDiagnosticTriangleFrame();", File.ReadAllText(presenterHeaderPath), StringComparison.Ordinal);
-        Assert.Contains("Gx2Presenter->RenderDiagnosticTriangleFrame();", applicationSource, StringComparison.Ordinal);
+        string presenterHeaderSource = File.ReadAllText(presenterHeaderPath);
+        Assert.Contains("void RenderFrame(const WiiUGx2RenderFrame& frame);", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void RenderFrame(const WiiUGx23DRenderFrame& frame3D, const WiiUGx2RenderFrame& frame2D);", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("Gx2Presenter->RenderFrame(", applicationSource, StringComparison.Ordinal);
         Assert.DoesNotContain("OSScreenPutPixelEx(screen, x, y, ConvertSurfacePixelToScreenColor(pixels[pixelIndex]));", applicationSource, StringComparison.Ordinal);
     }
 
@@ -242,7 +243,7 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures the earlier clear-only bring-up slice remains available as a presenter-owned GX2 diagnostic step even though the active frame path now uses the square draw.
+    /// Ensures the earlier clear-only bring-up slice remains available as a presenter-owned GX2 diagnostic step even though the active frame path now uses captured 3D plus 2D frames.
     /// </summary>
     [Fact]
     public void RuntimeSeam_UsesPresenterOwnedPureGx2ClearFrameForVisibleOutput() {
@@ -254,7 +255,7 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("void RenderDiagnosticClearFrame();", presenterHeaderSource, StringComparison.Ordinal);
         Assert.Contains("GX2ClearColor(&TvColorBuffer", presenterSource, StringComparison.Ordinal);
         Assert.Contains("GX2ClearColor(&DrcColorBuffer", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("Gx2Presenter->RenderFrame(EngineRenderManager2D->GetCurrentFrame());", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("Gx2Presenter->RenderFrame(EngineRenderManager3D->GetCurrentFrame(), EngineRenderManager2D->GetCurrentFrame());", applicationSource, StringComparison.Ordinal);
         Assert.DoesNotContain("Gx2Presenter->RenderDiagnosticClearFrame();", applicationSource, StringComparison.Ordinal);
         Assert.DoesNotContain("Gx2Presenter->Present(", applicationSource, StringComparison.Ordinal);
         Assert.Contains("if (quadCommands.empty()) {", presenterSource, StringComparison.Ordinal);
@@ -316,7 +317,7 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures the draw-only diagnostic toggle is restored so steady-state builds still run the Wii U 2D render manager.
+    /// Ensures the draw-only diagnostic toggle is restored so steady-state builds still submit both Wii U render managers.
     /// </summary>
     [Fact]
     public void RuntimeSeam_FullEngineLoopDoesNotKeepSkipping2DRendererSubmission() {
@@ -324,6 +325,7 @@ public sealed class WiiURuntimeSourceTests {
         string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
 
         Assert.Contains("constexpr bool RunDiagnosticRenderManager2DDrawInDrawOnlyMode = true;", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("EngineRenderManager3D->Draw();", applicationSource, StringComparison.Ordinal);
         Assert.Contains("if (DiagnosticFrameLoopModeValue != DiagnosticFrameLoopMode::DrawOnly || RunDiagnosticRenderManager2DDrawInDrawOnlyMode) {", applicationSource, StringComparison.Ordinal);
         Assert.Contains("EngineRenderManager2D->Draw();", applicationSource, StringComparison.Ordinal);
     }
@@ -422,7 +424,7 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures the first Wii U 3D bring-up slice renders one presenter-owned diagnostic triangle through offline-compiled GX2 shaders.
+    /// Ensures the first Wii U 3D bring-up slice still exists as an optional presenter-owned diagnostic triangle path through offline-compiled GX2 shaders.
     /// </summary>
     [Fact]
     public void RuntimeSeam_UsesPresenterOwnedDiagnosticTriangleFrameForFirst3dShaderBringUp() {
@@ -441,8 +443,7 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("#include \"diagnostic_triangle_shader_bin.h\"", presenterSource, StringComparison.Ordinal);
         Assert.Contains("WHBGfxLoadGFDShaderGroup(&DiagnosticTriangleShaderGroup, 0, diagnostic_triangle_shader_bin)", presenterSource, StringComparison.Ordinal);
         Assert.Contains("GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, DiagnosticTriangleVertexCount, 0, 1);", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("Gx2Presenter->RenderDiagnosticTriangleFrame();", applicationSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("Gx2Presenter->RenderFrame(EngineRenderManager2D->GetCurrentFrame());", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Gx2Presenter->RenderDiagnosticTriangleFrame();", applicationSource, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -506,52 +507,6 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures the first cube_test 3D slice routes one real runtime model into a dedicated presenter-owned flat-color scene cube path.
-    /// </summary>
-    [Fact]
-    public void RuntimeSeam_UsesSceneCubePresenterPathForFirstCubeTestMeshBringUp() {
-        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
-        string presenterHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp"));
-        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
-        string renderManagerHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.hpp"));
-        string runtimeModelHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURuntimeModel.hpp"));
-        string shaderVertexSource = File.ReadAllText(Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_cube_flat_color.vs"));
-        string shaderPixelSource = File.ReadAllText(Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_cube_flat_color.ps"));
-
-        Assert.Contains("WiiURuntimeModel* GetLatestRuntimeModel() const;", renderManagerHeaderSource, StringComparison.Ordinal);
-        Assert.Contains("void SetGeometry(std::vector<float> positionData, std::vector<std::uint16_t> indexData);", runtimeModelHeaderSource, StringComparison.Ordinal);
-        Assert.Contains("const std::vector<float>& GetPositionData() const;", runtimeModelHeaderSource, StringComparison.Ordinal);
-        Assert.Contains("const std::vector<std::uint16_t>& GetIndexData() const;", runtimeModelHeaderSource, StringComparison.Ordinal);
-        Assert.Contains("void ConfigureSceneCubeMesh(const WiiURuntimeModel& runtimeModel);", presenterHeaderSource, StringComparison.Ordinal);
-        Assert.Contains("void RenderSceneCubeFrame();", presenterHeaderSource, StringComparison.Ordinal);
-        Assert.Contains("GX2DrawIndexedEx(", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("Gx2Presenter->ConfigureSceneCubeMesh(*EngineRenderManager3D->GetLatestRuntimeModel());", applicationSource, StringComparison.Ordinal);
-        Assert.Contains("Gx2Presenter->RenderSceneCubeFrame();", applicationSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("Gx2Presenter->RenderDiagnosticTriangleFrame();", applicationSource, StringComparison.Ordinal);
-        Assert.Contains("gl_Position = uTransform * aPosition;", shaderVertexSource, StringComparison.Ordinal);
-        Assert.Contains("passColor = vec4(", shaderPixelSource, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Ensures the startup scene warm path commits deferred scene loading through one draw before the host configures the presenter-owned scene cube mesh.
-    /// </summary>
-    [Fact]
-    public void RuntimeSeam_CommitsDeferredStartupSceneLoadBeforeConfiguringSceneCubeMesh() {
-        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
-
-        Assert.Contains("Warming startup scene through one engine draw.", applicationSource, StringComparison.Ordinal);
-        Assert.Contains("if (!DrawEngineCore()) {", applicationSource, StringComparison.Ordinal);
-
-        int warmDrawIndex = applicationSource.IndexOf("Warming startup scene through one engine draw.", StringComparison.Ordinal);
-        int configureSceneCubeMeshIndex = applicationSource.IndexOf("Gx2Presenter->ConfigureSceneCubeMesh(*EngineRenderManager3D->GetLatestRuntimeModel());", StringComparison.Ordinal);
-
-        Assert.True(warmDrawIndex >= 0, "Expected the startup scene warm draw trace to exist.");
-        Assert.True(configureSceneCubeMeshIndex > warmDrawIndex, "Expected scene cube mesh configuration to happen after the warm draw.");
-    }
-
-    /// <summary>
     /// Ensures the generated-core Wii U startup scene stays pinned to cube_test while the first visible cube bring-up path depends on one real 3D scene at boot.
     /// </summary>
     [Fact]
@@ -564,24 +519,24 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures the first Wii U perspective slice keeps the no-uniform scene-cube shader contract and computes one fixed host-side camera transform in the presenter upload path.
+    /// Ensures the steady-state Wii U 3D presenter computes one scene-driven host-side perspective transform before uploading expanded clip-space cube geometry.
     /// </summary>
     [Fact]
-    public void RuntimeSeam_UsesFixedHostPerspectiveCameraForSceneCubeBringUp() {
+    public void RuntimeSeam_UsesSceneDrivenPerspectiveCameraForCaptured3dFrames() {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
         string shaderVertexSource = File.ReadAllText(Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_cube_flat_color.vs"));
         string shaderPixelSource = File.ReadAllText(Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_cube_flat_color.ps"));
 
-        Assert.Contains("constexpr double SceneCubeFieldOfViewRadians =", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("constexpr double SceneCubeCameraDistance =", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("const double clipW = -viewZ;", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("expandedPositionData.push_back(static_cast<float>(clipX));", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("expandedPositionData.push_back(static_cast<float>(clipY));", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("expandedPositionData.push_back(static_cast<float>(clipZ));", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("expandedPositionData.push_back(static_cast<float>(clipW));", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("constexpr double SceneDrivenFieldOfViewRadians =", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("Render3DDrawCommandToColorBuffer(", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("float4x4::CreatePerspectiveFieldOfView__out4(", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("UploadSceneCubeMesh(*drawCommand.RuntimeModel, worldViewProjectionMatrix);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("expandedPositionData.push_back(clipX);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("expandedPositionData.push_back(clipY);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("expandedPositionData.push_back(clipZ);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("expandedPositionData.push_back(clipW);", presenterSource, StringComparison.Ordinal);
         Assert.Contains("gl_Position = aPosition;", shaderVertexSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("TransformBlock", shaderVertexSource, StringComparison.Ordinal);
         Assert.Contains("FragColor = VertexColor;", shaderPixelSource, StringComparison.Ordinal);
     }
 

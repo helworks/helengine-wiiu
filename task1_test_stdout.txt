@@ -1,0 +1,99 @@
+C:\dev\helworks\helengine\engine\helengine.core\components\diagnostics\SceneMemoryProbeComponent.cs(254,13): warning CS0162: Unreachable code detected [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\scene\runtime\SceneManager.cs(79,14): warning CS0414: The field 'SceneManager.IsCommittingPendingOperations' is assigned but its value is never used [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\assets\ui\NineSliceAtlas.cs(49,17): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\assets\ui\NineSliceAtlas.cs(185,24): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\assets\ui\NineSliceAtlas.cs(232,29): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\assets\ui\NineSliceAtlas.cs(257,32): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\assets\ui\NineSliceAtlas.cs(289,32): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\assets\ui\NineSliceAtlas.cs(310,30): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\managers\rendering\RenderManager3D.cs(6,22): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\model\float3.cs(15,40): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\model\float3.cs(19,40): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\model\float3.cs(23,40): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\model\float3.cs(27,40): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\model\float3.cs(31,40): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\model\float4.cs(15,40): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\model\float4.cs(20,40): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\model\float4.cs(25,40): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\model\float4x4.cs(80,33): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\model\int4.cs(15,38): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\utils\NativeFreeFunctionAttribute.cs(6,27): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\utils\NativeOwnership.cs(5,27): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\utils\TextureUtils.cs(6,39): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.core\utils\TextureUtils.cs(7,39): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\KeyboardState.cs(13,28): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\KeyboardState.cs(14,28): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\KeyboardState.cs(16,31): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\KeyboardState.cs(20,22): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\KeyboardState.cs(21,22): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\KeyboardState.cs(141,29): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\KeyboardState.cs(147,28): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\MouseState.cs(12,28): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\MouseState.cs(13,28): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\MouseState.cs(14,28): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\MouseState.cs(15,28): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\MouseState.cs(16,28): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\MouseState.cs(18,21): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\MouseState.cs(19,21): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\MouseState.cs(20,21): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\MouseState.cs(21,21): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+C:\dev\helworks\helengine\engine\helengine.input\MouseState.cs(22,22): warning IDE0040: Accessibility modifiers unnecessary (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/style-rules/ide0040) [C:\dev\helworks\helengine\engine\helengine.core\helengine.core.csproj]
+  helengine.core -> C:\dev\helworks\helengine\engine\helengine.core\bin\Debug\net9.0\helengine.core.dll
+  helengine.baseplatform -> C:\dev\helworks\helengine\engine\helengine.baseplatform\bin\Debug\net9.0\helengine.baseplatform.dll
+  helengine.shader -> C:\dev\helworks\helengine\engine\helengine.shader\bin\Debug\net9.0\helengine.shader.dll
+  helengine.files -> C:\dev\helworks\helengine\engine\helengine.files\bin\Debug\net9.0\helengine.files.dll
+  helengine.wiiu.builder -> C:\dev\helworks\helengine-wiiu\builder\bin\Debug\net9.0-windows\helengine.wiiu.builder.dll
+  helengine.wiiu.builder.tests -> C:\dev\helworks\helengine-wiiu\builder.tests\bin\Debug\net9.0-windows\helengine.wiiu.builder.tests.dll
+Test run for C:\dev\helworks\helengine-wiiu\builder.tests\bin\Debug\net9.0-windows\helengine.wiiu.builder.tests.dll (.NETCoreApp,Version=v9.0)
+A total of 1 test files matched the specified pattern.
+  Failed helengine.wiiu.builder.tests.WiiURuntimeSourceTests.RuntimeSeam_UsesSceneCubePresenterPathForFirstCubeTestMeshBringUp [3 ms]
+  Error Message:
+   System.IO.FileNotFoundException : Could not find file 'C:\dev\helworks\helengine-wiiu\tools\wiiu-shaders\scene_cube_flat_color.vs'.
+  Stack Trace:
+     at Microsoft.Win32.SafeHandles.SafeFileHandle.CreateFile(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options)
+   at Microsoft.Win32.SafeHandles.SafeFileHandle.Open(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+   at System.IO.Strategies.OSFileStreamStrategy..ctor(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+   at System.IO.Strategies.FileStreamHelpers.ChooseStrategyCore(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+   at System.IO.StreamReader.ValidateArgsAndOpenPath(String path, Encoding encoding, Int32 bufferSize)
+   at System.IO.File.ReadAllText(String path, Encoding encoding)
+   at helengine.wiiu.builder.tests.WiiURuntimeSourceTests.RuntimeSeam_UsesSceneCubePresenterPathForFirstCubeTestMeshBringUp() in C:\dev\helworks\helengine-wiiu\builder.tests\WiiURuntimeSourceTests.cs:line 455
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+Results File: C:\Users\Helena\AppData\Local\Temp\rtk_dotnet_testresults_19f39c1e464101c01\Helena_DESKTOP-HELENA_2026-07-06_20_27_22_net9.0.trx
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 3 ms - helengine.wiiu.builder.tests.dll (net9.0)
+
+fail dotnet test: 0 passed, 1 failed, 0 skipped, 40 warnings in 1 projects (878 ms)
+---------------------------------------
+
+Failed Tests:
+  helengine.wiiu.builder.tests.WiiURuntimeSourceTests.RuntimeSeam_UsesSceneCubePresenterPathForFirstCubeTestMeshBringUp
+    Error Message:
+    System.IO.FileNotFoundException : Could not find file 'C:\dev\helworks\helengine-wiiu\tools\wiiu-shaders\scene_cube_flat_color.vs'.
+    Stack Trace:
+    at Microsoft.Win32.SafeHandles.SafeFileHandle.CreateFile(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options)
+    at Microsoft.Win32.SafeHandles.SafeFileHandle.Open(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+    at System.IO.Strategies.OSFileStreamStrategy..ctor(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+    at System.IO.Strategies.FileStreamHelpers.ChooseStrategyCore(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+    at System.IO.StreamReader.ValidateArgsAndOpenPath(String path, Encoding encoding, Int32 bufferSize)
+    at System.IO.File.ReadAllText(String path, Encoding encoding)
+    at helengine.wiiu.builder.tests.WiiURuntimeSourceTests.RuntimeSeam_UsesSceneCubePresenterPathForFirstCubeTestMeshBringUp() in C:\dev\helworks\helengine-wiiu\builder.tests\WiiURuntimeSourceTests.cs:line 455
+    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+    Results File: C:\Users\Helena\AppData\Local\Temp\rtk_dotnet_testresults_19f39c1e464101c01\Helena_DESKTOP-HELENA_2026-07-06_20_27_22_net9.0.trx
+    
+
+
+Warnings:
+  warning Build warning #1 (details omitted)
+  warning Build warning #2 (details omitted)
+  warning Build warning #3 (details omitted)
+  warning Build warning #4 (details omitted)
+  warning Build warning #5 (details omitted)
+  warning Build warning #6 (details omitted)
+  warning Build warning #7 (details omitted)
+  warning Build warning #8 (details omitted)
+  warning Build warning #9 (details omitted)
+  warning Build warning #10 (details omitted)
+  ... +30 more warnings
+

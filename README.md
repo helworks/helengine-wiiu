@@ -15,8 +15,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ..\helengine\artifacts\build
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\launch_in_emulator.ps1 `
-  -ArtifactPath ..\helprojs\city\wiiu-build\helengine_wiiu.rpx
+  -ArtifactPath ..\helprojs\city\wiiu-build\helengine_wiiu.wuhb
 ```
+
+The current packaged startup target is the authored `cube_test` scene. After building the `city` project, launch the generated WUHB through `launch_in_emulator.ps1` and verify that `cube_test` boots successfully in Cemu. The output root also keeps the generated RPX for lower-level diagnostics.
 
 ## More Docs
 

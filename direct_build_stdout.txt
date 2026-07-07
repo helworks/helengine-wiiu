@@ -1,0 +1,3 @@
+scene_cube_flat_color_shader.bin
+main.cpp
+WiiUApplication.cpp

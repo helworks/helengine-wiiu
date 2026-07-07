@@ -24,7 +24,6 @@
 #include "runtime/native_list.hpp"
 #include "runtime/native_exceptions.hpp"
 #include "runtime/runtime_standard_platform_input_manifest.hpp"
-#include "platform/wiiu/WiiURuntimeModel.hpp"
 #include "platform/wiiu/WiiURenderManager2D.hpp"
 #include "platform/wiiu/WiiURenderManager3D.hpp"
 #endif
@@ -314,14 +313,6 @@ namespace helengine::wiiu {
                 return false;
             }
 
-            initializationStage = "ConfigureSceneCubeMesh";
-            WiiURuntimeModel* latestRuntimeModel = EngineRenderManager3D->GetLatestRuntimeModel();
-            if (latestRuntimeModel == nullptr) {
-                throw new InvalidOperationException("Wii U cube_test bring-up requires one runtime model to be built during scene load.");
-            }
-
-            Gx2Presenter->ConfigureSceneCubeMesh(*EngineRenderManager3D->GetLatestRuntimeModel());
-            AppendRuntimeTrace("[WiiUFile] Scene cube mesh configured from latest runtime model.\n");
             UpdateFrameLogCount = 0;
             DrawFrameLogCount = 0;
             SetBootPhase(WiiUBootPhase::Running, 0xFF004000);
@@ -428,7 +419,7 @@ namespace helengine::wiiu {
     /// Draws one generated-core frame for the packaged Wii U runtime.
     bool WiiUApplication::DrawEngineCore() {
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
-        if (!EngineInitialized || EngineCore == nullptr || EngineRenderManager2D == nullptr) {
+        if (!EngineInitialized || EngineCore == nullptr || EngineRenderManager2D == nullptr || EngineRenderManager3D == nullptr) {
             return false;
         }
 
@@ -439,6 +430,7 @@ namespace helengine::wiiu {
             }
             SetBootPhase(WiiUBootPhase::Running, 0xFF008000);
             EngineCore->Draw();
+            EngineRenderManager3D->Draw();
             if (DiagnosticFrameLoopModeValue != DiagnosticFrameLoopMode::DrawOnly || RunDiagnosticRenderManager2DDrawInDrawOnlyMode) {
                 EngineRenderManager2D->Draw();
             }
@@ -501,9 +493,11 @@ namespace helengine::wiiu {
             throw std::runtime_error("Wii U GX2 presenter must exist before rendered presentation can begin.");
         } else if (EngineRenderManager3D == nullptr) {
             throw std::runtime_error("Wii U 3D render manager must exist before rendered presentation can begin.");
+        } else if (EngineRenderManager2D == nullptr) {
+            throw std::runtime_error("Wii U 2D render manager must exist before rendered presentation can begin.");
         }
 
-        Gx2Presenter->RenderSceneCubeFrame();
+        Gx2Presenter->RenderFrame(EngineRenderManager3D->GetCurrentFrame(), EngineRenderManager2D->GetCurrentFrame());
     }
 
     /// Appends one host-readable Wii U runtime trace line to every supported trace sink.

@@ -9,13 +9,13 @@ namespace helengine.wiiu.builder;
 /// </summary>
 public interface IWiiUNativeBuildExecutor {
     /// <summary>
-    /// Builds the native Wii U player and returns the produced RPX path.
+    /// Builds the native Wii U player and returns the produced packaged artifact paths.
     /// </summary>
     /// <param name="request">Resolved platform build request.</param>
     /// <param name="diagnosticReporter">Diagnostic reporter for streamed build failures.</param>
     /// <param name="cancellationToken">Cancellation token that can stop the build cooperatively.</param>
-    /// <returns>Absolute path to the produced RPX artifact.</returns>
-    Task<string> BuildAsync(
+    /// <returns>Absolute paths to the produced RPX and WUHB artifacts.</returns>
+    Task<WiiUNativeBuildResult> BuildAsync(
         PlatformBuildRequest request,
         IPlatformBuildDiagnosticReporter diagnosticReporter,
         CancellationToken cancellationToken);

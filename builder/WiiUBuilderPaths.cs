@@ -12,16 +12,28 @@ public static class WiiUBuilderPaths {
     public const string RpxFileName = "helengine_wiiu.rpx";
 
     /// <summary>
+    /// Stable WUHB file name emitted by the native Wii U build.
+    /// </summary>
+    public const string WuhbFileName = "helengine_wiiu.wuhb";
+
+    /// <summary>
     /// Stable Docker image name used by the native Wii U build.
     /// </summary>
     public const string DockerImageName = "helengine-wiiu";
+
+    /// <summary>
+    /// Stable builder-working-root directory name that contains the copied package source tree.
+    /// </summary>
+    public const string PackageSourceDirectoryName = "package-source";
 
     /// <summary>
     /// Resolves the repository root for the currently running Wii U builder assembly.
     /// </summary>
     /// <returns>Absolute repository root path.</returns>
     public static string ResolveRepositoryRootPath() {
-        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string assemblyDirectoryPath = Path.GetDirectoryName(typeof(WiiUBuilderPaths).Assembly.Location)
+            ?? throw new InvalidOperationException("The Wii U builder assembly directory could not be resolved.");
+        return Path.GetFullPath(Path.Combine(assemblyDirectoryPath, "..", "..", "..", ".."));
     }
 
     /// <summary>
@@ -34,7 +46,24 @@ public static class WiiUBuilderPaths {
             throw new ArgumentNullException(nameof(request));
         }
 
+        if (!string.IsNullOrWhiteSpace(request.GeneratedCoreCppRootPath)) {
+            return request.GeneratedCoreCppRootPath;
+        }
+
         return Path.Combine(request.WorkingRoot, "generated-core");
+    }
+
+    /// <summary>
+    /// Resolves the builder package-source root that mirrors the editor-staged package tree.
+    /// </summary>
+    /// <param name="request">Resolved platform build request.</param>
+    /// <returns>Absolute path to the builder package-source root.</returns>
+    public static string ResolvePackageSourceRootPath(PlatformBuildRequest request) {
+        if (request == null) {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        return Path.Combine(request.WorkingRoot, PackageSourceDirectoryName);
     }
 
     /// <summary>
@@ -48,5 +77,18 @@ public static class WiiUBuilderPaths {
         }
 
         return Path.Combine(ResolveRepositoryRootPath(), "build", RpxFileName);
+    }
+
+    /// <summary>
+    /// Resolves the WUHB path emitted by the native Wii U Makefile build.
+    /// </summary>
+    /// <param name="request">Resolved platform build request.</param>
+    /// <returns>Absolute path to the repo-built WUHB artifact.</returns>
+    public static string ResolveBuiltWuhbPath(PlatformBuildRequest request) {
+        if (request == null) {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        return Path.Combine(ResolveRepositoryRootPath(), "build", WuhbFileName);
     }
 }

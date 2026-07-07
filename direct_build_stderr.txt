@@ -1,0 +1,6 @@
+/workspace/src/platform/wiiu/WiiUApplication.cpp:25:10: fatal error: runtime/runtime_standard_platform_input_manifest.hpp: No such file or directory
+   25 | #include "runtime/runtime_standard_platform_input_manifest.hpp"
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+compilation terminated.
+make[1]: *** [/opt/devkitpro/devkitPPC/base_rules:15: WiiUApplication.o] Error 1
+make: *** [Makefile:96: build] Error 2

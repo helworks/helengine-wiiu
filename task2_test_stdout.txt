@@ -1,0 +1,46 @@
+helengine.core -> C:\dev\helworks\helengine\engine\helengine.core\bin\Debug\net9.0\helengine.core.dll
+  helengine.baseplatform -> C:\dev\helworks\helengine\engine\helengine.baseplatform\bin\Debug\net9.0\helengine.baseplatform.dll
+  helengine.shader -> C:\dev\helworks\helengine\engine\helengine.shader\bin\Debug\net9.0\helengine.shader.dll
+  helengine.files -> C:\dev\helworks\helengine\engine\helengine.files\bin\Debug\net9.0\helengine.files.dll
+  helengine.wiiu.builder -> C:\dev\helworks\helengine-wiiu\builder\bin\Debug\net9.0-windows\helengine.wiiu.builder.dll
+  helengine.wiiu.builder.tests -> C:\dev\helworks\helengine-wiiu\builder.tests\bin\Debug\net9.0-windows\helengine.wiiu.builder.tests.dll
+Test run for C:\dev\helworks\helengine-wiiu\builder.tests\bin\Debug\net9.0-windows\helengine.wiiu.builder.tests.dll (.NETCoreApp,Version=v9.0)
+A total of 1 test files matched the specified pattern.
+  Failed helengine.wiiu.builder.tests.WiiURuntimeSourceTests.RuntimeSeam_UsesSceneCubePresenterPathForFirstCubeTestMeshBringUp [4 ms]
+  Error Message:
+   System.IO.FileNotFoundException : Could not find file 'C:\dev\helworks\helengine-wiiu\tools\wiiu-shaders\scene_cube_flat_color.vs'.
+  Stack Trace:
+     at Microsoft.Win32.SafeHandles.SafeFileHandle.CreateFile(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options)
+   at Microsoft.Win32.SafeHandles.SafeFileHandle.Open(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+   at System.IO.Strategies.OSFileStreamStrategy..ctor(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+   at System.IO.Strategies.FileStreamHelpers.ChooseStrategyCore(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+   at System.IO.StreamReader.ValidateArgsAndOpenPath(String path, Encoding encoding, Int32 bufferSize)
+   at System.IO.File.ReadAllText(String path, Encoding encoding)
+   at helengine.wiiu.builder.tests.WiiURuntimeSourceTests.RuntimeSeam_UsesSceneCubePresenterPathForFirstCubeTestMeshBringUp() in C:\dev\helworks\helengine-wiiu\builder.tests\WiiURuntimeSourceTests.cs:line 455
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+Results File: C:\Users\Helena\AppData\Local\Temp\rtk_dotnet_testresults_19f39c3b312efe01\Helena_DESKTOP-HELENA_2026-07-06_20_29_18_net9.0.trx
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 4 ms - helengine.wiiu.builder.tests.dll (net9.0)
+
+fail dotnet test: 0 passed, 1 failed, 0 skipped, 0 warnings in 1 projects (799 ms)
+---------------------------------------
+
+Failed Tests:
+  helengine.wiiu.builder.tests.WiiURuntimeSourceTests.RuntimeSeam_UsesSceneCubePresenterPathForFirstCubeTestMeshBringUp
+    Error Message:
+    System.IO.FileNotFoundException : Could not find file 'C:\dev\helworks\helengine-wiiu\tools\wiiu-shaders\scene_cube_flat_color.vs'.
+    Stack Trace:
+    at Microsoft.Win32.SafeHandles.SafeFileHandle.CreateFile(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options)
+    at Microsoft.Win32.SafeHandles.SafeFileHandle.Open(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+    at System.IO.Strategies.OSFileStreamStrategy..ctor(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+    at System.IO.Strategies.FileStreamHelpers.ChooseStrategyCore(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+    at System.IO.StreamReader.ValidateArgsAndOpenPath(String path, Encoding encoding, Int32 bufferSize)
+    at System.IO.File.ReadAllText(String path, Encoding encoding)
+    at helengine.wiiu.builder.tests.WiiURuntimeSourceTests.RuntimeSeam_UsesSceneCubePresenterPathForFirstCubeTestMeshBringUp() in C:\dev\helworks\helengine-wiiu\builder.tests\WiiURuntimeSourceTests.cs:line 455
+    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+    Results File: C:\Users\Helena\AppData\Local\Temp\rtk_dotnet_testresults_19f39c3b312efe01\Helena_DESKTOP-HELENA_2026-07-06_20_29_18_net9.0.trx
+    
+
+

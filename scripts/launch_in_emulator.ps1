@@ -10,8 +10,9 @@ if (-not (Test-Path -LiteralPath $resolvedArtifactPath -PathType Leaf)) {
     throw "Wii U artifact was not found: $resolvedArtifactPath"
 }
 
-if ([System.IO.Path]::GetExtension($resolvedArtifactPath) -ine '.rpx') {
-    throw "Expected a .rpx artifact but got '$resolvedArtifactPath'."
+$artifactExtension = [System.IO.Path]::GetExtension($resolvedArtifactPath)
+if ($artifactExtension -ine '.rpx' -and $artifactExtension -ine '.wuhb') {
+    throw "Expected a .rpx or .wuhb artifact but got '$resolvedArtifactPath'."
 }
 
 $repositoryRootPath = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
