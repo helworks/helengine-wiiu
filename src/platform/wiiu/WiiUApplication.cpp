@@ -57,7 +57,7 @@ namespace helengine::wiiu {
             DrawOnly,
             FullEngine
         };
-        constexpr DiagnosticFrameLoopMode DiagnosticFrameLoopModeValue = DiagnosticFrameLoopMode::PresentOnly;
+        constexpr DiagnosticFrameLoopMode DiagnosticFrameLoopModeValue = DiagnosticFrameLoopMode::FullEngine;
         constexpr bool RunDiagnosticRenderManager2DDrawInDrawOnlyMode = true;
     }
 

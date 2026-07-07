@@ -296,16 +296,16 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures the first Wii U 3D bring-up slice uses the present-only diagnostic loop so GX2 verification does not depend on scene draw stability.
+    /// Ensures the Wii U host returns to the full engine frame loop after the diagnostic GX2 bring-up slices have landed.
     /// </summary>
     [Fact]
-    public void RuntimeSeam_UsesPresentOnlyDiagnosticFrameLoopForFirst3dShaderBringUp() {
+    public void RuntimeSeam_UsesFullEngineFrameLoopAfter3dShaderBringUp() {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
 
         Assert.Contains("enum class DiagnosticFrameLoopMode {", applicationSource, StringComparison.Ordinal);
         Assert.Contains("FullEngine", applicationSource, StringComparison.Ordinal);
-        Assert.Contains("constexpr DiagnosticFrameLoopMode DiagnosticFrameLoopModeValue = DiagnosticFrameLoopMode::PresentOnly;", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("constexpr DiagnosticFrameLoopMode DiagnosticFrameLoopModeValue = DiagnosticFrameLoopMode::FullEngine;", applicationSource, StringComparison.Ordinal);
         Assert.Contains("if (DiagnosticFrameLoopModeValue == DiagnosticFrameLoopMode::PresentOnly) {", applicationSource, StringComparison.Ordinal);
         Assert.Contains("if (DiagnosticFrameLoopModeValue == DiagnosticFrameLoopMode::DrawOnly) {", applicationSource, StringComparison.Ordinal);
         Assert.Contains("if (!DrawEngineCore()) {", applicationSource, StringComparison.Ordinal);
