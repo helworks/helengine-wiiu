@@ -279,6 +279,7 @@ namespace helengine::wiiu {
 
         Render3DFrameToColorBuffer(TvContextState, &TvColorBuffer, frame3D, TvSurfaceWidth, TvSurfaceHeight);
         RenderQuadCommandsToColorBuffer(frame2D, TvSurfaceWidth, TvSurfaceHeight);
+        GX2DrawDone();
         Render3DFrameToColorBuffer(DrcContextState, &DrcColorBuffer, frame3D, DrcSurfaceWidth, DrcSurfaceHeight);
         RenderQuadCommandsToColorBuffer(frame2D, DrcSurfaceWidth, DrcSurfaceHeight);
         PresentScanBuffers();
@@ -321,16 +322,6 @@ namespace helengine::wiiu {
 
     /// Uploads one runtime model into the temporary scene-cube GX2 mesh path.
     void WiiUGx2Presenter::ConfigureSceneCubeMesh(const WiiURuntimeModel& runtimeModel) {
-        const std::vector<float>& sourcePositionData = runtimeModel.GetPositionData();
-        const std::vector<std::uint16_t>& indexData = runtimeModel.GetIndexData();
-        if (!AreSceneCubeResourcesInitialized) {
-            throw std::runtime_error("Wii U GX2 presenter must initialize scene cube resources before uploading geometry.");
-        } else if (sourcePositionData.empty()) {
-            throw std::runtime_error("Wii U GX2 presenter requires non-empty scene cube position data.");
-        } else if (indexData.empty()) {
-            throw std::runtime_error("Wii U GX2 presenter requires non-empty scene cube index data.");
-        }
-
         constexpr double SceneCubeYawRadians = 0.65;
         constexpr double SceneCubePitchRadians = 0.55;
         constexpr double SceneCubeFieldOfViewRadians = 1.0;
@@ -344,6 +335,36 @@ namespace helengine::wiiu {
         const double sinPitch = std::sin(SceneCubePitchRadians);
         const double projectionScaleY = 1.0 / std::tan(SceneCubeFieldOfViewRadians * 0.5);
         const double projectionScaleX = projectionScaleY / SceneCubeAspectRatio;
+        const double depthProjectionScale = (SceneCubeFarPlane + SceneCubeNearPlane) / (SceneCubeNearPlane - SceneCubeFarPlane);
+        const double depthProjectionOffset = (2.0 * SceneCubeFarPlane * SceneCubeNearPlane) / (SceneCubeNearPlane - SceneCubeFarPlane);
+
+        float4x4 worldViewProjectionMatrix;
+        worldViewProjectionMatrix.M11 = static_cast<float>(projectionScaleX * cosYaw);
+        worldViewProjectionMatrix.M21 = 0.0f;
+        worldViewProjectionMatrix.M31 = static_cast<float>(projectionScaleX * sinYaw);
+        worldViewProjectionMatrix.M41 = 0.0f;
+        worldViewProjectionMatrix.M12 = static_cast<float>(projectionScaleY * sinYaw * sinPitch);
+        worldViewProjectionMatrix.M22 = static_cast<float>(projectionScaleY * cosPitch);
+        worldViewProjectionMatrix.M32 = static_cast<float>(-projectionScaleY * cosYaw * sinPitch);
+        worldViewProjectionMatrix.M42 = 0.0f;
+        worldViewProjectionMatrix.M13 = static_cast<float>(-depthProjectionScale * sinYaw * cosPitch);
+        worldViewProjectionMatrix.M23 = static_cast<float>(depthProjectionScale * sinPitch);
+        worldViewProjectionMatrix.M33 = static_cast<float>(depthProjectionScale * cosYaw * cosPitch);
+        worldViewProjectionMatrix.M43 = static_cast<float>(-depthProjectionScale * SceneCubeCameraDistance + depthProjectionOffset);
+        worldViewProjectionMatrix.M14 = static_cast<float>(sinYaw * cosPitch);
+        worldViewProjectionMatrix.M24 = static_cast<float>(-sinPitch);
+        worldViewProjectionMatrix.M34 = static_cast<float>(-cosYaw * cosPitch);
+        worldViewProjectionMatrix.M44 = static_cast<float>(SceneCubeCameraDistance);
+
+        const std::vector<float>& sourcePositionData = runtimeModel.GetPositionData();
+        const std::vector<std::uint16_t>& indexData = runtimeModel.GetIndexData();
+        if (!AreSceneCubeResourcesInitialized) {
+            throw std::runtime_error("Wii U GX2 presenter must initialize scene cube resources before uploading geometry.");
+        } else if (sourcePositionData.empty()) {
+            throw std::runtime_error("Wii U GX2 presenter requires non-empty scene cube position data.");
+        } else if (indexData.empty()) {
+            throw std::runtime_error("Wii U GX2 presenter requires non-empty scene cube index data.");
+        }
 
         std::vector<float> expandedPositionData;
         expandedPositionData.reserve(static_cast<std::size_t>(indexData.size()) * 4U);
@@ -364,8 +385,8 @@ namespace helengine::wiiu {
             const double clipX = yawX * projectionScaleX;
             const double clipY = pitchY * projectionScaleY;
             const double clipZ =
-                ((SceneCubeFarPlane + SceneCubeNearPlane) / (SceneCubeNearPlane - SceneCubeFarPlane)) * viewZ +
-                ((2.0 * SceneCubeFarPlane * SceneCubeNearPlane) / (SceneCubeNearPlane - SceneCubeFarPlane));
+                depthProjectionScale * viewZ +
+                depthProjectionOffset;
             const double clipW = -viewZ;
 
             expandedPositionData.push_back(static_cast<float>(clipX));
@@ -387,16 +408,6 @@ namespace helengine::wiiu {
         InitializeSceneCubeVertexBuffer(&SceneCubePositionBuffer, expandedPositionData.data(), static_cast<std::uint32_t>(expandedPositionData.size()));
         InitializeSceneCubeIndexBuffer(&SceneCubeIndexBuffer, indexData.data(), static_cast<std::uint32_t>(indexData.size()));
         SceneCubeIndexCount = static_cast<std::uint32_t>(expandedPositionData.size() / 4U);
-        OSReport(
-            "[WiiUGx2Presenter] scene cube configured vertices=%u expandedVertices=%u indices=%u firstPosition=(%.3f, %.3f, %.3f, %.3f) firstIndex=%u\n",
-            static_cast<unsigned int>(sourcePositionData.size() / 4U),
-            static_cast<unsigned int>(expandedPositionData.size() / 4U),
-            static_cast<unsigned int>(SceneCubeIndexCount),
-            expandedPositionData.size() >= 4U ? expandedPositionData[0] : 0.0f,
-            expandedPositionData.size() >= 4U ? expandedPositionData[1] : 0.0f,
-            expandedPositionData.size() >= 4U ? expandedPositionData[2] : 0.0f,
-            expandedPositionData.size() >= 4U ? expandedPositionData[3] : 0.0f,
-            indexData.empty() ? 0U : static_cast<unsigned int>(indexData[0]));
         IsSceneCubeMeshConfigured = true;
     }
 

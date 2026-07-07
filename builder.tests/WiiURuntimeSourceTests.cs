@@ -519,7 +519,7 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures the steady-state Wii U 3D presenter computes one scene-driven host-side perspective transform before uploading expanded clip-space cube geometry.
+    /// Ensures the steady-state Wii U 3D presenter computes one scene-driven host-side perspective transform before uploading expanded clip-space cube geometry and synchronizes between TV and DRC uploads.
     /// </summary>
     [Fact]
     public void RuntimeSeam_UsesSceneDrivenPerspectiveCameraForCaptured3dFrames() {
@@ -536,6 +536,7 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("expandedPositionData.push_back(clipY);", presenterSource, StringComparison.Ordinal);
         Assert.Contains("expandedPositionData.push_back(clipZ);", presenterSource, StringComparison.Ordinal);
         Assert.Contains("expandedPositionData.push_back(clipW);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2DrawDone();", presenterSource, StringComparison.Ordinal);
         Assert.Contains("gl_Position = aPosition;", shaderVertexSource, StringComparison.Ordinal);
         Assert.Contains("FragColor = VertexColor;", shaderPixelSource, StringComparison.Ordinal);
     }
