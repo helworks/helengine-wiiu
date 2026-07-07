@@ -286,7 +286,7 @@ namespace helengine::wiiu {
             throw new ArgumentNullException("camera");
         }
 
-        const CameraClearSettings clearSettings = camera->get_ClearSettings();
+        CameraClearSettings clearSettings = camera->get_ClearSettings();
         if (clearSettings.get_ClearColorEnabled()) {
             CurrentFrame.SetClearColor(ConvertClearColor(clearSettings.get_ClearColor()));
         } else {
