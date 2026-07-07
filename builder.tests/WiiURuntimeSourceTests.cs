@@ -464,6 +464,48 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
+    /// Ensures the steady-state Wii U runtime presents one captured 3D frame plus the captured 2D overlay instead of calling the presenter-owned scene cube shortcut.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_PresentsCapturedSceneDriven3dFrameThroughGenericGx2PresenterPath() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+        string presenterHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp"));
+        string renderManagerHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.hpp"));
+        string renderFrameHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx23DRenderFrame.hpp"));
+
+        Assert.Contains("void RenderFrame(const WiiUGx23DRenderFrame& frame3D, const WiiUGx2RenderFrame& frame2D);", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("const WiiUGx23DRenderFrame& GetCurrentFrame() const;", renderManagerHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void Draw() override;", renderManagerHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("class WiiUGx23DRenderFrame {", renderFrameHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("Gx2Presenter->RenderFrame(EngineRenderManager3D->GetCurrentFrame(), EngineRenderManager2D->GetCurrentFrame());", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Gx2Presenter->RenderSceneCubeFrame();", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Gx2Presenter->ConfigureSceneCubeMesh(", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the Wii U 3D bridge captures one generic scene-driven frame from the active camera and drawable submissions instead of exposing only the latest runtime model shortcut.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_CapturesPrimaryCameraAndDrawableSubmissionsIntoGenericWiiU3dFrame() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string renderManagerHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.hpp"));
+        string renderManagerSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.cpp"));
+        string renderFrameHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx23DRenderFrame.hpp"));
+
+        Assert.Contains("RenderFrameExtractionService", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("WiiUGx23DRenderFrame CurrentFrame;", renderManagerHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void BeginFrame();", renderManagerHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void CaptureFrame(RenderFrame* frame, CameraComponent* camera);", renderManagerHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("bool TryResolvePrimaryCamera(CameraComponent*& camera) const;", renderManagerHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("CurrentFrame.Clear();", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("CurrentFrame.SetCamera(", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("CurrentFrame.AddDrawCommand(", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("struct WiiUGx23DDrawCommand {", renderFrameHeaderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("WiiURuntimeModel* GetLatestRuntimeModel() const;", renderManagerHeaderSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures the first cube_test 3D slice routes one real runtime model into a dedicated presenter-owned flat-color scene cube path.
     /// </summary>
     [Fact]
