@@ -468,4 +468,34 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("gl_Position = uTransform * aPosition;", shaderVertexSource, StringComparison.Ordinal);
         Assert.Contains("passColor = vec4(", shaderPixelSource, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures the startup scene warm path commits deferred scene loading through one draw before the host configures the presenter-owned scene cube mesh.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_CommitsDeferredStartupSceneLoadBeforeConfiguringSceneCubeMesh() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.Contains("Warming startup scene through one engine draw.", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("if (!DrawEngineCore()) {", applicationSource, StringComparison.Ordinal);
+
+        int warmDrawIndex = applicationSource.IndexOf("Warming startup scene through one engine draw.", StringComparison.Ordinal);
+        int configureSceneCubeMeshIndex = applicationSource.IndexOf("Gx2Presenter->ConfigureSceneCubeMesh(*EngineRenderManager3D->GetLatestRuntimeModel());", StringComparison.Ordinal);
+
+        Assert.True(warmDrawIndex >= 0, "Expected the startup scene warm draw trace to exist.");
+        Assert.True(configureSceneCubeMeshIndex > warmDrawIndex, "Expected scene cube mesh configuration to happen after the warm draw.");
+    }
+
+    /// <summary>
+    /// Ensures the generated-core Wii U startup scene stays pinned to cube_test while the first visible cube bring-up path depends on one real 3D scene at boot.
+    /// </summary>
+    [Fact]
+    public void PackagedBootstrap_UsesCubeTestAsGeneratedCoreStartupSceneForCubeBringUp() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string bootstrapSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUSceneBootstrap.cpp"));
+
+        Assert.Contains("return \"cube_test\";", bootstrapSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("return he_get_runtime_wiiu_startup_scene_id();", bootstrapSource, StringComparison.Ordinal);
+    }
 }

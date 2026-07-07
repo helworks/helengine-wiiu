@@ -10,6 +10,7 @@
 #include "ModelAsset.hpp"
 #include "RuntimeMaterial.hpp"
 #include "runtime/finally.hpp"
+#include "runtime/native_cast.hpp"
 #include "runtime/native_exceptions.hpp"
 #include "runtime/native_string.hpp"
 #include "system/io/file.hpp"

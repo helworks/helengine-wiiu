@@ -23,6 +23,7 @@
 #include "runtime/native_list.hpp"
 #include "runtime/native_exceptions.hpp"
 #include "runtime/runtime_standard_platform_input_manifest.hpp"
+#include "platform/wiiu/WiiURuntimeModel.hpp"
 #include "platform/wiiu/WiiURenderManager2D.hpp"
 #include "platform/wiiu/WiiURenderManager3D.hpp"
 #endif
@@ -295,6 +296,32 @@ namespace helengine::wiiu {
             OSReport("[WiiU] Packaged startup scene queued.\n");
             AppendRuntimeTrace("[WiiUFile] Packaged startup scene queued.\n");
             EngineInitialized = true;
+            initializationStage = "WarmStartupScene";
+            OSReport("[WiiU] Warming startup scene through one engine update.\n");
+            AppendRuntimeTrace("[WiiUFile] Warming startup scene through one engine update.\n");
+            if (!UpdateEngineCore()) {
+                OSReport("[WiiU] Startup scene warm update failed.\n");
+                AppendRuntimeTrace("[WiiUFile] Startup scene warm update failed.\n");
+                return false;
+            }
+
+            initializationStage = "WarmStartupSceneDraw";
+            OSReport("[WiiU] Warming startup scene through one engine draw.\n");
+            AppendRuntimeTrace("[WiiUFile] Warming startup scene through one engine draw.\n");
+            if (!DrawEngineCore()) {
+                OSReport("[WiiU] Startup scene warm draw failed.\n");
+                AppendRuntimeTrace("[WiiUFile] Startup scene warm draw failed.\n");
+                return false;
+            }
+
+            initializationStage = "ConfigureSceneCubeMesh";
+            WiiURuntimeModel* latestRuntimeModel = EngineRenderManager3D->GetLatestRuntimeModel();
+            if (latestRuntimeModel == nullptr) {
+                throw new InvalidOperationException("Wii U cube_test bring-up requires one runtime model to be built during scene load.");
+            }
+
+            Gx2Presenter->ConfigureSceneCubeMesh(*EngineRenderManager3D->GetLatestRuntimeModel());
+            AppendRuntimeTrace("[WiiUFile] Scene cube mesh configured from latest runtime model.\n");
             UpdateFrameLogCount = 0;
             DrawFrameLogCount = 0;
             SetBootPhase(WiiUBootPhase::Running, 0xFF004000);
@@ -472,11 +499,11 @@ namespace helengine::wiiu {
     void WiiUApplication::PresentRenderedFrame() {
         if (Gx2Presenter == nullptr) {
             throw std::runtime_error("Wii U GX2 presenter must exist before rendered presentation can begin.");
-        } else if (EngineRenderManager2D == nullptr) {
-            throw std::runtime_error("Wii U 2D render manager must exist before rendered presentation can begin.");
+        } else if (EngineRenderManager3D == nullptr) {
+            throw std::runtime_error("Wii U 3D render manager must exist before rendered presentation can begin.");
         }
 
-        Gx2Presenter->RenderDiagnosticTriangleFrame();
+        Gx2Presenter->RenderSceneCubeFrame();
     }
 
     /// Appends one host-readable Wii U runtime trace line to every supported trace sink.

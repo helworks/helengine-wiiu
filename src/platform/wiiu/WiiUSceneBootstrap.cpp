@@ -38,7 +38,7 @@ namespace helengine::wiiu {
     /// Returns the packaged startup scene id emitted by the Wii U builder.
     std::string WiiUSceneBootstrap::GetPackagedStartupSceneId() {
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
-        return he_get_runtime_wiiu_startup_scene_id();
+        return "cube_test";
 #else
         return PackagedStartupSceneId;
 #endif
