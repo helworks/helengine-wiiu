@@ -542,6 +542,84 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
+    /// Ensures normal Wii U builds regenerate runtime shader blobs from checked-in GLSL sources instead of depending on hand-managed prebuilt binaries.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_BuildsWiiUShadersFromAuthoritativeGlslSources() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string makefileSource = File.ReadAllText(Path.Combine(repositoryRootPath, "Makefile"));
+        string diagnosticSquareVertexShaderPath = Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "diagnostic_square.vs");
+        string diagnosticSquarePixelShaderPath = Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "diagnostic_square.ps");
+        string sceneOpaqueLitVertexShaderPath = Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_opaque_lit.vs");
+        string sceneOpaqueLitPixelShaderPath = Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_opaque_lit.ps");
+
+        Assert.Contains("tools/wiiu-shaders", makefileSource, StringComparison.Ordinal);
+        Assert.Contains("scene_opaque_lit_shader.bin", makefileSource, StringComparison.Ordinal);
+        Assert.Contains("diagnostic_square_shader.bin", makefileSource, StringComparison.Ordinal);
+        Assert.True(File.Exists(diagnosticSquareVertexShaderPath), "Expected diagnostic_square.vs to exist.");
+        Assert.True(File.Exists(diagnosticSquarePixelShaderPath), "Expected diagnostic_square.ps to exist.");
+        Assert.True(File.Exists(sceneOpaqueLitVertexShaderPath), "Expected scene_opaque_lit.vs to exist.");
+        Assert.True(File.Exists(sceneOpaqueLitPixelShaderPath), "Expected scene_opaque_lit.ps to exist.");
+    }
+
+    /// <summary>
+    /// Ensures the Wii U scene-capture bridge carries concrete runtime materials, copied normals, and frame-level ambient plus directional light state.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_CapturesOpaqueMaterialsAndSceneLightsIntoWiiU3dFrame() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string runtimeModelHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURuntimeModel.hpp"));
+        string renderFrameHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx23DRenderFrame.hpp"));
+        string renderManagerSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.cpp"));
+        string runtimeMaterialHeaderPath = Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURuntimeMaterial.hpp");
+
+        Assert.True(File.Exists(runtimeMaterialHeaderPath), "Expected WiiURuntimeMaterial.hpp to exist.");
+        string runtimeMaterialHeaderSource = File.ReadAllText(runtimeMaterialHeaderPath);
+
+        Assert.Contains("class WiiURuntimeMaterial final : public ::RuntimeMaterial", runtimeMaterialHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void SetGeometry(std::vector<float> positionData, std::vector<float> normalData, std::vector<std::uint16_t> indexData);", runtimeModelHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("const std::vector<float>& GetNormalData() const;", runtimeModelHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("const WiiURuntimeMaterial* RuntimeMaterial;", renderFrameHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("float4 AmbientLightColor;", renderFrameHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("bool HasDirectionalLightState;", renderFrameHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("struct WiiUGx23DDirectionalLightState {", renderFrameHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("submission->get_Material()", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("drawCommand.RuntimeMaterial = runtimeMaterial;", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("CurrentFrame.SetAmbientLightColor(", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("CurrentFrame.SetDirectionalLight(", renderManagerSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the Wii U presenter binds one GPU transform path plus material and light uniform blocks instead of expanding captured scene geometry to clip space on the CPU.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UsesGpuTransformsAndOpaqueLitUniformUploadsForSceneDraws() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp"));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+        string shaderVertexPath = Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_opaque_lit.vs");
+        string shaderPixelPath = Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_opaque_lit.ps");
+
+        Assert.True(File.Exists(shaderVertexPath), "Expected scene_opaque_lit.vs to exist.");
+        Assert.True(File.Exists(shaderPixelPath), "Expected scene_opaque_lit.ps to exist.");
+        string shaderVertexSource = File.ReadAllText(shaderVertexPath);
+        string shaderPixelSource = File.ReadAllText(shaderPixelPath);
+
+        Assert.Contains("#include \"scene_opaque_lit_shader_bin.h\"", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RBuffer SceneOpaqueTransformBuffer;", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RBuffer SceneOpaqueMaterialBuffer;", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RBuffer SceneOpaqueLightBuffer;", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RSetVertexUniformBlock", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RSetPixelUniformBlock", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("drawCommand.RuntimeMaterial", presenterSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("UploadSceneCubeMesh(*drawCommand.RuntimeModel, worldViewProjectionMatrix);", presenterSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("expandedPositionData.push_back(clipX);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("uniform TransformBlock", shaderVertexSource, StringComparison.Ordinal);
+        Assert.Contains("uniform MaterialBlock", shaderPixelSource, StringComparison.Ordinal);
+        Assert.Contains("uniform LightBlock", shaderPixelSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures the Wii U renderer bridge exposes the current content-stream-based cooked asset signatures while retaining the legacy path-based seam for stale generated-core workspaces.
     /// </summary>
     [Fact]
