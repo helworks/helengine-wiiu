@@ -97,6 +97,9 @@ namespace helengine::wiiu {
         /// Counts the generated-core draw frames reported through the Wii U runtime diagnostics.
         std::uint32_t DrawFrameLogCount;
 
+        /// Counts the rendered-present source-surface frames sampled through the Wii U runtime diagnostics.
+        std::uint32_t PresentFrameLogCount;
+
         /// Stores the generated core instance that owns scene loading and frame updates.
         Core* EngineCore;
 

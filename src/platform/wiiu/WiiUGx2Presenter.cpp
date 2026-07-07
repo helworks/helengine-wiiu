@@ -12,6 +12,8 @@
 #include <gx2/state.h>
 #include <gx2/swap.h>
 #include <gx2/temp.h>
+#include <gx2r/resource.h>
+#include <gx2r/surface.h>
 
 namespace helengine::wiiu {
     namespace {
@@ -98,12 +100,12 @@ namespace helengine::wiiu {
     /// Releases all allocated GX2 resources and returns the presenter to the uninitialized state.
     void WiiUGx2Presenter::Shutdown() {
         if (TvColorBuffer.surface.image != nullptr) {
-            MEMFreeToDefaultHeap(TvColorBuffer.surface.image);
+            GX2RDestroySurfaceEx(&TvColorBuffer.surface, 0);
             TvColorBuffer.surface.image = nullptr;
         }
 
         if (DrcColorBuffer.surface.image != nullptr) {
-            MEMFreeToDefaultHeap(DrcColorBuffer.surface.image);
+            GX2RDestroySurfaceEx(&DrcColorBuffer.surface, 0);
             DrcColorBuffer.surface.image = nullptr;
         }
 
@@ -142,12 +144,12 @@ namespace helengine::wiiu {
         TvColorBuffer.surface.tileMode = GX2_TILE_MODE_DEFAULT;
         TvColorBuffer.viewNumSlices = 1U;
         GX2CalcSurfaceSizeAndAlignment(&TvColorBuffer.surface);
-        TvColorBuffer.surface.image = MEMAllocFromDefaultHeapEx(TvColorBuffer.surface.imageSize, TvColorBuffer.surface.alignment);
-        if (TvColorBuffer.surface.image == nullptr) {
+        if (!GX2RCreateSurface(
+            &TvColorBuffer.surface,
+            GX2R_RESOURCE_BIND_COLOR_BUFFER | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ)) {
             throw std::runtime_error("Wii U GX2 presenter could not allocate the TV color buffer.");
         }
 
-        GX2Invalidate(GX2_INVALIDATE_MODE_CPU, TvColorBuffer.surface.image, TvColorBuffer.surface.imageSize);
         GX2InitColorBufferRegs(&TvColorBuffer);
     }
 
@@ -165,12 +167,12 @@ namespace helengine::wiiu {
         DrcColorBuffer.surface.tileMode = GX2_TILE_MODE_DEFAULT;
         DrcColorBuffer.viewNumSlices = 1U;
         GX2CalcSurfaceSizeAndAlignment(&DrcColorBuffer.surface);
-        DrcColorBuffer.surface.image = MEMAllocFromDefaultHeapEx(DrcColorBuffer.surface.imageSize, DrcColorBuffer.surface.alignment);
-        if (DrcColorBuffer.surface.image == nullptr) {
+        if (!GX2RCreateSurface(
+            &DrcColorBuffer.surface,
+            GX2R_RESOURCE_BIND_COLOR_BUFFER | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ)) {
             throw std::runtime_error("Wii U GX2 presenter could not allocate the DRC color buffer.");
         }
 
-        GX2Invalidate(GX2_INVALIDATE_MODE_CPU, DrcColorBuffer.surface.image, DrcColorBuffer.surface.imageSize);
         GX2InitColorBufferRegs(&DrcColorBuffer);
     }
 
@@ -182,12 +184,25 @@ namespace helengine::wiiu {
             throw std::runtime_error("Wii U GX2 presenter requires a valid destination buffer.");
         }
 
-        const std::size_t sourceByteCount =
-            static_cast<std::size_t>(sourceSurface->GetWidth())
-            * static_cast<std::size_t>(sourceSurface->GetHeight())
-            * sizeof(std::uint32_t);
-        std::memcpy(destinationBuffer->surface.image, sourceSurface->GetPixels(), sourceByteCount);
-        GX2Invalidate(GX2_INVALIDATE_MODE_CPU, destinationBuffer->surface.image, destinationBuffer->surface.imageSize);
+        std::uint32_t* destinationPixels = static_cast<std::uint32_t*>(GX2RLockSurfaceEx(&destinationBuffer->surface, 0, 0));
+        if (destinationPixels == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter could not lock the destination color buffer surface.");
+        }
+
+        const std::uint32_t* sourcePixels = sourceSurface->GetPixels();
+        const std::uint32_t sourceWidth = sourceSurface->GetWidth();
+        const std::uint32_t sourceHeight = sourceSurface->GetHeight();
+        const std::uint32_t destinationPitch = destinationBuffer->surface.pitch;
+
+        for (std::uint32_t row = 0U; row < sourceHeight; row++) {
+            for (std::uint32_t column = 0U; column < sourceWidth; column++) {
+                std::uint32_t sourcePixel = sourcePixels[(row * sourceWidth) + column];
+                destinationPixels[(row * destinationPitch) + column] = (sourcePixel << 8) | (sourcePixel >> 24);
+            }
+        }
+
+        GX2RUnlockSurfaceEx(&destinationBuffer->surface, 0, 0);
+        GX2RInvalidateSurface(&destinationBuffer->surface, 0, GX2R_RESOURCE_USAGE_CPU_WRITE);
     }
 
     /// Presents the current TV and DRC color buffers to their scan buffers.

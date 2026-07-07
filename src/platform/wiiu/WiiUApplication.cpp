@@ -55,6 +55,7 @@ namespace helengine::wiiu {
         , EngineInitialized(false)
         , UpdateFrameLogCount(0)
         , DrawFrameLogCount(0)
+        , PresentFrameLogCount(0)
         , EngineCore(nullptr)
         , EngineRenderManager3D(nullptr)
         , EngineRenderManager2D(nullptr)
@@ -256,6 +257,7 @@ namespace helengine::wiiu {
             EngineInitialized = true;
             UpdateFrameLogCount = 0;
             DrawFrameLogCount = 0;
+            PresentFrameLogCount = 0;
             SetBootPhase(WiiUBootPhase::Running, 0xFF004000);
             return true;
         }
@@ -345,6 +347,36 @@ namespace helengine::wiiu {
             SetBootPhase(WiiUBootPhase::Running, 0xFF008000);
             EngineCore->Draw();
             EngineRenderManager2D->Draw();
+            if (DrawFrameLogCount < 4U && TvSurface != nullptr) {
+                const std::uint32_t* tvPixels = TvSurface->GetPixels();
+                const std::uint32_t tvWidth = TvSurface->GetWidth();
+                const std::uint32_t tvHeight = TvSurface->GetHeight();
+                const std::uint32_t topLeftPixel = tvPixels[0];
+                const std::uint32_t centerPixel = tvPixels[((tvHeight / 2U) * tvWidth) + (tvWidth / 2U)];
+                const std::uint32_t bottomRightPixel = tvPixels[((tvHeight - 1U) * tvWidth) + (tvWidth - 1U)];
+                std::uint32_t nonBlackSampleCount = 0U;
+                constexpr std::uint32_t SampleGridWidth = 8U;
+                constexpr std::uint32_t SampleGridHeight = 8U;
+
+                for (std::uint32_t sampleRow = 0U; sampleRow < SampleGridHeight; sampleRow++) {
+                    const std::uint32_t y = (sampleRow * (tvHeight - 1U)) / (SampleGridHeight - 1U);
+                    for (std::uint32_t sampleColumn = 0U; sampleColumn < SampleGridWidth; sampleColumn++) {
+                        const std::uint32_t x = (sampleColumn * (tvWidth - 1U)) / (SampleGridWidth - 1U);
+                        if (tvPixels[(y * tvWidth) + x] != 0xFF000000U) {
+                            nonBlackSampleCount++;
+                        }
+                    }
+                }
+
+                AppendRuntimeTrace(
+                    "[WiiUFile] Draw surface frame=%u topLeft=%08X center=%08X bottomRight=%08X nonBlackSamples=%u/%u\n",
+                    DrawFrameLogCount,
+                    topLeftPixel,
+                    centerPixel,
+                    bottomRightPixel,
+                    nonBlackSampleCount,
+                    SampleGridWidth * SampleGridHeight);
+            }
             if (DrawFrameLogCount < 2) {
                 OSReport("[WiiU] Engine draw completed frame=%u\n", DrawFrameLogCount);
                 AppendRuntimeTrace("[WiiUFile] Engine draw completed frame=%u\n", DrawFrameLogCount);
@@ -404,6 +436,38 @@ namespace helengine::wiiu {
             throw std::runtime_error("Wii U software surfaces must exist before rendered presentation can begin.");
         } else if (Gx2Presenter == nullptr) {
             throw std::runtime_error("Wii U GX2 presenter must exist before rendered presentation can begin.");
+        }
+
+        if (PresentFrameLogCount < 4U) {
+            const std::uint32_t* tvPixels = TvSurface->GetPixels();
+            const std::uint32_t tvWidth = TvSurface->GetWidth();
+            const std::uint32_t tvHeight = TvSurface->GetHeight();
+            const std::uint32_t topLeftPixel = tvPixels[0];
+            const std::uint32_t centerPixel = tvPixels[((tvHeight / 2U) * tvWidth) + (tvWidth / 2U)];
+            const std::uint32_t bottomRightPixel = tvPixels[((tvHeight - 1U) * tvWidth) + (tvWidth - 1U)];
+            std::uint32_t nonBlackSampleCount = 0U;
+            constexpr std::uint32_t SampleGridWidth = 8U;
+            constexpr std::uint32_t SampleGridHeight = 8U;
+
+            for (std::uint32_t sampleRow = 0U; sampleRow < SampleGridHeight; sampleRow++) {
+                const std::uint32_t y = (sampleRow * (tvHeight - 1U)) / (SampleGridHeight - 1U);
+                for (std::uint32_t sampleColumn = 0U; sampleColumn < SampleGridWidth; sampleColumn++) {
+                    const std::uint32_t x = (sampleColumn * (tvWidth - 1U)) / (SampleGridWidth - 1U);
+                    if (tvPixels[(y * tvWidth) + x] != 0xFF000000U) {
+                        nonBlackSampleCount++;
+                    }
+                }
+            }
+
+            AppendRuntimeTrace(
+                "[WiiUFile] Present source frame=%u topLeft=%08X center=%08X bottomRight=%08X nonBlackSamples=%u/%u\n",
+                PresentFrameLogCount,
+                topLeftPixel,
+                centerPixel,
+                bottomRightPixel,
+                nonBlackSampleCount,
+                SampleGridWidth * SampleGridHeight);
+            PresentFrameLogCount++;
         }
 
         Gx2Presenter->Present(TvSurface, DrcSurface);

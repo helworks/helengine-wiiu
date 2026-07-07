@@ -173,4 +173,21 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("Gx2Presenter->Present(TvSurface, DrcSurface);", applicationSource, StringComparison.Ordinal);
         Assert.DoesNotContain("OSScreenPutPixelEx(screen, x, y, ConvertSurfacePixelToScreenColor(pixels[pixelIndex]));", applicationSource, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures the GX2 presenter uploads software surfaces through GX2R surface locking instead of memcpying row-major CPU pixels directly into tiled GX2 color-buffer memory.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UsesGx2rSurfaceLockingForSoftwareSurfaceUploads() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        Assert.Contains("#include <gx2r/resource.h>", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("#include <gx2r/surface.h>", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RCreateSurface(", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2R_RESOURCE_BIND_COLOR_BUFFER | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RLockSurfaceEx(&destinationBuffer->surface, 0, 0)", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RUnlockSurfaceEx(&destinationBuffer->surface, 0, 0)", presenterSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("std::memcpy(destinationBuffer->surface.image, sourceSurface->GetPixels(), sourceByteCount);", presenterSource, StringComparison.Ordinal);
+    }
 }
