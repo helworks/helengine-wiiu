@@ -498,4 +498,26 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("return \"cube_test\";", bootstrapSource, StringComparison.Ordinal);
         Assert.DoesNotContain("return he_get_runtime_wiiu_startup_scene_id();", bootstrapSource, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures the first Wii U perspective slice keeps the no-uniform scene-cube shader contract and computes one fixed host-side camera transform in the presenter upload path.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UsesFixedHostPerspectiveCameraForSceneCubeBringUp() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+        string shaderVertexSource = File.ReadAllText(Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_cube_flat_color.vs"));
+        string shaderPixelSource = File.ReadAllText(Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_cube_flat_color.ps"));
+
+        Assert.Contains("constexpr double SceneCubeFieldOfViewRadians =", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("constexpr double SceneCubeCameraDistance =", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("const double clipW = -viewZ;", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("expandedPositionData.push_back(static_cast<float>(clipX));", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("expandedPositionData.push_back(static_cast<float>(clipY));", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("expandedPositionData.push_back(static_cast<float>(clipZ));", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("expandedPositionData.push_back(static_cast<float>(clipW));", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("gl_Position = aPosition;", shaderVertexSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("TransformBlock", shaderVertexSource, StringComparison.Ordinal);
+        Assert.Contains("FragColor = VertexColor;", shaderPixelSource, StringComparison.Ordinal);
+    }
 }
