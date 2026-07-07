@@ -8,6 +8,7 @@
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
 #include "Core.hpp"
 #include "CoreInitializationOptions.hpp"
+#include "HostFileSystemContentStreamSource.hpp"
 #include "InputControlId.hpp"
 #include "InputControlKind.hpp"
 #include "InputDeviceKind.hpp"
@@ -76,6 +77,7 @@ namespace helengine::wiiu {
         , EngineRenderManager2D(nullptr)
         , EngineInputBackend(nullptr)
         , EnginePlatformInfo(nullptr)
+        , EngineContentStreamSource(nullptr)
 #endif
     {
     }
@@ -91,6 +93,7 @@ namespace helengine::wiiu {
         delete EngineInputBackend;
         delete EnginePlatformInfo;
         delete EngineCore;
+        delete EngineContentStreamSource;
 #endif
 
         if (TvBuffer != nullptr) {
@@ -221,16 +224,6 @@ namespace helengine::wiiu {
             AppendRuntimeTrace("[WiiUFile] InitializeEngineCore begin.\n");
             SetBootPhase(WiiUBootPhase::Running, 0xFF804000);
 
-            initializationStage = "ConstructCore";
-            EngineCore = new Core();
-
-            initializationStage = "ReadInitializationOptions";
-            CoreInitializationOptions* initializationOptions = EngineCore->get_InitializationOptions();
-            if (initializationOptions == nullptr) {
-                OSReport("[WiiU] Initialization options were null.\n");
-                return false;
-            }
-
             initializationStage = "ResolvePackagedContentRoot";
             std::string packagedContentRootPath = WiiUSceneBootstrap::GetPackagedContentRootPath();
             OSReport("[WiiU] Packaged content root: %s\n", packagedContentRootPath.c_str());
@@ -249,8 +242,12 @@ namespace helengine::wiiu {
                 return false;
             }
 
+            initializationStage = "ConstructInitializationOptions";
+            CoreInitializationOptions* initializationOptions = new CoreInitializationOptions();
+            EngineContentStreamSource = new HostFileSystemContentStreamSource(packagedContentRootPath);
+
             initializationStage = "AssignInitializationOptions";
-            initializationOptions->ContentRootPath = packagedContentRootPath;
+            initializationOptions->ContentStreamSource = EngineContentStreamSource;
             initializationOptions->SceneCatalog = packagedCatalog;
             initializationOptions->UpdateOrderLayers = 4;
             initializationOptions->RenderOrderLayers3D = 4;
@@ -258,6 +255,9 @@ namespace helengine::wiiu {
             initializationOptions->RenderList2DInitialCapacity = 64;
             initializationOptions->RenderList3DInitialCapacity = 64;
             initializationOptions->StandardPlatformInputConfiguration = CreateStandardPlatformInputConfiguration();
+
+            initializationStage = "ConstructCore";
+            EngineCore = new Core(initializationOptions);
 
             initializationStage = "ConstructBridgeServices";
             EngineRenderManager3D = new WiiURenderManager3D();

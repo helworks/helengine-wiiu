@@ -5,8 +5,15 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
+
+#include <gx2/mem.h>
+#include <gx2/surface.h>
+#include <gx2/utils.h>
+#include <gx2r/resource.h>
+#include <gx2r/surface.h>
 
 #include "Asset.hpp"
 #include "AssetSerializer.hpp"
@@ -15,6 +22,7 @@
 #include "Entity.hpp"
 #include "FontAsset.hpp"
 #include "ICamera.hpp"
+#include "IContentStreamSource.hpp"
 #include "IDrawable2D.hpp"
 #include "IRenderQueue2D.hpp"
 #include "IRoundedRectDrawable2D.hpp"
@@ -37,40 +45,38 @@ namespace helengine::wiiu {
         constexpr std::uint16_t LogicalFrameWidth = 1280U;
         constexpr std::uint16_t LogicalFrameHeight = 720U;
         constexpr std::uint32_t TransparentBlack = 0x00000000U;
-        constexpr std::uint32_t OpaqueBlack = 0xFF000000U;
+        constexpr GX2RResourceFlags NoGx2rResourceFlags = static_cast<GX2RResourceFlags>(0);
+        constexpr GX2RResourceFlags TextureSurfaceFlags = static_cast<GX2RResourceFlags>(
+            GX2R_RESOURCE_BIND_TEXTURE | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ);
+        constexpr std::uint32_t SolidWhitePixel = 0xFFFFFFFFU;
     }
 
     /// Creates the Wii U 2D render bridge.
     WiiURenderManager2D::WiiURenderManager2D()
         : RenderManager2D()
-        , TvSurface(nullptr)
-        , DrcSurface(nullptr)
         , SpriteQueue()
         , TextQueue()
         , RoundedRectQueue()
         , TexturePixelDataRecords()
-        , CommandListBuilder(new RenderCommandListBuilder2D()) {
+        , CommandListBuilder(new RenderCommandListBuilder2D())
+        , CurrentFrame()
+        , SolidWhiteTextureHandle() {
+        InitializeTextureHandle(&SolidWhiteTextureHandle, 1U, 1U, std::vector<std::uint32_t> { SolidWhitePixel });
     }
 
     /// Releases reusable render state owned by the Wii U 2D render bridge.
     WiiURenderManager2D::~WiiURenderManager2D() {
+        for (std::size_t index = 0; index < TexturePixelDataRecords.size(); index++) {
+            DestroyTextureHandle(&TexturePixelDataRecords[index].Gx2TextureHandle);
+        }
+
+        DestroyTextureHandle(&SolidWhiteTextureHandle);
+
         if (CommandListBuilder != nullptr) {
             CommandListBuilder->Dispose();
             delete CommandListBuilder;
             CommandListBuilder = nullptr;
         }
-    }
-
-    /// Attaches the software surfaces that receive TV and DRC menu output.
-    void WiiURenderManager2D::AttachSurface(WiiUSoftwareSurface* tvSurface, WiiUSoftwareSurface* drcSurface) {
-        if (tvSurface == nullptr) {
-            throw new ArgumentNullException("tvSurface");
-        } else if (drcSurface == nullptr) {
-            throw new ArgumentNullException("drcSurface");
-        }
-
-        TvSurface = tvSurface;
-        DrcSurface = drcSurface;
     }
 
     /// Rebuilds one platform-owned cooked texture payload into a CPU-readable Wii U runtime texture.
@@ -100,7 +106,34 @@ namespace helengine::wiiu {
         return BuildTextureFromRaw(textureAsset);
     }
 
-    /// Rebuilds one shared-engine texture asset into a CPU-readable Wii U runtime texture.
+    /// Rebuilds one platform-owned cooked texture payload into a CPU-readable Wii U runtime texture through the content-stream-based generated-core contract.
+    ::RuntimeTexture* WiiURenderManager2D::BuildTextureFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {
+        if (contentStreamSource == nullptr) {
+            throw new ArgumentNullException("contentStreamSource");
+        }
+
+        ::Stream* stream = contentStreamSource->OpenRead(cookedAssetPath);
+        auto streamGuard = he_cpp_make_scope_exit([&]() {
+            if (stream != nullptr) {
+                stream->Dispose();
+                delete stream;
+            }
+        });
+
+        Asset* asset = AssetSerializer::Deserialize(stream);
+        TextureAsset* textureAsset = he_cpp_try_cast<TextureAsset>(asset);
+        if (textureAsset == nullptr) {
+            delete asset;
+            throw new InvalidOperationException("Wii U cooked texture payload did not deserialize into a TextureAsset.");
+        }
+
+        auto textureAssetGuard = he_cpp_make_scope_exit([&]() {
+            ReleaseTransientTextureAsset(textureAsset);
+        });
+        return BuildTextureFromRaw(textureAsset);
+    }
+
+    /// Rebuilds one shared-engine texture asset into a GX2-backed Wii U runtime texture.
     ::RuntimeTexture* WiiURenderManager2D::BuildTextureFromRaw(::TextureAsset* data) {
         if (data == nullptr) {
             throw new ArgumentNullException("data");
@@ -117,7 +150,8 @@ namespace helengine::wiiu {
         pixelData.Texture = runtimeTexture;
         pixelData.Width = data->Width;
         pixelData.Height = data->Height;
-        pixelData.Pixels = DecodeTexturePixels(data);
+        std::vector<std::uint32_t> pixels = DecodeTexturePixels(data);
+        InitializeTextureHandle(&pixelData.Gx2TextureHandle, data->Width, data->Height, pixels);
         TexturePixelDataRecords.push_back(pixelData);
         return runtimeTexture;
     }
@@ -128,14 +162,15 @@ namespace helengine::wiiu {
             throw new ArgumentNullException("texture");
         }
 
-        TexturePixelDataRecords.erase(
-            std::remove_if(
-                TexturePixelDataRecords.begin(),
-                TexturePixelDataRecords.end(),
-                [&](const WiiUTexturePixelData& candidate) {
-                    return candidate.Texture == texture;
-                }),
-            TexturePixelDataRecords.end());
+        for (std::size_t index = 0; index < TexturePixelDataRecords.size(); index++) {
+            if (TexturePixelDataRecords[index].Texture != texture) {
+                continue;
+            }
+
+            DestroyTextureHandle(&TexturePixelDataRecords[index].Gx2TextureHandle);
+            TexturePixelDataRecords.erase(TexturePixelDataRecords.begin() + static_cast<std::ptrdiff_t>(index));
+            break;
+        }
 
         texture->Dispose();
         delete texture;
@@ -151,19 +186,11 @@ namespace helengine::wiiu {
         delete font;
     }
 
-    /// Executes one full 2D draw pass into the attached software surfaces.
+    /// Executes one full 2D draw pass into the current GX2-ready frame.
     void WiiURenderManager2D::Draw() {
-        if (TvSurface == nullptr) {
-            throw new InvalidOperationException("Wii U TV software surface must be attached before 2D rendering.");
-        } else if (DrcSurface == nullptr) {
-            throw new InvalidOperationException("Wii U DRC software surface must be attached before 2D rendering.");
-        }
-
         BeginFrame();
-
-        WiiUSoftwareSurface* Surface = TvSurface;
-        Surface->Clear(OpaqueBlack);
-        DrcSurface->Clear(OpaqueBlack);
+        CurrentFrame.Clear();
+        CurrentFrame.SetClearColor(WiiUGx2Color { 30U, 17U, 41U, 255U });
 
         Core* core = Core::get_Instance();
         if (core == nullptr || core->get_ObjectManager() == nullptr) {
@@ -195,8 +222,13 @@ namespace helengine::wiiu {
                 continue;
             }
 
-            ExecuteCommandList(commandList, LogicalFrameWidth, LogicalFrameHeight);
+            CaptureCommandList(commandList, LogicalFrameWidth, LogicalFrameHeight);
         }
+    }
+
+    /// Returns the most recently captured GX2-ready frame.
+    const WiiUGx2RenderFrame& WiiURenderManager2D::GetCurrentFrame() const {
+        return CurrentFrame;
     }
 
     /// Visits one ordered 2D drawable from the active camera queue.
@@ -212,7 +244,7 @@ namespace helengine::wiiu {
     void WiiURenderManager2D::FlushReleasedTextures() {
     }
 
-    /// Accepts a rounded-rectangle draw request without issuing software rasterization yet.
+    /// Accepts a rounded-rectangle draw request without issuing rasterization yet.
     void WiiURenderManager2D::DrawRoundedRect(::IRoundedRectDrawable2D* shape) {
         if (shape == nullptr || shape->get_Parent() == nullptr || !shape->get_Parent()->get_IsHierarchyEnabled()) {
             return;
@@ -221,7 +253,7 @@ namespace helengine::wiiu {
         SubmitRoundedRect(shape);
     }
 
-    /// Accepts a sprite draw request without issuing software rasterization yet.
+    /// Accepts a sprite draw request without issuing rasterization yet.
     void WiiURenderManager2D::DrawSprite(::ISpriteDrawable2D* sprite) {
         if (sprite == nullptr || sprite->get_Parent() == nullptr || !sprite->get_Parent()->get_IsHierarchyEnabled()) {
             return;
@@ -230,7 +262,7 @@ namespace helengine::wiiu {
         SubmitSprite(sprite);
     }
 
-    /// Accepts a text draw request without issuing software rasterization yet.
+    /// Accepts a text draw request without issuing rasterization yet.
     void WiiURenderManager2D::DrawText(::ITextDrawable2D* text) {
         if (text == nullptr || text->get_Parent() == nullptr || !text->get_Parent()->get_IsHierarchyEnabled()) {
             return;
@@ -266,8 +298,8 @@ namespace helengine::wiiu {
         TextQueue.push_back(WiiUTextDrawCommand { text });
     }
 
-    /// Executes one command list generated from the active camera render queue into the attached software surfaces.
-    void WiiURenderManager2D::ExecuteCommandList(RenderCommandList2D* commandList, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
+    /// Captures one command list generated from the active camera render queue into the current GX2 frame.
+    void WiiURenderManager2D::CaptureCommandList(RenderCommandList2D* commandList, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
         if (commandList == nullptr) {
             throw new ArgumentNullException("commandList");
         }
@@ -297,17 +329,17 @@ namespace helengine::wiiu {
                 }
                 case RenderCommand2DType::TexturedQuad: {
                     int32_t payloadIndex = commandList->GetTexturedQuadPayloadIndex(commandIndex);
-                    ExecuteTexturedQuadCommand(commandList, payloadIndex, currentClipRect, logicalFrameWidth, logicalFrameHeight);
+                    CaptureTexturedQuadCommand(commandList, payloadIndex, currentClipRect, logicalFrameWidth, logicalFrameHeight);
                     break;
                 }
                 case RenderCommand2DType::GlyphQuad: {
                     int32_t payloadIndex = commandList->GetGlyphQuadPayloadIndex(commandIndex);
-                    ExecuteGlyphQuadCommand(commandList, payloadIndex, currentClipRect, logicalFrameWidth, logicalFrameHeight);
+                    CaptureGlyphQuadCommand(commandList, payloadIndex, currentClipRect, logicalFrameWidth, logicalFrameHeight);
                     break;
                 }
                 case RenderCommand2DType::RoundedRect: {
                     int32_t payloadIndex = commandList->GetRoundedRectPayloadIndex(commandIndex);
-                    ExecuteRoundedRectCommand(commandList, payloadIndex, currentClipRect, logicalFrameWidth, logicalFrameHeight);
+                    CaptureRoundedRectCommand(commandList, payloadIndex, currentClipRect, logicalFrameWidth, logicalFrameHeight);
                     break;
                 }
                 default:
@@ -316,8 +348,8 @@ namespace helengine::wiiu {
         }
     }
 
-    /// Executes one textured sprite command from the generated 2D command list.
-    void WiiURenderManager2D::ExecuteTexturedQuadCommand(RenderCommandList2D* commandList, int32_t payloadIndex, float4 clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
+    /// Captures one textured sprite command from the generated 2D command list.
+    void WiiURenderManager2D::CaptureTexturedQuadCommand(RenderCommandList2D* commandList, int32_t payloadIndex, float4 clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
         if (commandList == nullptr) {
             throw new ArgumentNullException("commandList");
         }
@@ -332,7 +364,7 @@ namespace helengine::wiiu {
             return;
         }
 
-        DrawTexturedQuad2D(
+        CaptureTexturedQuad2D(
             bounds.X,
             bounds.Y,
             bounds.Z,
@@ -346,8 +378,8 @@ namespace helengine::wiiu {
             logicalFrameHeight);
     }
 
-    /// Executes one text glyph command from the generated 2D command list.
-    void WiiURenderManager2D::ExecuteGlyphQuadCommand(RenderCommandList2D* commandList, int32_t payloadIndex, float4 clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
+    /// Captures one text glyph command from the generated 2D command list.
+    void WiiURenderManager2D::CaptureGlyphQuadCommand(RenderCommandList2D* commandList, int32_t payloadIndex, float4 clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
         if (commandList == nullptr) {
             throw new ArgumentNullException("commandList");
         }
@@ -362,7 +394,7 @@ namespace helengine::wiiu {
             return;
         }
 
-        DrawTexturedQuad2D(
+        CaptureTexturedQuad2D(
             bounds.X,
             bounds.Y,
             bounds.Z,
@@ -376,8 +408,8 @@ namespace helengine::wiiu {
             logicalFrameHeight);
     }
 
-    /// Executes one rounded-rectangle command from the generated 2D command list.
-    void WiiURenderManager2D::ExecuteRoundedRectCommand(RenderCommandList2D* commandList, int32_t payloadIndex, float4 clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
+    /// Captures one rounded-rectangle command from the generated 2D command list.
+    void WiiURenderManager2D::CaptureRoundedRectCommand(RenderCommandList2D* commandList, int32_t payloadIndex, float4 clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
         if (commandList == nullptr) {
             throw new ArgumentNullException("commandList");
         }
@@ -389,40 +421,70 @@ namespace helengine::wiiu {
 
         float borderThickness = commandList->GetRoundedRectBorderThickness(payloadIndex);
         borderThickness = std::max(0.0f, std::min(borderThickness, std::min(bounds.Z, bounds.W) * 0.5f));
-        DrawSolidQuad2D(bounds.X, bounds.Y, bounds.Z, bounds.W, commandList->GetRoundedRectFillColor(payloadIndex), clipRect, logicalFrameWidth, logicalFrameHeight);
+        CaptureSolidQuad2D(bounds.X, bounds.Y, bounds.Z, bounds.W, commandList->GetRoundedRectFillColor(payloadIndex), clipRect, logicalFrameWidth, logicalFrameHeight);
         if (borderThickness <= 0.0f) {
             return;
         }
 
         byte4 borderColor = commandList->GetRoundedRectBorderColor(payloadIndex);
-        DrawSolidQuad2D(bounds.X, bounds.Y, bounds.Z, borderThickness, borderColor, clipRect, logicalFrameWidth, logicalFrameHeight);
-        DrawSolidQuad2D(bounds.X, bounds.Y + bounds.W - borderThickness, bounds.Z, borderThickness, borderColor, clipRect, logicalFrameWidth, logicalFrameHeight);
-        DrawSolidQuad2D(bounds.X, bounds.Y + borderThickness, borderThickness, std::max(0.0f, bounds.W - (borderThickness * 2.0f)), borderColor, clipRect, logicalFrameWidth, logicalFrameHeight);
-        DrawSolidQuad2D(bounds.X + bounds.Z - borderThickness, bounds.Y + borderThickness, borderThickness, std::max(0.0f, bounds.W - (borderThickness * 2.0f)), borderColor, clipRect, logicalFrameWidth, logicalFrameHeight);
+        CaptureSolidQuad2D(bounds.X, bounds.Y, bounds.Z, borderThickness, borderColor, clipRect, logicalFrameWidth, logicalFrameHeight);
+        CaptureSolidQuad2D(bounds.X, bounds.Y + bounds.W - borderThickness, bounds.Z, borderThickness, borderColor, clipRect, logicalFrameWidth, logicalFrameHeight);
+        CaptureSolidQuad2D(bounds.X, bounds.Y + borderThickness, borderThickness, std::max(0.0f, bounds.W - (borderThickness * 2.0f)), borderColor, clipRect, logicalFrameWidth, logicalFrameHeight);
+        CaptureSolidQuad2D(bounds.X + bounds.Z - borderThickness, bounds.Y + borderThickness, borderThickness, std::max(0.0f, bounds.W - (borderThickness * 2.0f)), borderColor, clipRect, logicalFrameWidth, logicalFrameHeight);
     }
 
-    /// Draws one solid logical-space rectangle into both attached software surfaces.
-    void WiiURenderManager2D::DrawSolidQuad2D(float x, float y, float width, float height, byte4 color, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
-        DrawSolidQuadToSurface(TvSurface, x, y, width, height, color, clipRect, logicalFrameWidth, logicalFrameHeight);
-        DrawSolidQuadToSurface(DrcSurface, x, y, width, height, color, clipRect, logicalFrameWidth, logicalFrameHeight);
-    }
-
-    /// Draws one textured logical-space rectangle into both attached software surfaces.
-    void WiiURenderManager2D::DrawTexturedQuad2D(float x, float y, float width, float height, float rotationRadians, const float4& sourceRect, byte4 color, RuntimeTexture* texture, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
-        if (texture == nullptr) {
-            throw new ArgumentNullException("texture");
-        }
-
-        WiiUTexturePixelData* texturePixelData = FindTexturePixelData(texture);
-        if (texturePixelData == nullptr || texturePixelData->Pixels.empty()) {
+    /// Captures one solid logical-space rectangle into the current GX2 frame.
+    void WiiURenderManager2D::CaptureSolidQuad2D(float x, float y, float width, float height, byte4 color, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
+        if (width <= 0.0f || height <= 0.0f || logicalFrameWidth == 0U || logicalFrameHeight == 0U) {
             return;
         }
 
-        DrawTexturedQuadToSurface(TvSurface, x, y, width, height, rotationRadians, sourceRect, color, *texturePixelData, clipRect, logicalFrameWidth, logicalFrameHeight);
-        DrawTexturedQuadToSurface(DrcSurface, x, y, width, height, rotationRadians, sourceRect, color, *texturePixelData, clipRect, logicalFrameWidth, logicalFrameHeight);
+        WiiUGx2QuadCommand command {};
+        command.X = x;
+        command.Y = y;
+        command.Width = width;
+        command.Height = height;
+        command.RotationRadians = 0.0f;
+        command.SourceX = 0.0f;
+        command.SourceY = 0.0f;
+        command.SourceWidth = 1.0f;
+        command.SourceHeight = 1.0f;
+        command.Color = WiiUGx2Color { color.X, color.Y, color.Z, color.W };
+        command.ClipRect = WiiUGx2ClipRect { clipRect.X, clipRect.Y, clipRect.Z, clipRect.W };
+        command.TextureHandle = &SolidWhiteTextureHandle;
+        CurrentFrame.AddQuad(command);
     }
 
-    /// Returns one packed texture record for the supplied runtime texture or null when it is unknown to the renderer.
+    /// Captures one textured logical-space rectangle into the current GX2 frame.
+    void WiiURenderManager2D::CaptureTexturedQuad2D(float x, float y, float width, float height, float rotationRadians, const float4& sourceRect, byte4 color, RuntimeTexture* texture, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
+        if (texture == nullptr) {
+            throw new ArgumentNullException("texture");
+        } else if (width <= 0.0f || height <= 0.0f || logicalFrameWidth == 0U || logicalFrameHeight == 0U) {
+            return;
+        }
+
+        WiiUTexturePixelData* texturePixelData = FindTexturePixelData(texture);
+        if (texturePixelData == nullptr) {
+            return;
+        }
+
+        WiiUGx2QuadCommand command {};
+        command.X = x;
+        command.Y = y;
+        command.Width = width;
+        command.Height = height;
+        command.RotationRadians = rotationRadians;
+        command.SourceX = sourceRect.X;
+        command.SourceY = sourceRect.Y;
+        command.SourceWidth = sourceRect.Z;
+        command.SourceHeight = sourceRect.W;
+        command.Color = WiiUGx2Color { color.X, color.Y, color.Z, color.W };
+        command.ClipRect = WiiUGx2ClipRect { clipRect.X, clipRect.Y, clipRect.Z, clipRect.W };
+        command.TextureHandle = &texturePixelData->Gx2TextureHandle;
+        CurrentFrame.AddQuad(command);
+    }
+
+    /// Returns one GX2 texture record for the supplied runtime texture or null when it is unknown to the renderer.
     WiiUTexturePixelData* WiiURenderManager2D::FindTexturePixelData(RuntimeTexture* texture) {
         if (texture == nullptr) {
             throw new ArgumentNullException("texture");
@@ -570,103 +632,82 @@ namespace helengine::wiiu {
         throw new InvalidOperationException("Wii U runtime textures received an unsupported color format.");
     }
 
-    /// Draws one solid logical-space rectangle into one target software surface.
-    void WiiURenderManager2D::DrawSolidQuadToSurface(WiiUSoftwareSurface* surface, float x, float y, float width, float height, byte4 color, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
-        if (surface == nullptr || width <= 0.0f || height <= 0.0f || logicalFrameWidth == 0U || logicalFrameHeight == 0U) {
-            return;
+    /// Initializes one GX2 texture handle from decoded ARGB8888 pixels.
+    void WiiURenderManager2D::InitializeTextureHandle(WiiUGx2TextureHandle* textureHandle, std::uint32_t width, std::uint32_t height, const std::vector<std::uint32_t>& pixels) {
+        if (textureHandle == nullptr) {
+            throw new ArgumentNullException("textureHandle");
+        } else if (width == 0U || height == 0U) {
+            throw new InvalidOperationException("Wii U GX2 textures require nonzero dimensions.");
+        } else if (pixels.size() != static_cast<std::size_t>(width) * static_cast<std::size_t>(height)) {
+            throw new InvalidOperationException("Wii U GX2 texture upload requires one ARGB pixel per texture texel.");
         }
 
-        const double clippedLeft = std::max(static_cast<double>(x), static_cast<double>(clipRect.X));
-        const double clippedTop = std::max(static_cast<double>(y), static_cast<double>(clipRect.Y));
-        const double clippedRight = std::min(static_cast<double>(x) + static_cast<double>(width), static_cast<double>(clipRect.X) + static_cast<double>(clipRect.Z));
-        const double clippedBottom = std::min(static_cast<double>(y) + static_cast<double>(height), static_cast<double>(clipRect.Y) + static_cast<double>(clipRect.W));
-        if (clippedRight <= clippedLeft || clippedBottom <= clippedTop) {
-            return;
+        std::memset(&textureHandle->Texture, 0, sizeof(textureHandle->Texture));
+        std::memset(&textureHandle->Sampler, 0, sizeof(textureHandle->Sampler));
+
+        textureHandle->Texture.surface.use = GX2_SURFACE_USE_TEXTURE;
+        textureHandle->Texture.surface.dim = GX2_SURFACE_DIM_TEXTURE_2D;
+        textureHandle->Texture.surface.width = width;
+        textureHandle->Texture.surface.height = height;
+        textureHandle->Texture.surface.depth = 1U;
+        textureHandle->Texture.surface.mipLevels = 1U;
+        textureHandle->Texture.surface.format = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;
+        textureHandle->Texture.surface.aa = GX2_AA_MODE1X;
+        textureHandle->Texture.surface.tileMode = GX2_TILE_MODE_LINEAR_ALIGNED;
+        GX2CalcSurfaceSizeAndAlignment(&textureHandle->Texture.surface);
+        if (!GX2RCreateSurface(&textureHandle->Texture.surface, TextureSurfaceFlags)) {
+            throw new InvalidOperationException("Wii U GX2 texture allocation failed.");
         }
 
-        const double surfaceScaleX = static_cast<double>(surface->GetWidth()) / static_cast<double>(logicalFrameWidth);
-        const double surfaceScaleY = static_cast<double>(surface->GetHeight()) / static_cast<double>(logicalFrameHeight);
-        const int startX = std::max(0, static_cast<int>(std::floor(clippedLeft * surfaceScaleX)));
-        const int startY = std::max(0, static_cast<int>(std::floor(clippedTop * surfaceScaleY)));
-        const int endX = std::min(static_cast<int>(surface->GetWidth()), static_cast<int>(std::ceil(clippedRight * surfaceScaleX)));
-        const int endY = std::min(static_cast<int>(surface->GetHeight()), static_cast<int>(std::ceil(clippedBottom * surfaceScaleY)));
-        const std::uint32_t argbColor = PackArgb(color.X, color.Y, color.Z, color.W);
+        textureHandle->Texture.viewFirstMip = 0U;
+        textureHandle->Texture.viewNumMips = 1U;
+        textureHandle->Texture.viewFirstSlice = 0U;
+        textureHandle->Texture.viewNumSlices = 1U;
+        textureHandle->Texture.compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_G, GX2_SQ_SEL_B, GX2_SQ_SEL_A);
+        GX2InitTextureRegs(&textureHandle->Texture);
+        GX2InitSampler(&textureHandle->Sampler, GX2_TEX_CLAMP_MODE_CLAMP, GX2_TEX_XY_FILTER_MODE_LINEAR);
 
-        for (int surfaceY = startY; surfaceY < endY; surfaceY++) {
-            for (int surfaceX = startX; surfaceX < endX; surfaceX++) {
-                surface->BlendPixel(surfaceX, surfaceY, argbColor);
+        std::uint32_t* destinationPixels = static_cast<std::uint32_t*>(GX2RLockSurfaceEx(&textureHandle->Texture.surface, 0, NoGx2rResourceFlags));
+        if (destinationPixels == nullptr) {
+            DestroyTextureHandle(textureHandle);
+            throw new InvalidOperationException("Wii U GX2 texture surface lock failed.");
+        }
+
+        const std::uint32_t destinationPitch = textureHandle->Texture.surface.pitch;
+        for (std::uint32_t row = 0U; row < height; row++) {
+            for (std::uint32_t column = 0U; column < width; column++) {
+                const std::uint32_t sourcePixel = pixels[(row * width) + column];
+                // PackArgb builds 0xAARRGGBB words, but the GX2 R8_G8_B8_A8 upload path needs one 0xRRGGBBAA word so sampled alpha stays aligned with authored transparency.
+                destinationPixels[(row * destinationPitch) + column] = (sourcePixel << 8U)
+                    | ((sourcePixel >> 24U) & 0x000000FFU);
             }
         }
+
+        GX2RUnlockSurfaceEx(&textureHandle->Texture.surface, 0, NoGx2rResourceFlags);
+        GX2RInvalidateSurface(&textureHandle->Texture.surface, 0, GX2R_RESOURCE_USAGE_CPU_WRITE);
+        GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, textureHandle->Texture.surface.image, textureHandle->Texture.surface.imageSize);
     }
 
-    /// Draws one textured logical-space rectangle into one target software surface.
-    void WiiURenderManager2D::DrawTexturedQuadToSurface(WiiUSoftwareSurface* surface, float x, float y, float width, float height, float rotationRadians, const float4& sourceRect, byte4 color, const WiiUTexturePixelData& texturePixelData, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
-        if (surface == nullptr || width <= 0.0f || height <= 0.0f || logicalFrameWidth == 0U || logicalFrameHeight == 0U || texturePixelData.Width == 0U || texturePixelData.Height == 0U || texturePixelData.Pixels.empty()) {
+    /// Releases one GX2 texture handle owned by the Wii U 2D bridge.
+    void WiiURenderManager2D::DestroyTextureHandle(WiiUGx2TextureHandle* textureHandle) {
+        if (textureHandle == nullptr) {
             return;
         }
 
-        const double clippedLeft = std::max(static_cast<double>(x), static_cast<double>(clipRect.X));
-        const double clippedTop = std::max(static_cast<double>(y), static_cast<double>(clipRect.Y));
-        const double clippedRight = std::min(static_cast<double>(x) + static_cast<double>(width), static_cast<double>(clipRect.X) + static_cast<double>(clipRect.Z));
-        const double clippedBottom = std::min(static_cast<double>(y) + static_cast<double>(height), static_cast<double>(clipRect.Y) + static_cast<double>(clipRect.W));
-        if (clippedRight <= clippedLeft || clippedBottom <= clippedTop) {
-            return;
+        if (textureHandle->Texture.surface.image != nullptr) {
+            GX2RDestroySurfaceEx(&textureHandle->Texture.surface, NoGx2rResourceFlags);
         }
 
-        static_cast<void>(rotationRadians);
-
-        const double surfaceScaleX = static_cast<double>(surface->GetWidth()) / static_cast<double>(logicalFrameWidth);
-        const double surfaceScaleY = static_cast<double>(surface->GetHeight()) / static_cast<double>(logicalFrameHeight);
-        const double scaledX = static_cast<double>(x) * surfaceScaleX;
-        const double scaledY = static_cast<double>(y) * surfaceScaleY;
-        const double scaledWidth = static_cast<double>(width) * surfaceScaleX;
-        const double scaledHeight = static_cast<double>(height) * surfaceScaleY;
-        if (scaledWidth <= 0.0 || scaledHeight <= 0.0) {
-            return;
-        }
-
-        const int startX = std::max(0, static_cast<int>(std::floor(clippedLeft * surfaceScaleX)));
-        const int startY = std::max(0, static_cast<int>(std::floor(clippedTop * surfaceScaleY)));
-        const int endX = std::min(static_cast<int>(surface->GetWidth()), static_cast<int>(std::ceil(clippedRight * surfaceScaleX)));
-        const int endY = std::min(static_cast<int>(surface->GetHeight()), static_cast<int>(std::ceil(clippedBottom * surfaceScaleY)));
-
-        for (int surfaceY = startY; surfaceY < endY; surfaceY++) {
-            for (int surfaceX = startX; surfaceX < endX; surfaceX++) {
-                const double normalizedX = ((static_cast<double>(surfaceX) + 0.5) - scaledX) / scaledWidth;
-                const double normalizedY = ((static_cast<double>(surfaceY) + 0.5) - scaledY) / scaledHeight;
-                if (normalizedX < 0.0 || normalizedX > 1.0 || normalizedY < 0.0 || normalizedY > 1.0) {
-                    continue;
-                }
-
-                const double sourcePixelX = (static_cast<double>(sourceRect.X) + (normalizedX * static_cast<double>(sourceRect.Z))) * static_cast<double>(texturePixelData.Width);
-                const double sourcePixelY = (static_cast<double>(sourceRect.Y) + (normalizedY * static_cast<double>(sourceRect.W))) * static_cast<double>(texturePixelData.Height);
-                const std::uint32_t sampleX = static_cast<std::uint32_t>(std::clamp(static_cast<int32_t>(sourcePixelX), 0, static_cast<int32_t>(texturePixelData.Width) - 1));
-                const std::uint32_t sampleY = static_cast<std::uint32_t>(std::clamp(static_cast<int32_t>(sourcePixelY), 0, static_cast<int32_t>(texturePixelData.Height) - 1));
-                const std::size_t sampleIndex = static_cast<std::size_t>(sampleY) * static_cast<std::size_t>(texturePixelData.Width) + sampleX;
-                surface->BlendPixel(surfaceX, surfaceY, ApplyTint(texturePixelData.Pixels[sampleIndex], color));
-            }
-        }
+        std::memset(&textureHandle->Texture, 0, sizeof(textureHandle->Texture));
+        std::memset(&textureHandle->Sampler, 0, sizeof(textureHandle->Sampler));
     }
 
-    /// Packs one 8-bit RGBA color into the ARGB8888 layout used by the software surfaces.
+    /// Packs one 8-bit RGBA color into the ARGB8888 layout used by texture decode.
     std::uint32_t WiiURenderManager2D::PackArgb(std::uint8_t red, std::uint8_t green, std::uint8_t blue, std::uint8_t alpha) {
         return (static_cast<std::uint32_t>(alpha) << 24U)
             | (static_cast<std::uint32_t>(red) << 16U)
             | (static_cast<std::uint32_t>(green) << 8U)
             | static_cast<std::uint32_t>(blue);
-    }
-
-    /// Applies one byte4 tint to one packed ARGB8888 source pixel.
-    std::uint32_t WiiURenderManager2D::ApplyTint(std::uint32_t argbColor, byte4 color) {
-        const std::uint32_t sourceAlpha = (argbColor >> 24U) & 0xFFU;
-        const std::uint32_t sourceRed = (argbColor >> 16U) & 0xFFU;
-        const std::uint32_t sourceGreen = (argbColor >> 8U) & 0xFFU;
-        const std::uint32_t sourceBlue = argbColor & 0xFFU;
-        const std::uint8_t tintedAlpha = static_cast<std::uint8_t>((sourceAlpha * color.W) / 0xFFU);
-        const std::uint8_t tintedRed = static_cast<std::uint8_t>((sourceRed * color.X) / 0xFFU);
-        const std::uint8_t tintedGreen = static_cast<std::uint8_t>((sourceGreen * color.Y) / 0xFFU);
-        const std::uint8_t tintedBlue = static_cast<std::uint8_t>((sourceBlue * color.Z) / 0xFFU);
-        return PackArgb(tintedRed, tintedGreen, tintedBlue, tintedAlpha);
     }
 
     /// Expands one 4-bit color channel into 8-bit precision.
@@ -718,7 +759,6 @@ namespace helengine::wiiu {
         if (paletteColors != nullptr && paletteColors != Array<uint8_t>::Empty()) {
             delete paletteColors;
         }
-        delete asset;
     }
 }
 

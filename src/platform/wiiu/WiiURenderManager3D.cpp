@@ -7,6 +7,7 @@
 
 #include "Asset.hpp"
 #include "AssetSerializer.hpp"
+#include "IContentStreamSource.hpp"
 #include "ModelAsset.hpp"
 #include "RuntimeMaterial.hpp"
 #include "runtime/finally.hpp"
@@ -15,6 +16,7 @@
 #include "runtime/native_string.hpp"
 #include "system/io/file.hpp"
 #include "platform/wiiu/WiiURuntimeModel.hpp"
+#include <coreinit/debug.h>
 
 namespace helengine::wiiu {
     /// Creates one Wii U 3D bridge with no cached runtime model.
@@ -46,7 +48,16 @@ namespace helengine::wiiu {
         return CreatePlaceholderRuntimeMaterial(cookedAssetPath);
     }
 
-    /// Builds one placeholder runtime material from a raw authored material path.
+    /// Builds one placeholder runtime material from a cooked Wii U material asset path through the content-stream-based generated-core contract.
+    ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {
+        if (contentStreamSource == nullptr) {
+            throw new ArgumentNullException("contentStreamSource");
+        }
+
+        return BuildMaterialFromCooked(cookedAssetPath);
+    }
+
+    /// Builds one placeholder runtime material from a raw authored material path through the legacy generated-core contract that still passes a content root path.
     ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string contentRootPath, std::string materialAssetPath) {
         if (assetContentManager == nullptr) {
             throw new ArgumentNullException("assetContentManager");
@@ -54,6 +65,15 @@ namespace helengine::wiiu {
 
         if (String::IsNullOrWhiteSpace(contentRootPath)) {
             throw new ArgumentException("Content root path must be provided.", "contentRootPath");
+        }
+
+        return BuildMaterialFromRawAsset(assetContentManager, materialAssetPath);
+    }
+
+    /// Builds one placeholder runtime material from a raw authored material path through the current generated-core contract.
+    ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string materialAssetPath) {
+        if (assetContentManager == nullptr) {
+            throw new ArgumentNullException("assetContentManager");
         }
 
         if (String::IsNullOrWhiteSpace(materialAssetPath)) {
@@ -70,6 +90,34 @@ namespace helengine::wiiu {
         }
 
         FileStream* stream = File::OpenRead(cookedAssetPath.c_str());
+        auto streamGuard = he_cpp_make_scope_exit([&]() {
+            if (stream != nullptr) {
+                stream->Dispose();
+                delete stream;
+            }
+        });
+
+        Asset* asset = AssetSerializer::Deserialize(stream);
+        ModelAsset* modelAsset = he_cpp_try_cast<ModelAsset>(asset);
+        if (modelAsset == nullptr) {
+            delete asset;
+            throw new InvalidOperationException("Wii U cooked model payload did not deserialize into a ModelAsset.");
+        }
+
+        auto modelAssetGuard = he_cpp_make_scope_exit([&]() {
+            ReleaseTransientModelAsset(modelAsset);
+            delete modelAsset;
+        });
+        return BuildRuntimeModelFromAsset(modelAsset);
+    }
+
+    /// Builds one runtime model from a cooked Wii U model asset path through the content-stream-based generated-core contract.
+    ::RuntimeModel* WiiURenderManager3D::BuildModelFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {
+        if (contentStreamSource == nullptr) {
+            throw new ArgumentNullException("contentStreamSource");
+        }
+
+        ::Stream* stream = contentStreamSource->OpenRead(cookedAssetPath);
         auto streamGuard = he_cpp_make_scope_exit([&]() {
             if (stream != nullptr) {
                 stream->Dispose();
@@ -136,9 +184,42 @@ namespace helengine::wiiu {
         std::vector<float> positionData;
         std::vector<std::uint16_t> indexData;
         const int32_t positionCount = data->Positions->get_Length();
+        float minX = 0.0f;
+        float minY = 0.0f;
+        float minZ = 0.0f;
+        float maxX = 0.0f;
+        float maxY = 0.0f;
+        float maxZ = 0.0f;
         positionData.reserve(static_cast<std::size_t>(positionCount) * 4U);
         for (int32_t positionIndex = 0; positionIndex < positionCount; positionIndex++) {
             const float3 position = (*data->Positions)[positionIndex];
+            if (positionIndex == 0) {
+                minX = position.X;
+                minY = position.Y;
+                minZ = position.Z;
+                maxX = position.X;
+                maxY = position.Y;
+                maxZ = position.Z;
+            } else {
+                if (position.X < minX) {
+                    minX = position.X;
+                }
+                if (position.Y < minY) {
+                    minY = position.Y;
+                }
+                if (position.Z < minZ) {
+                    minZ = position.Z;
+                }
+                if (position.X > maxX) {
+                    maxX = position.X;
+                }
+                if (position.Y > maxY) {
+                    maxY = position.Y;
+                }
+                if (position.Z > maxZ) {
+                    maxZ = position.Z;
+                }
+            }
             positionData.push_back(position.X);
             positionData.push_back(position.Y);
             positionData.push_back(position.Z);
@@ -169,6 +250,16 @@ namespace helengine::wiiu {
 
         WiiURuntimeModel* runtimeModel = new WiiURuntimeModel();
         runtimeModel->SetGeometry(std::move(positionData), std::move(indexData));
+        OSReport(
+            "[WiiUModel] positions=%d indices=%u boundsMin=(%.3f, %.3f, %.3f) boundsMax=(%.3f, %.3f, %.3f)\n",
+            positionCount,
+            static_cast<unsigned int>(runtimeModel->GetIndexData().size()),
+            minX,
+            minY,
+            minZ,
+            maxX,
+            maxY,
+            maxZ);
         LatestRuntimeModel = runtimeModel;
         return runtimeModel;
     }

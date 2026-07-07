@@ -4,6 +4,8 @@
 
 #include "RenderManager3D.hpp"
 
+class IContentStreamSource;
+
 namespace helengine::wiiu {
     class WiiURuntimeModel;
 
@@ -19,14 +21,23 @@ namespace helengine::wiiu {
         /// Builds one placeholder runtime material from a cooked platform material asset record.
         ::RuntimeMaterial* BuildMaterialFromCooked(::PlatformMaterialAsset* materialAsset) override;
 
-        /// Builds one placeholder runtime material from a cooked Wii U material asset path.
-        ::RuntimeMaterial* BuildMaterialFromCooked(std::string cookedAssetPath) override;
+        /// Builds one placeholder runtime material from a cooked Wii U material asset path using the legacy path-based generated-core contract.
+        ::RuntimeMaterial* BuildMaterialFromCooked(std::string cookedAssetPath);
 
-        /// Builds one placeholder runtime material from a raw authored material path.
-        ::RuntimeMaterial* BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string contentRootPath, std::string materialAssetPath) override;
+        /// Builds one placeholder runtime material from a cooked Wii U material asset path using the current content-stream-based generated-core contract.
+        ::RuntimeMaterial* BuildMaterialFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource);
 
-        /// Builds one placeholder runtime model from a cooked Wii U model asset path.
-        ::RuntimeModel* BuildModelFromCooked(std::string cookedAssetPath) override;
+        /// Builds one placeholder runtime material from a raw authored material path using the legacy generated-core contract that still passes a content root path.
+        ::RuntimeMaterial* BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string contentRootPath, std::string materialAssetPath);
+
+        /// Builds one placeholder runtime material from a raw authored material path using the current generated-core contract.
+        ::RuntimeMaterial* BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string materialAssetPath);
+
+        /// Builds one placeholder runtime model from a cooked Wii U model asset path using the legacy path-based generated-core contract.
+        ::RuntimeModel* BuildModelFromCooked(std::string cookedAssetPath);
+
+        /// Builds one placeholder runtime model from a cooked Wii U model asset path using the current content-stream-based generated-core contract.
+        ::RuntimeModel* BuildModelFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource);
 
         /// Builds one placeholder runtime model from a raw authored model asset.
         ::RuntimeModel* BuildModelFromRaw(::ModelAsset* data) override;

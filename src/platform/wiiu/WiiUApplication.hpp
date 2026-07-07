@@ -5,17 +5,19 @@
 #include <coreinit/screen.h>
 
 #include "platform/wiiu/WiiUBootPhase.hpp"
-#include "platform/wiiu/WiiUSoftwareSurface.hpp"
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
 class Core;
+class HostFileSystemContentStreamSource;
 class PlatformInfo;
+class StandardPlatformInputConfiguration;
 #endif
 
 namespace helengine::wiiu {
     class WiiUGx2Presenter;
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
+    class WiiUInputBackend;
     class WiiURenderManager2D;
     class WiiURenderManager3D;
 #endif
@@ -41,6 +43,9 @@ namespace helengine::wiiu {
 
         /// Initializes the Wii U GX2 presenter used for steady-state rendered output.
         bool InitializeGx2Presenter();
+
+        /// Builds the generated standard-platform input configuration emitted by the Wii U builder so gameplay Accept and Return actions work at runtime.
+        StandardPlatformInputConfiguration* CreateStandardPlatformInputConfiguration() const;
 
         /// Advances one generated-core update tick for the packaged Wii U runtime.
         bool UpdateEngineCore();
@@ -72,12 +77,6 @@ namespace helengine::wiiu {
         /// Stores the allocated GamePad screen backing buffer.
         void* DrcBuffer;
 
-        /// Stores the TV software surface used by the minimal Wii U menu renderer.
-        WiiUSoftwareSurface* TvSurface;
-
-        /// Stores the DRC software surface used by the minimal Wii U menu renderer.
-        WiiUSoftwareSurface* DrcSurface;
-
         /// Stores the current boot phase for the application loop.
         WiiUBootPhase BootPhase;
 
@@ -106,8 +105,14 @@ namespace helengine::wiiu {
         /// Stores the Wii U 2D render bridge used by the generated core.
         WiiURenderManager2D* EngineRenderManager2D;
 
+        /// Stores the Wii U input backend used by the generated core.
+        WiiUInputBackend* EngineInputBackend;
+
         /// Stores the current Wii U platform information record exposed to gameplay code.
         PlatformInfo* EnginePlatformInfo;
+
+        /// Stores the content stream source that backs core-owned runtime asset reads for the packaged Wii U build.
+        HostFileSystemContentStreamSource* EngineContentStreamSource;
 #endif
     };
 }

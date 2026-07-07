@@ -352,6 +352,28 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
+    /// Ensures the Wii U host assigns one generated-core content stream source into initialization options instead of using the removed content-root-path seam.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_WiresHostFileSystemContentStreamSourceIntoCoreInitialization() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.Contains("class HostFileSystemContentStreamSource;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("HostFileSystemContentStreamSource* EngineContentStreamSource;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"HostFileSystemContentStreamSource.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("CoreInitializationOptions* initializationOptions = new CoreInitializationOptions();", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("EngineContentStreamSource = new HostFileSystemContentStreamSource(packagedContentRootPath);", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("initializationOptions->ContentStreamSource = EngineContentStreamSource;", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("EngineCore = new Core(initializationOptions);", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("EngineCore = new Core();", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("EngineCore->get_InitializationOptions()", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("initializationOptions->ContentRootPath = packagedContentRootPath;", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("delete EngineContentStreamSource;", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures each Wii U input capture returns a fresh gamepad snapshot so previous-frame edge detection does not alias the current-frame state.
     /// </summary>
     [Fact]
@@ -519,5 +541,34 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("gl_Position = aPosition;", shaderVertexSource, StringComparison.Ordinal);
         Assert.DoesNotContain("TransformBlock", shaderVertexSource, StringComparison.Ordinal);
         Assert.Contains("FragColor = VertexColor;", shaderPixelSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the Wii U renderer bridge exposes the current content-stream-based cooked asset signatures while retaining the legacy path-based seam for stale generated-core workspaces.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_AcceptsContentStreamSourceAcrossCookedWiiURuntimeAssetBuilds() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string renderManager2DHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager2D.hpp"));
+        string renderManager2DSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager2D.cpp"));
+        string renderManager3DHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.hpp"));
+        string renderManager3DSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.cpp"));
+
+        Assert.Contains("class IContentStreamSource;", renderManager2DHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("::RuntimeTexture* BuildTextureFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource);", renderManager2DHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("::RuntimeTexture* WiiURenderManager2D::BuildTextureFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {", renderManager2DSource, StringComparison.Ordinal);
+        Assert.Contains("::Stream* stream = contentStreamSource->OpenRead(cookedAssetPath);", renderManager2DSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("return BuildTextureFromCooked(cookedAssetPath);", renderManager2DSource, StringComparison.Ordinal);
+        Assert.Contains("class IContentStreamSource;", renderManager3DHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("::RuntimeMaterial* BuildMaterialFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource);", renderManager3DHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("::RuntimeMaterial* BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string materialAssetPath);", renderManager3DHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("::RuntimeModel* BuildModelFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource);", renderManager3DHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {", renderManager3DSource, StringComparison.Ordinal);
+        Assert.Contains("return BuildMaterialFromCooked(cookedAssetPath);", renderManager3DSource, StringComparison.Ordinal);
+        Assert.Contains("::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string materialAssetPath) {", renderManager3DSource, StringComparison.Ordinal);
+        Assert.Contains("return BuildMaterialFromRawAsset(assetContentManager, materialAssetPath);", renderManager3DSource, StringComparison.Ordinal);
+        Assert.Contains("::RuntimeModel* WiiURenderManager3D::BuildModelFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {", renderManager3DSource, StringComparison.Ordinal);
+        Assert.Contains("::Stream* stream = contentStreamSource->OpenRead(cookedAssetPath);", renderManager3DSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("return BuildModelFromCooked(cookedAssetPath);", renderManager3DSource, StringComparison.Ordinal);
     }
 }
