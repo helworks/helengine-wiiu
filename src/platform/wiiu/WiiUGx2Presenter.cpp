@@ -81,6 +81,7 @@ namespace helengine::wiiu {
         constexpr std::uint32_t SceneCubeVertexElementSize = 4U * sizeof(float);
         constexpr std::uint32_t SceneCubeIndexElementSize = sizeof(std::uint16_t);
         constexpr std::uint32_t SceneCubeTransformSizeInBytes = 16U * sizeof(float);
+        constexpr double SceneDrivenFieldOfViewRadians = 1.0;
         constexpr std::uint32_t UiQuadVertexCount = 6U;
         constexpr std::uint32_t UiQuadPositionElementSize = 2U * sizeof(float);
         constexpr std::uint32_t UiQuadTexCoordElementSize = 2U * sizeof(float);
@@ -263,6 +264,23 @@ namespace helengine::wiiu {
 
         RenderFrameToColorBuffer(TvContextState, &TvColorBuffer, frame, TvSurfaceWidth, TvSurfaceHeight);
         RenderFrameToColorBuffer(DrcContextState, &DrcColorBuffer, frame, DrcSurfaceWidth, DrcSurfaceHeight);
+        PresentScanBuffers();
+    }
+
+    /// Renders and presents one captured Wii U 3D frame plus the captured 2D overlay.
+    void WiiUGx2Presenter::RenderFrame(const WiiUGx23DRenderFrame& frame3D, const WiiUGx2RenderFrame& frame2D) {
+        if (!IsInitialized) {
+            throw std::runtime_error("Wii U GX2 presenter must be initialized before RenderFrame.");
+        } else if (!AreSceneCubeResourcesInitialized) {
+            throw std::runtime_error("Wii U GX2 presenter must initialize scene cube resources before 3D frame rendering.");
+        } else if (!AreUiQuadResourcesInitialized) {
+            throw std::runtime_error("Wii U GX2 presenter must initialize UI quad resources before 2D frame rendering.");
+        }
+
+        Render3DFrameToColorBuffer(TvContextState, &TvColorBuffer, frame3D, TvSurfaceWidth, TvSurfaceHeight);
+        RenderQuadCommandsToColorBuffer(frame2D, TvSurfaceWidth, TvSurfaceHeight);
+        Render3DFrameToColorBuffer(DrcContextState, &DrcColorBuffer, frame3D, DrcSurfaceWidth, DrcSurfaceHeight);
+        RenderQuadCommandsToColorBuffer(frame2D, DrcSurfaceWidth, DrcSurfaceHeight);
         PresentScanBuffers();
     }
 
@@ -1052,6 +1070,44 @@ namespace helengine::wiiu {
             static_cast<float>(clearColor.Blue) / 255.0f,
             static_cast<float>(clearColor.Alpha) / 255.0f);
 
+        RenderQuadCommandsToColorBuffer(frame, targetWidth, targetHeight);
+    }
+
+    /// Renders one captured 3D frame into one target color buffer.
+    void WiiUGx2Presenter::Render3DFrameToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer, const WiiUGx23DRenderFrame& frame, std::uint32_t targetWidth, std::uint32_t targetHeight) {
+        if (contextState == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires a valid 3D frame context state.");
+        } else if (colorBuffer == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires a valid 3D frame color buffer.");
+        }
+
+        const WiiUGx2Color& clearColor = frame.GetClearColor();
+        GX2SetContextState(contextState);
+        GX2SetColorBuffer(colorBuffer, GX2_RENDER_TARGET_0);
+        GX2SetViewport(0.0f, 0.0f, static_cast<float>(colorBuffer->surface.width), static_cast<float>(colorBuffer->surface.height), 0.0f, 1.0f);
+        GX2SetScissor(0, 0, colorBuffer->surface.width, colorBuffer->surface.height);
+        GX2ClearColor(
+            colorBuffer,
+            static_cast<float>(clearColor.Red) / 255.0f,
+            static_cast<float>(clearColor.Green) / 255.0f,
+            static_cast<float>(clearColor.Blue) / 255.0f,
+            static_cast<float>(clearColor.Alpha) / 255.0f);
+
+        if (!frame.GetHasCamera()) {
+            return;
+        }
+
+        const WiiUGx23DCameraState& cameraState = frame.GetCamera();
+        const std::vector<WiiUGx23DDrawCommand>& drawCommands = frame.GetDrawCommands();
+        for (std::size_t commandIndex = 0; commandIndex < drawCommands.size(); commandIndex++) {
+            Render3DDrawCommandToColorBuffer(drawCommands[commandIndex], cameraState, targetWidth, targetHeight);
+        }
+    }
+
+    /// Renders the captured 2D quad commands into the currently bound color buffer without clearing it first.
+    void WiiUGx2Presenter::RenderQuadCommandsToColorBuffer(const WiiUGx2RenderFrame& frame, std::uint32_t targetWidth, std::uint32_t targetHeight) {
+        const std::vector<WiiUGx2QuadCommand>& quadCommands = frame.GetQuadCommands();
+
         GX2SetFetchShader(&UiQuadShaderGroup.fetchShader);
         GX2SetVertexShader(UiQuadShaderGroup.vertexShader);
         GX2SetPixelShader(UiQuadShaderGroup.pixelShader);
@@ -1154,6 +1210,115 @@ namespace helengine::wiiu {
         for (std::size_t commandIndex = 0; commandIndex < quadCommands.size(); commandIndex++) {
             RenderQuadCommandToColorBuffer(quadCommands[commandIndex], static_cast<std::uint32_t>(commandIndex), LogicalFrameWidth, LogicalFrameHeight, targetWidth, targetHeight);
         }
+    }
+
+    /// Renders one captured 3D draw command into the currently bound color buffer.
+    void WiiUGx2Presenter::Render3DDrawCommandToColorBuffer(const WiiUGx23DDrawCommand& drawCommand, const WiiUGx23DCameraState& cameraState, std::uint32_t targetWidth, std::uint32_t targetHeight) {
+        if (drawCommand.RuntimeModel == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires one runtime model for 3D draw submission.");
+        } else if (targetWidth == 0U || targetHeight == 0U) {
+            return;
+        }
+
+        float4x4 projectionMatrix;
+        float4x4::CreatePerspectiveFieldOfView__out4(
+            static_cast<float>(SceneDrivenFieldOfViewRadians),
+            static_cast<float>(static_cast<double>(targetWidth) / static_cast<double>(targetHeight)),
+            cameraState.NearPlaneDistance,
+            cameraState.FarPlaneDistance,
+            projectionMatrix);
+
+        float4x4 worldMatrix = drawCommand.WorldMatrix;
+        float4x4 viewMatrix = cameraState.ViewMatrix;
+        float4x4 worldViewMatrix;
+        float4x4::Multiply__ref0_ref1_out2(worldMatrix, viewMatrix, worldViewMatrix);
+        float4x4 worldViewProjectionMatrix;
+        float4x4::Multiply__ref0_ref1_out2(worldViewMatrix, projectionMatrix, worldViewProjectionMatrix);
+
+        UploadSceneCubeMesh(*drawCommand.RuntimeModel, worldViewProjectionMatrix);
+
+        GX2SetFetchShader(&SceneCubeShaderGroup.fetchShader);
+        GX2SetVertexShader(SceneCubeShaderGroup.vertexShader);
+        GX2SetPixelShader(SceneCubeShaderGroup.pixelShader);
+        if (SceneCubeShaderGroup.vertexShader->uniformBlockCount != 0U && SceneCubeTransformBuffer.buffer != nullptr) {
+            GX2SetShaderMode(GX2_SHADER_MODE_UNIFORM_BLOCK);
+            GX2UniformBlock* transformUniformBlock = GX2GetVertexUniformBlock(SceneCubeShaderGroup.vertexShader, "TransformBlock");
+            if (transformUniformBlock == nullptr) {
+                throw std::runtime_error("Wii U GX2 presenter requires the scene cube TransformBlock uniform block before drawing.");
+            }
+
+            GX2RSetVertexUniformBlock(&SceneCubeTransformBuffer, transformUniformBlock->offset, 0);
+        }
+
+        GX2RSetAttributeBuffer(&SceneCubePositionBuffer, 0, SceneCubePositionBuffer.elemSize, 0);
+        GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, SceneCubeIndexCount, 0, 1);
+    }
+
+    /// Uploads one runtime model into the presenter-owned flat-color mesh path using one CPU-expanded clip-space transform.
+    void WiiUGx2Presenter::UploadSceneCubeMesh(const WiiURuntimeModel& runtimeModel, const float4x4& worldViewProjectionMatrix) {
+        const std::vector<float>& sourcePositionData = runtimeModel.GetPositionData();
+        const std::vector<std::uint16_t>& indexData = runtimeModel.GetIndexData();
+        if (!AreSceneCubeResourcesInitialized) {
+            throw std::runtime_error("Wii U GX2 presenter must initialize scene cube resources before uploading geometry.");
+        } else if (sourcePositionData.empty()) {
+            throw std::runtime_error("Wii U GX2 presenter requires non-empty scene cube position data.");
+        } else if (indexData.empty()) {
+            throw std::runtime_error("Wii U GX2 presenter requires non-empty scene cube index data.");
+        }
+
+        std::vector<float> expandedPositionData;
+        expandedPositionData.reserve(static_cast<std::size_t>(indexData.size()) * 4U);
+        for (std::uint16_t sourceIndex : indexData) {
+            const std::size_t sourceOffset = static_cast<std::size_t>(sourceIndex) * 4U;
+            if (sourceOffset + 3U >= sourcePositionData.size()) {
+                throw std::runtime_error("Wii U GX2 presenter received one scene cube index outside the uploaded position range.");
+            }
+
+            const float sourceX = sourcePositionData[sourceOffset + 0U];
+            const float sourceY = sourcePositionData[sourceOffset + 1U];
+            const float sourceZ = sourcePositionData[sourceOffset + 2U];
+            const float sourceW = sourcePositionData[sourceOffset + 3U];
+            const float clipX =
+                (sourceX * worldViewProjectionMatrix.M11) +
+                (sourceY * worldViewProjectionMatrix.M21) +
+                (sourceZ * worldViewProjectionMatrix.M31) +
+                (sourceW * worldViewProjectionMatrix.M41);
+            const float clipY =
+                (sourceX * worldViewProjectionMatrix.M12) +
+                (sourceY * worldViewProjectionMatrix.M22) +
+                (sourceZ * worldViewProjectionMatrix.M32) +
+                (sourceW * worldViewProjectionMatrix.M42);
+            const float clipZ =
+                (sourceX * worldViewProjectionMatrix.M13) +
+                (sourceY * worldViewProjectionMatrix.M23) +
+                (sourceZ * worldViewProjectionMatrix.M33) +
+                (sourceW * worldViewProjectionMatrix.M43);
+            const float clipW =
+                (sourceX * worldViewProjectionMatrix.M14) +
+                (sourceY * worldViewProjectionMatrix.M24) +
+                (sourceZ * worldViewProjectionMatrix.M34) +
+                (sourceW * worldViewProjectionMatrix.M44);
+
+            expandedPositionData.push_back(clipX);
+            expandedPositionData.push_back(clipY);
+            expandedPositionData.push_back(clipZ);
+            expandedPositionData.push_back(clipW);
+        }
+
+        if (SceneCubePositionBuffer.buffer != nullptr) {
+            GX2RDestroyBufferEx(&SceneCubePositionBuffer, NoGx2rResourceFlags);
+            std::memset(&SceneCubePositionBuffer, 0, sizeof(SceneCubePositionBuffer));
+        }
+
+        if (SceneCubeIndexBuffer.buffer != nullptr) {
+            GX2RDestroyBufferEx(&SceneCubeIndexBuffer, NoGx2rResourceFlags);
+            std::memset(&SceneCubeIndexBuffer, 0, sizeof(SceneCubeIndexBuffer));
+        }
+
+        InitializeSceneCubeVertexBuffer(&SceneCubePositionBuffer, expandedPositionData.data(), static_cast<std::uint32_t>(expandedPositionData.size()));
+        InitializeSceneCubeIndexBuffer(&SceneCubeIndexBuffer, indexData.data(), static_cast<std::uint32_t>(indexData.size()));
+        SceneCubeIndexCount = static_cast<std::uint32_t>(expandedPositionData.size() / 4U);
+        IsSceneCubeMeshConfigured = true;
     }
 
     /// Renders one captured quad command into one target color buffer using the already-uploaded vertex data for the supplied quad index.

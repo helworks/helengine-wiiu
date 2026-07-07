@@ -12,6 +12,7 @@
 #include <whb/gfx.h>
 
 #include "platform/wiiu/WiiUGx2RenderFrame.hpp"
+#include "platform/wiiu/WiiUGx23DRenderFrame.hpp"
 #include "platform/wiiu/WiiUGx2TextureHandle.hpp"
 
 namespace helengine::wiiu {
@@ -31,6 +32,9 @@ namespace helengine::wiiu {
 
         /// Renders and presents one captured Wii U 2D frame.
         void RenderFrame(const WiiUGx2RenderFrame& frame);
+
+        /// Renders and presents one captured Wii U 3D frame plus the captured 2D overlay.
+        void RenderFrame(const WiiUGx23DRenderFrame& frame3D, const WiiUGx2RenderFrame& frame2D);
 
         /// Renders one presenter-owned pure GX2 clear-only frame for early bring-up verification.
         void RenderDiagnosticClearFrame();
@@ -114,8 +118,20 @@ namespace helengine::wiiu {
         /// Renders one captured frame into one target color buffer.
         void RenderFrameToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer, const WiiUGx2RenderFrame& frame, std::uint32_t targetWidth, std::uint32_t targetHeight);
 
+        /// Renders one captured 3D frame into one target color buffer.
+        void Render3DFrameToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer, const WiiUGx23DRenderFrame& frame, std::uint32_t targetWidth, std::uint32_t targetHeight);
+
+        /// Renders one captured 3D draw command into the currently bound color buffer.
+        void Render3DDrawCommandToColorBuffer(const WiiUGx23DDrawCommand& drawCommand, const WiiUGx23DCameraState& cameraState, std::uint32_t targetWidth, std::uint32_t targetHeight);
+
+        /// Renders the captured 2D quad commands into the currently bound color buffer without clearing it first.
+        void RenderQuadCommandsToColorBuffer(const WiiUGx2RenderFrame& frame, std::uint32_t targetWidth, std::uint32_t targetHeight);
+
         /// Renders one captured quad command into one target color buffer using the already-uploaded vertex data for the supplied quad index.
         void RenderQuadCommandToColorBuffer(const WiiUGx2QuadCommand& command, std::uint32_t quadIndex, std::uint32_t logicalWidth, std::uint32_t logicalHeight, std::uint32_t targetWidth, std::uint32_t targetHeight);
+
+        /// Uploads one runtime model into the presenter-owned flat-color mesh path using one CPU-expanded clip-space transform.
+        void UploadSceneCubeMesh(const WiiURuntimeModel& runtimeModel, const float4x4& worldViewProjectionMatrix);
 
         /// Renders the presenter-owned diagnostic square into one target color buffer with the supplied GX2 context state.
         void RenderDiagnosticSquareToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer);
