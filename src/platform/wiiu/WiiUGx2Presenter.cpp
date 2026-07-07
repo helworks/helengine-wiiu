@@ -314,7 +314,7 @@ namespace helengine::wiiu {
         }
 
         constexpr double SceneCubeYawRadians = 0.65;
-        constexpr double SceneCubePitchRadians = -0.55;
+        constexpr double SceneCubePitchRadians = 0.55;
         constexpr double SceneCubeFieldOfViewRadians = 1.0;
         constexpr double SceneCubeCameraDistance = 5.0;
         constexpr double SceneCubeNearPlane = 0.1;
