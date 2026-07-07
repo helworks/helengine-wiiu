@@ -7,27 +7,138 @@
 
 #include "Asset.hpp"
 #include "AssetSerializer.hpp"
+#include "CameraClearSettings.hpp"
+#include "CameraComponent.hpp"
+#include "Core.hpp"
+#include "Entity.hpp"
 #include "IContentStreamSource.hpp"
+#include "ICamera.hpp"
+#include "IDrawable3D.hpp"
+#include "LightComponent.hpp"
 #include "ModelAsset.hpp"
+#include "ObjectManager.hpp"
+#include "RenderFrame.hpp"
+#include "RenderFrameDrawableSubmission.hpp"
+#include "RenderFrameExtractionResult.hpp"
+#include "RenderFrameExtractionService.hpp"
+#include "RenderFrameLightSubmission.hpp"
+#include "RenderFrameShadowCasterSubmission.hpp"
+#include "RendererBackendCapabilityProfile.hpp"
 #include "RuntimeMaterial.hpp"
 #include "runtime/finally.hpp"
 #include "runtime/native_cast.hpp"
 #include "runtime/native_exceptions.hpp"
+#include "runtime/native_list.hpp"
 #include "runtime/native_string.hpp"
 #include "system/io/file.hpp"
+#include "float3.hpp"
+#include "float4.hpp"
+#include "float4x4.hpp"
 #include "platform/wiiu/WiiURuntimeModel.hpp"
 #include <coreinit/debug.h>
 
 namespace helengine::wiiu {
-    /// Creates one Wii U 3D bridge with no cached runtime model.
+    /// Creates one Wii U 3D bridge with an empty captured frame.
     WiiURenderManager3D::WiiURenderManager3D()
         : RenderManager3D()
-        , LatestRuntimeModel(nullptr) {
+        , CurrentFrame() {
     }
 
     /// Releases cached bridge state.
     WiiURenderManager3D::~WiiURenderManager3D() {
-        LatestRuntimeModel = nullptr;
+    }
+
+    /// Captures the current scene-driven 3D frame from the generated runtime.
+    void WiiURenderManager3D::Draw() {
+        BeginFrame();
+
+        CameraComponent* primaryCamera = nullptr;
+        if (!TryResolvePrimaryCamera(primaryCamera)) {
+            return;
+        }
+
+        Core* core = Core::get_Instance();
+        if (core == nullptr || core->get_ObjectManager() == nullptr) {
+            throw new InvalidOperationException("Wii U 3D frame capture requires one initialized Core object manager.");
+        }
+
+        ObjectManager* objectManager = core->get_ObjectManager();
+        if (objectManager->get_Drawables3D() == nullptr) {
+            return;
+        }
+
+        List<CameraComponent*>* cameras = new List<CameraComponent*>(1);
+        cameras->Add(primaryCamera);
+        auto cameraListGuard = he_cpp_make_scope_exit([&]() {
+            delete cameras;
+        });
+
+        List<LightComponent*>* lights = new List<LightComponent*>();
+        auto lightListGuard = he_cpp_make_scope_exit([&]() {
+            delete lights;
+        });
+
+        RendererBackendCapabilityProfile* capabilityProfile = GetCapabilityProfile();
+        auto capabilityProfileGuard = he_cpp_make_scope_exit([&]() {
+            delete capabilityProfile;
+        });
+
+        RenderFrameExtractionService extractionService {};
+        RenderFrameExtractionResult* extractionResult = extractionService.Extract(cameras, objectManager->get_Drawables3D(), lights, capabilityProfile);
+        auto extractionResultGuard = he_cpp_make_scope_exit([&]() {
+            if (extractionResult == nullptr) {
+                return;
+            }
+
+            List<RenderFrame*>* frames = extractionResult->get_Frames();
+            if (frames != nullptr) {
+                for (int32_t frameIndex = 0; frameIndex < frames->get_Count(); frameIndex++) {
+                    RenderFrame* frame = (*frames).get_Item(frameIndex);
+                    if (frame == nullptr) {
+                        continue;
+                    }
+
+                    List<RenderFrameDrawableSubmission*>* drawableSubmissions = frame->get_DrawableSubmissions();
+                    if (drawableSubmissions != nullptr) {
+                        for (int32_t drawableIndex = 0; drawableIndex < drawableSubmissions->get_Count(); drawableIndex++) {
+                            delete (*drawableSubmissions).get_Item(drawableIndex);
+                        }
+
+                        delete drawableSubmissions;
+                    }
+
+                    List<RenderFrameLightSubmission*>* lightSubmissions = frame->get_LightSubmissions();
+                    if (lightSubmissions != nullptr) {
+                        for (int32_t lightIndex = 0; lightIndex < lightSubmissions->get_Count(); lightIndex++) {
+                            delete (*lightSubmissions).get_Item(lightIndex);
+                        }
+
+                        delete lightSubmissions;
+                    }
+
+                    List<RenderFrameShadowCasterSubmission*>* shadowCasterSubmissions = frame->get_ShadowCasterSubmissions();
+                    if (shadowCasterSubmissions != nullptr) {
+                        for (int32_t shadowCasterIndex = 0; shadowCasterIndex < shadowCasterSubmissions->get_Count(); shadowCasterIndex++) {
+                            delete (*shadowCasterSubmissions).get_Item(shadowCasterIndex);
+                        }
+
+                        delete shadowCasterSubmissions;
+                    }
+
+                    delete frame;
+                }
+
+                delete frames;
+            }
+
+            delete extractionResult;
+        });
+
+        if (extractionResult->get_Frames() == nullptr || extractionResult->get_Frames()->get_Count() <= 0) {
+            return;
+        }
+
+        CaptureFrame((*extractionResult->get_Frames()).get_Item(0), primaryCamera);
     }
 
     /// Builds one placeholder runtime material from a cooked platform material asset record.
@@ -148,22 +259,148 @@ namespace helengine::wiiu {
         return BuildRuntimeModelFromAsset(data);
     }
 
-    /// Returns the most recently built runtime model captured during scene loading.
-    WiiURuntimeModel* WiiURenderManager3D::GetLatestRuntimeModel() const {
-        return LatestRuntimeModel;
+    /// Returns the most recently captured scene-driven 3D frame.
+    const WiiUGx23DRenderFrame& WiiURenderManager3D::GetCurrentFrame() const {
+        return CurrentFrame;
     }
 
-    /// Releases one runtime model and clears the cached latest-model pointer when it matches.
+    /// Releases one runtime model built by the Wii U bridge.
     void WiiURenderManager3D::ReleaseModel(::RuntimeModel* model) {
         if (model == nullptr) {
             throw new ArgumentNullException("model");
         }
 
-        if (model == LatestRuntimeModel) {
-            LatestRuntimeModel = nullptr;
+        RenderManager3D::ReleaseModel(model);
+    }
+
+    /// Resets the current frame before capture begins.
+    void WiiURenderManager3D::BeginFrame() {
+        CurrentFrame.Clear();
+    }
+
+    /// Captures one extracted render frame into the Wii U frame contract.
+    void WiiURenderManager3D::CaptureFrame(RenderFrame* frame, CameraComponent* camera) {
+        if (frame == nullptr) {
+            throw new ArgumentNullException("frame");
+        } else if (camera == nullptr) {
+            throw new ArgumentNullException("camera");
         }
 
-        RenderManager3D::ReleaseModel(model);
+        const CameraClearSettings clearSettings = camera->get_ClearSettings();
+        if (clearSettings.get_ClearColorEnabled()) {
+            CurrentFrame.SetClearColor(ConvertClearColor(clearSettings.get_ClearColor()));
+        } else {
+            CurrentFrame.SetClearColor(WiiUGx2Color { 0U, 0U, 0U, 255U });
+        }
+
+        CurrentFrame.SetCamera(CreateCameraState(camera));
+
+        List<RenderFrameDrawableSubmission*>* drawableSubmissions = frame->get_DrawableSubmissions();
+        if (drawableSubmissions == nullptr) {
+            return;
+        }
+
+        for (int32_t index = 0; index < drawableSubmissions->get_Count(); index++) {
+            RenderFrameDrawableSubmission* submission = (*drawableSubmissions).get_Item(index);
+            if (submission == nullptr || submission->get_Drawable() == nullptr) {
+                continue;
+            }
+
+            CaptureDrawCommand(submission->get_Drawable());
+        }
+    }
+
+    /// Captures one extracted drawable submission into the current frame when its runtime model is Wii U-owned.
+    void WiiURenderManager3D::CaptureDrawCommand(IDrawable3D* drawable) {
+        if (drawable == nullptr) {
+            throw new ArgumentNullException("drawable");
+        }
+
+        WiiURuntimeModel* runtimeModel = he_cpp_try_cast<WiiURuntimeModel>(drawable->get_Model());
+        if (runtimeModel == nullptr) {
+            throw new InvalidOperationException("Wii U 3D capture requires every runtime model to be one WiiURuntimeModel.");
+        } else if (drawable->get_Parent() == nullptr) {
+            throw new InvalidOperationException("Wii U 3D capture requires every drawable to have one parent entity.");
+        }
+
+        WiiUGx23DDrawCommand drawCommand {};
+        drawCommand.RuntimeModel = runtimeModel;
+        drawCommand.WorldMatrix = drawable->get_Parent()->get_WorldTransformMatrix();
+        CurrentFrame.AddDrawCommand(drawCommand);
+    }
+
+    /// Resolves the primary runtime camera for the current frame.
+    bool WiiURenderManager3D::TryResolvePrimaryCamera(CameraComponent*& camera) const {
+        camera = nullptr;
+
+        Core* core = Core::get_Instance();
+        if (core == nullptr || core->get_ObjectManager() == nullptr || core->get_ObjectManager()->get_Cameras() == nullptr) {
+            return false;
+        }
+
+        List<ICamera*>* cameras = core->get_ObjectManager()->get_Cameras();
+        for (int32_t index = 0; index < cameras->get_Count(); index++) {
+            CameraComponent* runtimeCamera = he_cpp_try_cast<CameraComponent>((*cameras).get_Item(index));
+            if (runtimeCamera != nullptr && runtimeCamera->get_Parent() != nullptr) {
+                camera = runtimeCamera;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// Converts one runtime camera clear color into the 8-bit GX2 color used by the presenter.
+    WiiUGx2Color WiiURenderManager3D::ConvertClearColor(float4 clearColor) {
+        return WiiUGx2Color {
+            ConvertColorChannel(clearColor.X),
+            ConvertColorChannel(clearColor.Y),
+            ConvertColorChannel(clearColor.Z),
+            ConvertColorChannel(clearColor.W)
+        };
+    }
+
+    /// Converts one normalized float color channel into one 8-bit color channel.
+    std::uint8_t WiiURenderManager3D::ConvertColorChannel(float value) {
+        if (value <= 0.0f) {
+            return 0U;
+        } else if (value >= 1.0f) {
+            return 255U;
+        }
+
+        return static_cast<std::uint8_t>(value * 255.0f);
+    }
+
+    /// Builds one view matrix from the active runtime camera transform.
+    float4x4 WiiURenderManager3D::CreateViewMatrix(CameraComponent* camera) {
+        if (camera == nullptr) {
+            throw new ArgumentNullException("camera");
+        } else if (camera->get_Parent() == nullptr) {
+            throw new InvalidOperationException("Wii U view-matrix creation requires the camera to be attached to one entity.");
+        }
+
+        Entity* cameraEntity = camera->get_Parent();
+        float3 cameraPosition = cameraEntity->get_Position();
+        float3 cameraForward = float4::RotateVector(float3(0.0f, 0.0f, -1.0f), cameraEntity->get_Orientation());
+        float3 cameraUp = float4::RotateVector(float3::get_UnitY(), cameraEntity->get_Orientation());
+        float3 cameraTarget = cameraPosition + cameraForward;
+        float4x4 viewMatrix;
+        float4x4::CreateLookAt__ref0_ref1_ref2_out3(cameraPosition, cameraTarget, cameraUp, viewMatrix);
+        return viewMatrix;
+    }
+
+    /// Builds one camera state record for the current frame.
+    WiiUGx23DCameraState WiiURenderManager3D::CreateCameraState(CameraComponent* camera) {
+        if (camera == nullptr) {
+            throw new ArgumentNullException("camera");
+        }
+
+        WiiUGx23DCameraState cameraState {};
+        cameraState.ViewMatrix = CreateViewMatrix(camera);
+        cameraState.Viewport = camera->get_Viewport();
+        cameraState.NearPlaneDistance = camera->get_NearPlaneDistance();
+        cameraState.FarPlaneDistance = camera->get_FarPlaneDistance();
+        return cameraState;
     }
 
     /// Creates one placeholder runtime material that lets cooked scene loading proceed.
@@ -260,7 +497,6 @@ namespace helengine::wiiu {
             maxX,
             maxY,
             maxZ);
-        LatestRuntimeModel = runtimeModel;
         return runtimeModel;
     }
 
