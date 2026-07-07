@@ -519,26 +519,28 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures the steady-state Wii U 3D presenter computes one scene-driven host-side perspective transform before uploading expanded clip-space cube geometry and synchronizes between TV and DRC uploads.
+    /// Ensures the steady-state Wii U 3D presenter computes one scene-driven perspective transform on the GPU and binds the opaque-scene uniform blocks before drawing.
     /// </summary>
     [Fact]
     public void RuntimeSeam_UsesSceneDrivenPerspectiveCameraForCaptured3dFrames() {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
-        string shaderVertexSource = File.ReadAllText(Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_cube_flat_color.vs"));
-        string shaderPixelSource = File.ReadAllText(Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_cube_flat_color.ps"));
+        string shaderVertexSource = File.ReadAllText(Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_opaque_lit.vs"));
+        string shaderPixelSource = File.ReadAllText(Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_opaque_lit.ps"));
 
         Assert.Contains("constexpr double SceneDrivenFieldOfViewRadians =", presenterSource, StringComparison.Ordinal);
         Assert.Contains("Render3DDrawCommandToColorBuffer(", presenterSource, StringComparison.Ordinal);
         Assert.Contains("float4x4::CreatePerspectiveFieldOfView__out4(", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("UploadSceneCubeMesh(*drawCommand.RuntimeModel, worldViewProjectionMatrix);", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("expandedPositionData.push_back(clipX);", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("expandedPositionData.push_back(clipY);", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("expandedPositionData.push_back(clipZ);", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("expandedPositionData.push_back(clipW);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("UploadSceneOpaqueMesh(*drawCommand.RuntimeModel);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RSetVertexUniformBlock(&SceneOpaqueTransformBuffer", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RSetPixelUniformBlock(&SceneOpaqueMaterialBuffer", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RSetPixelUniformBlock(&SceneOpaqueLightBuffer", presenterSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("UploadSceneCubeMesh(*drawCommand.RuntimeModel, worldViewProjectionMatrix);", presenterSource, StringComparison.Ordinal);
         Assert.Contains("GX2DrawDone();", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("gl_Position = aPosition;", shaderVertexSource, StringComparison.Ordinal);
-        Assert.Contains("FragColor = VertexColor;", shaderPixelSource, StringComparison.Ordinal);
+        Assert.Contains("uniform TransformBlock", shaderVertexSource, StringComparison.Ordinal);
+        Assert.Contains("gl_Position = worldViewProjectionMatrix * aPosition;", shaderVertexSource, StringComparison.Ordinal);
+        Assert.Contains("uniform LightBlock", shaderPixelSource, StringComparison.Ordinal);
+        Assert.Contains("FragColor = vec4(color, BaseColor.w);", shaderPixelSource, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -640,7 +642,9 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("::RuntimeMaterial* BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string materialAssetPath);", renderManager3DHeaderSource, StringComparison.Ordinal);
         Assert.Contains("::RuntimeModel* BuildModelFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource);", renderManager3DHeaderSource, StringComparison.Ordinal);
         Assert.Contains("::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {", renderManager3DSource, StringComparison.Ordinal);
-        Assert.Contains("return BuildMaterialFromCooked(cookedAssetPath);", renderManager3DSource, StringComparison.Ordinal);
+        Assert.Contains("::Stream* stream = contentStreamSource->OpenRead(cookedAssetPath);", renderManager3DSource, StringComparison.Ordinal);
+        Assert.Contains("Asset* asset = AssetSerializer::Deserialize(stream);", renderManager3DSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("return BuildMaterialFromCooked(cookedAssetPath);", renderManager3DSource, StringComparison.Ordinal);
         Assert.Contains("::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string materialAssetPath) {", renderManager3DSource, StringComparison.Ordinal);
         Assert.Contains("return BuildMaterialFromRawAsset(assetContentManager, materialAssetPath);", renderManager3DSource, StringComparison.Ordinal);
         Assert.Contains("::RuntimeModel* WiiURenderManager3D::BuildModelFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {", renderManager3DSource, StringComparison.Ordinal);

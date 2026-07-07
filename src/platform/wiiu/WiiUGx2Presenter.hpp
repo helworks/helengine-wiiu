@@ -82,6 +82,27 @@ namespace helengine::wiiu {
         /// Initializes the presenter-owned uniform buffer that stores the fixed transform used by the translated diagnostic triangle.
         void InitializeDiagnosticTriangleTransformBuffer();
 
+        /// Initializes the presenter-owned shader resources used by the generic opaque Wii U scene path.
+        void InitializeSceneOpaqueResources();
+
+        /// Releases the presenter-owned shader resources used by the generic opaque Wii U scene path.
+        void DestroySceneOpaqueResources();
+
+        /// Initializes one presenter-owned opaque-scene vertex buffer from immutable float vertex data.
+        void InitializeSceneOpaqueVertexBuffer(GX2RBuffer* buffer, const float* sourceData, std::uint32_t floatCount, std::uint32_t elementSize, std::uint32_t elementStride);
+
+        /// Initializes one presenter-owned opaque-scene index buffer from immutable 16-bit index data.
+        void InitializeSceneOpaqueIndexBuffer(GX2RBuffer* buffer, const std::uint16_t* sourceData, std::uint32_t indexCount);
+
+        /// Initializes the presenter-owned transform uniform buffer used by the generic opaque Wii U scene path.
+        void InitializeSceneOpaqueTransformBuffer();
+
+        /// Initializes the presenter-owned material uniform buffer used by the generic opaque Wii U scene path.
+        void InitializeSceneOpaqueMaterialBuffer();
+
+        /// Initializes the presenter-owned light uniform buffer used by the generic opaque Wii U scene path.
+        void InitializeSceneOpaqueLightBuffer();
+
         /// Initializes the presenter-owned shader resources used by the temporary scene-cube GX2 mesh path.
         void InitializeSceneCubeResources();
 
@@ -122,7 +143,7 @@ namespace helengine::wiiu {
         void Render3DFrameToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer, const WiiUGx23DRenderFrame& frame, std::uint32_t targetWidth, std::uint32_t targetHeight);
 
         /// Renders one captured 3D draw command into the currently bound color buffer.
-        void Render3DDrawCommandToColorBuffer(const WiiUGx23DDrawCommand& drawCommand, const WiiUGx23DCameraState& cameraState, std::uint32_t targetWidth, std::uint32_t targetHeight);
+        void Render3DDrawCommandToColorBuffer(const WiiUGx23DDrawCommand& drawCommand, const WiiUGx23DRenderFrame& frame, const WiiUGx23DCameraState& cameraState, std::uint32_t targetWidth, std::uint32_t targetHeight);
 
         /// Renders the captured 2D quad commands into the currently bound color buffer without clearing it first.
         void RenderQuadCommandsToColorBuffer(const WiiUGx2RenderFrame& frame, std::uint32_t targetWidth, std::uint32_t targetHeight);
@@ -132,6 +153,9 @@ namespace helengine::wiiu {
 
         /// Uploads one runtime model into the presenter-owned flat-color mesh path using one CPU-expanded clip-space transform.
         void UploadSceneCubeMesh(const WiiURuntimeModel& runtimeModel, const float4x4& worldViewProjectionMatrix);
+
+        /// Uploads one runtime model into the presenter-owned generic opaque scene buffers using model-space positions and normals.
+        void UploadSceneOpaqueMesh(const WiiURuntimeModel& runtimeModel);
 
         /// Renders the presenter-owned diagnostic square into one target color buffer with the supplied GX2 context state.
         void RenderDiagnosticSquareToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer);
@@ -195,6 +219,33 @@ namespace helengine::wiiu {
 
         /// Stores the presenter-owned uniform buffer used to translate the diagnostic triangle through the vertex shader.
         GX2RBuffer DiagnosticTriangleTransformBuffer;
+
+        /// Tracks whether the generic opaque-scene shader group and uniform resources were initialized successfully.
+        bool AreSceneOpaqueResourcesInitialized;
+
+        /// Stores the presenter-owned shader group loaded from the embedded generic opaque-scene shader blob.
+        WHBGfxShaderGroup SceneOpaqueShaderGroup;
+
+        /// Stores the presenter-owned position buffer used for generic opaque-scene vertices.
+        GX2RBuffer SceneOpaquePositionBuffer;
+
+        /// Stores the presenter-owned normal buffer used for generic opaque-scene vertices.
+        GX2RBuffer SceneOpaqueNormalBuffer;
+
+        /// Stores the presenter-owned index buffer used for generic opaque-scene triangles.
+        GX2RBuffer SceneOpaqueIndexBuffer;
+
+        /// Stores the presenter-owned transform uniform buffer used by the generic opaque-scene shader path.
+        GX2RBuffer SceneOpaqueTransformBuffer;
+
+        /// Stores the presenter-owned material uniform buffer used by the generic opaque-scene shader path.
+        GX2RBuffer SceneOpaqueMaterialBuffer;
+
+        /// Stores the presenter-owned light uniform buffer used by the generic opaque-scene shader path.
+        GX2RBuffer SceneOpaqueLightBuffer;
+
+        /// Stores the number of indices currently uploaded for the generic opaque-scene path.
+        std::uint32_t SceneOpaqueIndexCount;
 
         /// Tracks whether the temporary scene-cube shader group and uniform resources were initialized successfully.
         bool AreSceneCubeResourcesInitialized;
