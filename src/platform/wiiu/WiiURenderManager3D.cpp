@@ -7,9 +7,11 @@
 
 #include "Asset.hpp"
 #include "AssetSerializer.hpp"
+#include "AmbientLightComponent.hpp"
 #include "CameraClearSettings.hpp"
 #include "CameraComponent.hpp"
 #include "Core.hpp"
+#include "DirectionalLightComponent.hpp"
 #include "Entity.hpp"
 #include "IContentStreamSource.hpp"
 #include "ICamera.hpp"
@@ -34,6 +36,7 @@
 #include "float3.hpp"
 #include "float4.hpp"
 #include "float4x4.hpp"
+#include "platform/wiiu/WiiURuntimeMaterial.hpp"
 #include "platform/wiiu/WiiURuntimeModel.hpp"
 #include <coreinit/debug.h>
 
@@ -77,6 +80,22 @@ namespace helengine::wiiu {
         auto lightListGuard = he_cpp_make_scope_exit([&]() {
             delete lights;
         });
+        if (objectManager->get_AmbientLights() != nullptr) {
+            for (int32_t ambientLightIndex = 0; ambientLightIndex < objectManager->get_AmbientLights()->get_Count(); ambientLightIndex++) {
+                AmbientLightComponent* ambientLight = (*objectManager->get_AmbientLights()).get_Item(ambientLightIndex);
+                if (ambientLight != nullptr) {
+                    lights->Add(ambientLight);
+                }
+            }
+        }
+        if (objectManager->get_DirectionalLights() != nullptr) {
+            for (int32_t directionalLightIndex = 0; directionalLightIndex < objectManager->get_DirectionalLights()->get_Count(); directionalLightIndex++) {
+                DirectionalLightComponent* directionalLight = (*objectManager->get_DirectionalLights()).get_Item(directionalLightIndex);
+                if (directionalLight != nullptr) {
+                    lights->Add(directionalLight);
+                }
+            }
+        }
 
         RendererBackendCapabilityProfile* capabilityProfile = GetCapabilityProfile();
         auto capabilityProfileGuard = he_cpp_make_scope_exit([&]() {
@@ -141,34 +160,72 @@ namespace helengine::wiiu {
         CaptureFrame((*extractionResult->get_Frames()).get_Item(0), primaryCamera);
     }
 
-    /// Builds one placeholder runtime material from a cooked platform material asset record.
+    /// Builds one concrete Wii U runtime material from a cooked platform material asset record.
     ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromCooked(::PlatformMaterialAsset* materialAsset) {
         if (materialAsset == nullptr) {
             throw new ArgumentNullException("materialAsset");
         }
 
-        return CreatePlaceholderRuntimeMaterial("wiiu:material");
+        return CreateRuntimeMaterial("wiiu:material", CreateBaseColor(materialAsset), materialAsset->Lit, materialAsset->DoubleSided);
     }
 
-    /// Builds one placeholder runtime material from a cooked Wii U material asset path.
+    /// Builds one concrete Wii U runtime material from a cooked Wii U material asset path.
     ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromCooked(std::string cookedAssetPath) {
         if (String::IsNullOrWhiteSpace(cookedAssetPath)) {
             throw new ArgumentException("Cooked material asset path must be provided.", "cookedAssetPath");
         }
 
-        return CreatePlaceholderRuntimeMaterial(cookedAssetPath);
+        FileStream* stream = File::OpenRead(cookedAssetPath.c_str());
+        auto streamGuard = he_cpp_make_scope_exit([&]() {
+            if (stream != nullptr) {
+                stream->Dispose();
+                delete stream;
+            }
+        });
+
+        Asset* asset = AssetSerializer::Deserialize(stream);
+        PlatformMaterialAsset* materialAsset = he_cpp_try_cast<PlatformMaterialAsset>(asset);
+        if (materialAsset == nullptr) {
+            delete asset;
+            throw new InvalidOperationException("Wii U cooked material payload did not deserialize into a PlatformMaterialAsset.");
+        }
+
+        auto materialAssetGuard = he_cpp_make_scope_exit([&]() {
+            delete materialAsset;
+        });
+        WiiURuntimeMaterial* runtimeMaterial = CreateRuntimeMaterial(cookedAssetPath, CreateBaseColor(materialAsset), materialAsset->Lit, materialAsset->DoubleSided);
+        return runtimeMaterial;
     }
 
-    /// Builds one placeholder runtime material from a cooked Wii U material asset path through the content-stream-based generated-core contract.
+    /// Builds one concrete Wii U runtime material from a cooked Wii U material asset path through the content-stream-based generated-core contract.
     ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {
         if (contentStreamSource == nullptr) {
             throw new ArgumentNullException("contentStreamSource");
         }
 
-        return BuildMaterialFromCooked(cookedAssetPath);
+        ::Stream* stream = contentStreamSource->OpenRead(cookedAssetPath);
+        auto streamGuard = he_cpp_make_scope_exit([&]() {
+            if (stream != nullptr) {
+                stream->Dispose();
+                delete stream;
+            }
+        });
+
+        Asset* asset = AssetSerializer::Deserialize(stream);
+        PlatformMaterialAsset* materialAsset = he_cpp_try_cast<PlatformMaterialAsset>(asset);
+        if (materialAsset == nullptr) {
+            delete asset;
+            throw new InvalidOperationException("Wii U cooked material payload did not deserialize into a PlatformMaterialAsset.");
+        }
+
+        auto materialAssetGuard = he_cpp_make_scope_exit([&]() {
+            delete materialAsset;
+        });
+        WiiURuntimeMaterial* runtimeMaterial = CreateRuntimeMaterial(cookedAssetPath, CreateBaseColor(materialAsset), materialAsset->Lit, materialAsset->DoubleSided);
+        return runtimeMaterial;
     }
 
-    /// Builds one placeholder runtime material from a raw authored material path through the legacy generated-core contract that still passes a content root path.
+    /// Builds one concrete Wii U runtime material from a raw authored material path through the legacy generated-core contract that still passes a content root path.
     ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string contentRootPath, std::string materialAssetPath) {
         if (assetContentManager == nullptr) {
             throw new ArgumentNullException("assetContentManager");
@@ -181,7 +238,7 @@ namespace helengine::wiiu {
         return BuildMaterialFromRawAsset(assetContentManager, materialAssetPath);
     }
 
-    /// Builds one placeholder runtime material from a raw authored material path through the current generated-core contract.
+    /// Builds one concrete Wii U runtime material from a raw authored material path through the current generated-core contract.
     ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string materialAssetPath) {
         if (assetContentManager == nullptr) {
             throw new ArgumentNullException("assetContentManager");
@@ -191,7 +248,7 @@ namespace helengine::wiiu {
             throw new ArgumentException("Material asset path must be provided.", "materialAssetPath");
         }
 
-        return CreatePlaceholderRuntimeMaterial(materialAssetPath);
+        return CreateRuntimeMaterial(materialAssetPath, float4(1.0f, 1.0f, 1.0f, 1.0f), true, false);
     }
 
     /// Builds one runtime model from a cooked Wii U model asset path by copying the authored mesh payload into a Wii U-owned geometry container.
@@ -294,6 +351,7 @@ namespace helengine::wiiu {
         }
 
         CurrentFrame.SetCamera(CreateCameraState(camera));
+        CaptureSceneLighting();
 
         List<RenderFrameDrawableSubmission*>* drawableSubmissions = frame->get_DrawableSubmissions();
         if (drawableSubmissions == nullptr) {
@@ -304,27 +362,77 @@ namespace helengine::wiiu {
             RenderFrameDrawableSubmission* submission = (*drawableSubmissions).get_Item(index);
             if (submission == nullptr || submission->get_Drawable() == nullptr) {
                 continue;
+            } else if (submission->get_IsTransparent()) {
+                continue;
             }
 
-            CaptureDrawCommand(submission->get_Drawable());
+            CaptureDrawCommand(submission);
         }
     }
 
-    /// Captures one extracted drawable submission into the current frame when its runtime model is Wii U-owned.
-    void WiiURenderManager3D::CaptureDrawCommand(IDrawable3D* drawable) {
-        if (drawable == nullptr) {
-            throw new ArgumentNullException("drawable");
+    /// Captures the current scene ambient and directional light state into the Wii U frame contract.
+    void WiiURenderManager3D::CaptureSceneLighting() {
+        Core* core = Core::get_Instance();
+        if (core == nullptr || core->get_ObjectManager() == nullptr) {
+            throw new InvalidOperationException("Wii U scene lighting capture requires one initialized Core object manager.");
         }
 
+        ObjectManager* objectManager = core->get_ObjectManager();
+        float4 ambientLightColor(0.0f, 0.0f, 0.0f, 0.0f);
+        if (objectManager->get_AmbientLights() != nullptr) {
+            for (int32_t ambientLightIndex = 0; ambientLightIndex < objectManager->get_AmbientLights()->get_Count(); ambientLightIndex++) {
+                AmbientLightComponent* ambientLight = (*objectManager->get_AmbientLights()).get_Item(ambientLightIndex);
+                if (ambientLight == nullptr) {
+                    continue;
+                }
+
+                const float4 lightColor = CreateLightColor(ambientLight);
+                ambientLightColor = float4(
+                    ambientLightColor.X + lightColor.X,
+                    ambientLightColor.Y + lightColor.Y,
+                    ambientLightColor.Z + lightColor.Z,
+                    0.0f);
+            }
+        }
+        CurrentFrame.SetAmbientLightColor(ambientLightColor);
+
+        if (objectManager->get_DirectionalLights() == nullptr) {
+            return;
+        }
+
+        for (int32_t directionalLightIndex = 0; directionalLightIndex < objectManager->get_DirectionalLights()->get_Count(); directionalLightIndex++) {
+            DirectionalLightComponent* directionalLight = (*objectManager->get_DirectionalLights()).get_Item(directionalLightIndex);
+            if (directionalLight == nullptr) {
+                continue;
+            }
+
+            CurrentFrame.SetDirectionalLight(CreateDirectionalLightState(directionalLight));
+            return;
+        }
+    }
+
+    /// Captures one extracted drawable submission into the current frame when its runtime model and runtime material are Wii U-owned.
+    void WiiURenderManager3D::CaptureDrawCommand(RenderFrameDrawableSubmission* submission) {
+        if (submission == nullptr) {
+            throw new ArgumentNullException("submission");
+        } else if (submission->get_Drawable() == nullptr) {
+            throw new InvalidOperationException("Wii U 3D capture requires every drawable submission to own one drawable.");
+        }
+
+        IDrawable3D* drawable = submission->get_Drawable();
         WiiURuntimeModel* runtimeModel = he_cpp_try_cast<WiiURuntimeModel>(drawable->get_Model());
+        WiiURuntimeMaterial* runtimeMaterial = he_cpp_try_cast<WiiURuntimeMaterial>(submission->get_Material());
         if (runtimeModel == nullptr) {
             throw new InvalidOperationException("Wii U 3D capture requires every runtime model to be one WiiURuntimeModel.");
+        } else if (runtimeMaterial == nullptr) {
+            throw new InvalidOperationException("Wii U 3D capture requires every runtime material to be one WiiURuntimeMaterial.");
         } else if (drawable->get_Parent() == nullptr) {
             throw new InvalidOperationException("Wii U 3D capture requires every drawable to have one parent entity.");
         }
 
         WiiUGx23DDrawCommand drawCommand {};
         drawCommand.RuntimeModel = runtimeModel;
+        drawCommand.RuntimeMaterial = runtimeMaterial;
         drawCommand.WorldMatrix = drawable->get_Parent()->get_WorldTransformMatrix();
         CurrentFrame.AddDrawCommand(drawCommand);
     }
@@ -403,10 +511,53 @@ namespace helengine::wiiu {
         return cameraState;
     }
 
-    /// Creates one placeholder runtime material that lets cooked scene loading proceed.
-    ::RuntimeMaterial* WiiURenderManager3D::CreatePlaceholderRuntimeMaterial(std::string runtimeMaterialId) {
-        RuntimeMaterial* runtimeMaterial = new RuntimeMaterial();
+    /// Builds one normalized float color from one cooked 8-bit base-color payload.
+    float4 WiiURenderManager3D::CreateBaseColor(::PlatformMaterialAsset* materialAsset) {
+        if (materialAsset == nullptr) {
+            throw new ArgumentNullException("materialAsset");
+        }
+
+        return float4(
+            static_cast<float>(materialAsset->BaseColorR) / 255.0f,
+            static_cast<float>(materialAsset->BaseColorG) / 255.0f,
+            static_cast<float>(materialAsset->BaseColorB) / 255.0f,
+            static_cast<float>(materialAsset->BaseColorA) / 255.0f);
+    }
+
+    /// Converts one linear light color plus intensity into one packed float4 radiance color.
+    float4 WiiURenderManager3D::CreateLightColor(::LightComponent* light) {
+        if (light == nullptr) {
+            throw new ArgumentNullException("light");
+        }
+
+        float4 color = light->get_Color();
+        float intensity = light->get_Intensity();
+        return float4(color.X * intensity, color.Y * intensity, color.Z * intensity, 0.0f);
+    }
+
+    /// Builds one directional-light capture record from one scene directional light.
+    WiiUGx23DDirectionalLightState WiiURenderManager3D::CreateDirectionalLightState(::LightComponent* light) {
+        if (light == nullptr) {
+            throw new ArgumentNullException("light");
+        } else if (light->get_Parent() == nullptr) {
+            throw new InvalidOperationException("Wii U directional-light capture requires the light to be attached to one entity.");
+        }
+
+        const float3 direction = float4::RotateVector(float3(0.0f, 0.0f, -1.0f), light->get_Parent()->get_Orientation());
+        WiiUGx23DDirectionalLightState directionalLightState {};
+        directionalLightState.Color = CreateLightColor(light);
+        directionalLightState.Direction = float4(direction.X, direction.Y, direction.Z, 0.0f);
+        return directionalLightState;
+    }
+
+    /// Creates one concrete Wii U runtime material from the supplied material fields.
+    WiiURuntimeMaterial* WiiURenderManager3D::CreateRuntimeMaterial(std::string runtimeMaterialId, float4 baseColor, bool isLit, bool isDoubleSided) {
+        WiiURuntimeMaterial* runtimeMaterial = new WiiURuntimeMaterial();
         runtimeMaterial->set_Id(runtimeMaterialId);
+        runtimeMaterial->SetBaseColor(baseColor);
+        runtimeMaterial->SetEmissiveColor(float4(0.0f, 0.0f, 0.0f, 0.0f));
+        runtimeMaterial->SetLit(isLit);
+        runtimeMaterial->SetDoubleSided(isDoubleSided);
         return runtimeMaterial;
     }
 
@@ -416,9 +567,12 @@ namespace helengine::wiiu {
             throw new ArgumentNullException("data");
         } else if (data->Positions == nullptr || data->Positions->get_Length() <= 0) {
             throw new InvalidOperationException("Wii U runtime model creation requires at least one authored vertex position.");
+        } else if (data->Normals == nullptr || data->Normals->get_Length() != data->Positions->get_Length()) {
+            throw new InvalidOperationException("Wii U runtime model creation requires one authored normal for every authored vertex position.");
         }
 
         std::vector<float> positionData;
+        std::vector<float> normalData;
         std::vector<std::uint16_t> indexData;
         const int32_t positionCount = data->Positions->get_Length();
         float minX = 0.0f;
@@ -428,8 +582,10 @@ namespace helengine::wiiu {
         float maxY = 0.0f;
         float maxZ = 0.0f;
         positionData.reserve(static_cast<std::size_t>(positionCount) * 4U);
+        normalData.reserve(static_cast<std::size_t>(positionCount) * 3U);
         for (int32_t positionIndex = 0; positionIndex < positionCount; positionIndex++) {
             const float3 position = (*data->Positions)[positionIndex];
+            const float3 normal = (*data->Normals)[positionIndex];
             if (positionIndex == 0) {
                 minX = position.X;
                 minY = position.Y;
@@ -461,6 +617,9 @@ namespace helengine::wiiu {
             positionData.push_back(position.Y);
             positionData.push_back(position.Z);
             positionData.push_back(1.0f);
+            normalData.push_back(normal.X);
+            normalData.push_back(normal.Y);
+            normalData.push_back(normal.Z);
         }
 
         if (data->Indices16 != nullptr && data->Indices16->get_Length() > 0) {
@@ -486,7 +645,7 @@ namespace helengine::wiiu {
         }
 
         WiiURuntimeModel* runtimeModel = new WiiURuntimeModel();
-        runtimeModel->SetGeometry(std::move(positionData), std::move(indexData));
+        runtimeModel->SetGeometry(std::move(positionData), std::move(normalData), std::move(indexData));
         OSReport(
             "[WiiUModel] positions=%d indices=%u boundsMin=(%.3f, %.3f, %.3f) boundsMax=(%.3f, %.3f, %.3f)\n",
             positionCount,

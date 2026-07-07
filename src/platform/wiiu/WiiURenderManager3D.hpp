@@ -9,8 +9,10 @@ class CameraComponent;
 class IDrawable3D;
 class IContentStreamSource;
 class RenderFrame;
+class RenderFrameDrawableSubmission;
 
 namespace helengine::wiiu {
+    class WiiURuntimeMaterial;
     class WiiURuntimeModel;
 
     /// Provides the Wii U 3D renderer bridge that captures one generic scene-driven frame for the GX2 presenter.
@@ -25,19 +27,19 @@ namespace helengine::wiiu {
         /// Captures the current scene-driven 3D frame from the generated runtime.
         void Draw() override;
 
-        /// Builds one placeholder runtime material from a cooked platform material asset record.
+        /// Builds one concrete Wii U runtime material from a cooked platform material asset record.
         ::RuntimeMaterial* BuildMaterialFromCooked(::PlatformMaterialAsset* materialAsset) override;
 
-        /// Builds one placeholder runtime material from a cooked Wii U material asset path using the legacy path-based generated-core contract.
+        /// Builds one concrete Wii U runtime material from a cooked Wii U material asset path using the legacy path-based generated-core contract.
         ::RuntimeMaterial* BuildMaterialFromCooked(std::string cookedAssetPath);
 
-        /// Builds one placeholder runtime material from a cooked Wii U material asset path using the current content-stream-based generated-core contract.
+        /// Builds one concrete Wii U runtime material from a cooked Wii U material asset path using the current content-stream-based generated-core contract.
         ::RuntimeMaterial* BuildMaterialFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource);
 
-        /// Builds one placeholder runtime material from a raw authored material path using the legacy generated-core contract that still passes a content root path.
+        /// Builds one concrete Wii U runtime material from a raw authored material path using the legacy generated-core contract that still passes a content root path.
         ::RuntimeMaterial* BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string contentRootPath, std::string materialAssetPath);
 
-        /// Builds one placeholder runtime material from a raw authored material path using the current generated-core contract.
+        /// Builds one concrete Wii U runtime material from a raw authored material path using the current generated-core contract.
         ::RuntimeMaterial* BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string materialAssetPath);
 
         /// Builds one placeholder runtime model from a cooked Wii U model asset path using the legacy path-based generated-core contract.
@@ -62,8 +64,11 @@ namespace helengine::wiiu {
         /// Captures one extracted render frame into the Wii U frame contract.
         void CaptureFrame(RenderFrame* frame, CameraComponent* camera);
 
-        /// Captures one extracted drawable submission into the current frame when its runtime model is Wii U-owned.
-        void CaptureDrawCommand(IDrawable3D* drawable);
+        /// Captures the current scene ambient and directional light state into the Wii U frame contract.
+        void CaptureSceneLighting();
+
+        /// Captures one extracted drawable submission into the current frame when its runtime model and runtime material are Wii U-owned.
+        void CaptureDrawCommand(RenderFrameDrawableSubmission* submission);
 
         /// Resolves the primary runtime camera for the current frame.
         bool TryResolvePrimaryCamera(CameraComponent*& camera) const;
@@ -80,8 +85,17 @@ namespace helengine::wiiu {
         /// Builds one camera state record for the current frame.
         static WiiUGx23DCameraState CreateCameraState(CameraComponent* camera);
 
-        /// Creates one placeholder runtime material that lets cooked scene loading proceed.
-        ::RuntimeMaterial* CreatePlaceholderRuntimeMaterial(std::string runtimeMaterialId);
+        /// Builds one normalized float color from one cooked 8-bit base-color payload.
+        static float4 CreateBaseColor(::PlatformMaterialAsset* materialAsset);
+
+        /// Converts one linear light color plus intensity into one packed float4 radiance color.
+        static float4 CreateLightColor(::LightComponent* light);
+
+        /// Builds one directional-light capture record from one scene directional light.
+        static WiiUGx23DDirectionalLightState CreateDirectionalLightState(::LightComponent* light);
+
+        /// Creates one concrete Wii U runtime material from the supplied material fields.
+        WiiURuntimeMaterial* CreateRuntimeMaterial(std::string runtimeMaterialId, float4 baseColor, bool isLit, bool isDoubleSided);
 
         /// Builds one Wii U runtime model from a shared model asset payload.
         WiiURuntimeModel* BuildRuntimeModelFromAsset(::ModelAsset* data);

@@ -8,6 +8,7 @@
 
 namespace helengine::wiiu {
     class WiiURuntimeModel;
+    class WiiURuntimeMaterial;
 
     /// Stores one captured Wii U camera state consumed by the GX2 presenter.
     struct WiiUGx23DCameraState {
@@ -24,10 +25,22 @@ namespace helengine::wiiu {
         float FarPlaneDistance;
     };
 
+    /// Stores one captured Wii U directional light state consumed by the GX2 presenter.
+    struct WiiUGx23DDirectionalLightState {
+        /// The linear directional-light radiance captured for the current frame.
+        float4 Color;
+
+        /// The world-space light direction captured for the current frame.
+        float4 Direction;
+    };
+
     /// Stores one captured Wii U 3D draw command consumed by the GX2 presenter.
     struct WiiUGx23DDrawCommand {
         /// The runtime model resolved by the shared engine for this drawable submission.
         const WiiURuntimeModel* RuntimeModel;
+
+        /// The runtime material resolved by the shared engine for this drawable submission.
+        const WiiURuntimeMaterial* RuntimeMaterial;
 
         /// The world transform resolved from the drawable owner entity.
         float4x4 WorldMatrix;
@@ -41,6 +54,9 @@ namespace helengine::wiiu {
             : ClearColor { 0U, 0U, 0U, 255U }
             , HasCameraState(false)
             , CameraState()
+            , AmbientLightColor(0.0f, 0.0f, 0.0f, 0.0f)
+            , HasDirectionalLightState(false)
+            , DirectionalLightState()
             , DrawCommands() {
         }
 
@@ -49,6 +65,9 @@ namespace helengine::wiiu {
             ClearColor = WiiUGx2Color { 0U, 0U, 0U, 255U };
             HasCameraState = false;
             CameraState = WiiUGx23DCameraState();
+            AmbientLightColor = float4(0.0f, 0.0f, 0.0f, 0.0f);
+            HasDirectionalLightState = false;
+            DirectionalLightState = WiiUGx23DDirectionalLightState();
             DrawCommands.clear();
         }
 
@@ -78,6 +97,32 @@ namespace helengine::wiiu {
             return CameraState;
         }
 
+        /// Stores the accumulated ambient light color captured for the current frame.
+        void SetAmbientLightColor(float4 color) {
+            AmbientLightColor = color;
+        }
+
+        /// Returns the accumulated ambient light color captured for the current frame.
+        const float4& GetAmbientLightColor() const {
+            return AmbientLightColor;
+        }
+
+        /// Stores the first directional light captured for the current frame.
+        void SetDirectionalLight(const WiiUGx23DDirectionalLightState& directionalLightState) {
+            DirectionalLightState = directionalLightState;
+            HasDirectionalLightState = true;
+        }
+
+        /// Returns whether one directional light was captured for the current frame.
+        bool GetHasDirectionalLight() const {
+            return HasDirectionalLightState;
+        }
+
+        /// Returns the first directional light captured for the current frame.
+        const WiiUGx23DDirectionalLightState& GetDirectionalLight() const {
+            return DirectionalLightState;
+        }
+
         /// Appends one draw command in render order.
         void AddDrawCommand(const WiiUGx23DDrawCommand& drawCommand) {
             DrawCommands.push_back(drawCommand);
@@ -97,6 +142,15 @@ namespace helengine::wiiu {
 
         /// Stores the active scene camera resolved for the current frame.
         WiiUGx23DCameraState CameraState;
+
+        /// Stores the accumulated ambient light color captured for the current frame.
+        float4 AmbientLightColor;
+
+        /// Tracks whether the current frame captured one directional light.
+        bool HasDirectionalLightState;
+
+        /// Stores the first directional light captured for the current frame.
+        WiiUGx23DDirectionalLightState DirectionalLightState;
 
         /// Stores captured 3D draw commands in render order.
         std::vector<WiiUGx23DDrawCommand> DrawCommands;
