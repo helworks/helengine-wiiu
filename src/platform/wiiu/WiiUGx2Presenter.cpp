@@ -875,6 +875,10 @@ namespace helengine::wiiu {
             std::memset(&SceneOpaqueTransformBuffer, 0, sizeof(SceneOpaqueTransformBuffer));
         }
 
+        if (SceneOpaquePositionBuffer.buffer != nullptr || SceneOpaqueNormalBuffer.buffer != nullptr || SceneOpaqueIndexBuffer.buffer != nullptr) {
+            GX2DrawDone();
+        }
+
         if (SceneOpaquePositionBuffer.buffer != nullptr) {
             GX2RDestroyBufferEx(&SceneOpaquePositionBuffer, NoGx2rResourceFlags);
             std::memset(&SceneOpaquePositionBuffer, 0, sizeof(SceneOpaquePositionBuffer));
@@ -1743,6 +1747,10 @@ namespace helengine::wiiu {
 
         const WiiURuntimeMaterial& runtimeMaterial = *drawCommand.RuntimeMaterial;
 
+        if (SceneOpaqueMaterialBuffer.buffer != nullptr || SceneOpaqueLightBuffer.buffer != nullptr) {
+            GX2DrawDone();
+        }
+
         float materialData[] = {
             runtimeMaterial.GetBaseColor().X, runtimeMaterial.GetBaseColor().Y, runtimeMaterial.GetBaseColor().Z, runtimeMaterial.GetBaseColor().W,
             runtimeMaterial.GetEmissiveColor().X, runtimeMaterial.GetEmissiveColor().Y, runtimeMaterial.GetEmissiveColor().Z, runtimeMaterial.GetEmissiveColor().W
@@ -1997,6 +2005,10 @@ namespace helengine::wiiu {
             expandedNormalData.push_back(static_cast<float>(worldNormalX * worldNormalInverseLength));
             expandedNormalData.push_back(static_cast<float>(worldNormalY * worldNormalInverseLength));
             expandedNormalData.push_back(static_cast<float>(worldNormalZ * worldNormalInverseLength));
+        }
+
+        if (SceneOpaquePositionBuffer.buffer != nullptr || SceneOpaqueNormalBuffer.buffer != nullptr || SceneOpaqueIndexBuffer.buffer != nullptr) {
+            GX2DrawDone();
         }
 
         if (SceneOpaquePositionBuffer.buffer != nullptr) {

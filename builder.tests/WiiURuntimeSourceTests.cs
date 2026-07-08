@@ -44,17 +44,17 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures the packaged bootstrap fallback points at the authored cube_test scene and the README documents the final verification flow.
+    /// Ensures the packaged bootstrap fallback points at the authored colored_cube_grid scene and the README documents the final verification flow.
     /// </summary>
     [Fact]
-    public void PackagedBootstrap_UsesCubeTestAsTheAuthoredStartupScene() {
+    public void PackagedBootstrap_UsesColoredCubeGridAsTheAuthoredStartupScene() {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string bootstrapSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUSceneBootstrap.cpp"));
         string readmeSource = File.ReadAllText(Path.Combine(repositoryRootPath, "README.md"));
 
-        Assert.Contains("Scenes/rendering/cube_test.helen", bootstrapSource, StringComparison.Ordinal);
-        Assert.Contains("cooked/scenes/rendering/cube_test.hasset", bootstrapSource, StringComparison.Ordinal);
-        Assert.Contains("cube_test", readmeSource, StringComparison.Ordinal);
+        Assert.Contains("Scenes/rendering/colored_cube_grid.helen", bootstrapSource, StringComparison.Ordinal);
+        Assert.Contains("cooked/scenes/rendering/colored_cube_grid.hasset", bootstrapSource, StringComparison.Ordinal);
+        Assert.Contains("colored_cube_grid", readmeSource, StringComparison.Ordinal);
         Assert.Contains("launch_in_emulator.ps1", readmeSource, StringComparison.Ordinal);
     }
 
@@ -507,14 +507,14 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures the generated-core Wii U startup scene stays pinned to cube_test while the first visible cube bring-up path depends on one real 3D scene at boot.
+    /// Ensures the generated-core Wii U startup scene stays pinned to colored_cube_grid while the first visible cube bring-up path depends on one real 3D scene at boot.
     /// </summary>
     [Fact]
-    public void PackagedBootstrap_UsesCubeTestAsGeneratedCoreStartupSceneForCubeBringUp() {
+    public void PackagedBootstrap_UsesColoredCubeGridAsGeneratedCoreStartupSceneForCubeBringUp() {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string bootstrapSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUSceneBootstrap.cpp"));
 
-        Assert.Contains("return \"cube_test\";", bootstrapSource, StringComparison.Ordinal);
+        Assert.Contains("return \"colored_cube_grid\";", bootstrapSource, StringComparison.Ordinal);
         Assert.DoesNotContain("return he_get_runtime_wiiu_startup_scene_id();", bootstrapSource, StringComparison.Ordinal);
     }
 
@@ -627,6 +627,46 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("StoreFloatArrayAsLittleEndian(lightUploadBuffer, lightData, sizeof(lightData) / sizeof(lightData[0]));", presenterSource, StringComparison.Ordinal);
         Assert.Contains("GX2SetPixelUniformBlock(", presenterSource, StringComparison.Ordinal);
         Assert.Contains("StoreFloatArrayAsLittleEndian(materialUploadBuffer, materialData, sizeof(materialData) / sizeof(materialData[0]));", presenterSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the current opaque-scene clip-space upload fence waits for prior GX2 draws before recycling shared geometry buffers across multiple draw commands.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_WaitsForPriorOpaqueDrawBeforeRecyclingSharedGeometryBuffers() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        int functionStart = presenterSource.IndexOf("void WiiUGx2Presenter::UploadSceneOpaqueMeshClipSpace(", StringComparison.Ordinal);
+        int nextFunctionStart = presenterSource.IndexOf("void WiiUGx2Presenter::UploadSceneCubeMesh(", StringComparison.Ordinal);
+
+        Assert.True(functionStart >= 0, "Expected the clip-space opaque upload function to exist.");
+        Assert.True(nextFunctionStart > functionStart, "Expected the next scene cube upload function to appear after the clip-space opaque upload function.");
+
+        string clipSpaceUploadSource = presenterSource.Substring(functionStart, nextFunctionStart - functionStart);
+        Assert.Contains("if (SceneOpaquePositionBuffer.buffer != nullptr) {", clipSpaceUploadSource, StringComparison.Ordinal);
+        Assert.Contains("GX2DrawDone();", clipSpaceUploadSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RDestroyBufferEx(&SceneOpaquePositionBuffer, NoGx2rResourceFlags);", clipSpaceUploadSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the current opaque-scene draw path waits for prior GX2 draws before rewriting the shared material and light uniform blocks across multiple draw commands.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_WaitsForPriorOpaqueDrawBeforeRewritingSharedMaterialAndLightBlocks() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        int functionStart = presenterSource.IndexOf("void WiiUGx2Presenter::Render3DDrawCommandToColorBuffer(", StringComparison.Ordinal);
+        int nextFunctionStart = presenterSource.IndexOf("void WiiUGx2Presenter::UploadSceneOpaqueMesh(", StringComparison.Ordinal);
+
+        Assert.True(functionStart >= 0, "Expected the 3D opaque draw function to exist.");
+        Assert.True(nextFunctionStart > functionStart, "Expected the next opaque upload helper to appear after the 3D opaque draw function.");
+
+        string drawCommandSource = presenterSource.Substring(functionStart, nextFunctionStart - functionStart);
+        Assert.Contains("GX2RLockBufferEx(&SceneOpaqueMaterialBuffer, NoGx2rResourceFlags);", drawCommandSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RLockBufferEx(&SceneOpaqueLightBuffer, NoGx2rResourceFlags);", drawCommandSource, StringComparison.Ordinal);
+        Assert.Contains("GX2DrawDone();", drawCommandSource, StringComparison.Ordinal);
     }
 
     /// <summary>
