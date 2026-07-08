@@ -61,6 +61,12 @@ namespace helengine::wiiu {
         /// Initializes the DRC color buffer used for software-surface upload and presentation.
         void InitializeDrcColorBuffer();
 
+        /// Initializes the TV depth buffer used for scene-driven 3D depth testing.
+        void InitializeTvDepthBuffer();
+
+        /// Initializes the DRC depth buffer used for scene-driven 3D depth testing.
+        void InitializeDrcDepthBuffer();
+
         /// Initializes the presenter-owned shader and vertex buffers used by the diagnostic GX2 square path.
         void InitializeDiagnosticSquareResources();
 
@@ -139,8 +145,8 @@ namespace helengine::wiiu {
         /// Renders one captured frame into one target color buffer.
         void RenderFrameToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer, const WiiUGx2RenderFrame& frame, std::uint32_t targetWidth, std::uint32_t targetHeight);
 
-        /// Renders one captured 3D frame into one target color buffer.
-        void Render3DFrameToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer, const WiiUGx23DRenderFrame& frame, std::uint32_t targetWidth, std::uint32_t targetHeight);
+        /// Renders one captured 3D frame into one target color buffer using one paired depth buffer.
+        void Render3DFrameToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer, GX2DepthBuffer* depthBuffer, const WiiUGx23DRenderFrame& frame, std::uint32_t targetWidth, std::uint32_t targetHeight);
 
         /// Renders one captured 3D draw command into the currently bound color buffer.
         void Render3DDrawCommandToColorBuffer(const WiiUGx23DDrawCommand& drawCommand, const WiiUGx23DRenderFrame& frame, const WiiUGx23DCameraState& cameraState, std::uint32_t targetWidth, std::uint32_t targetHeight);
@@ -157,6 +163,9 @@ namespace helengine::wiiu {
         /// Uploads one runtime model into the presenter-owned generic opaque scene buffers using model-space positions and normals.
         void UploadSceneOpaqueMesh(const WiiURuntimeModel& runtimeModel);
 
+        /// Uploads one runtime model into the presenter-owned generic opaque scene buffers using CPU-expanded clip-space positions plus CPU-transformed world-space normals.
+        void UploadSceneOpaqueMeshClipSpace(const WiiURuntimeModel& runtimeModel, const float4x4& worldMatrix, const float4x4& worldViewProjectionMatrix);
+
         /// Renders the presenter-owned diagnostic square into one target color buffer with the supplied GX2 context state.
         void RenderDiagnosticSquareToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer);
 
@@ -168,6 +177,9 @@ namespace helengine::wiiu {
 
         /// Presents the current TV and DRC color buffers to their scan buffers.
         void PresentScanBuffers();
+
+        /// Appends one presenter trace message to the shared Wii U runtime trace file.
+        void AppendInitializationTrace(const char* format, ...);
 
         /// Tracks whether GX2 resources were initialized successfully.
         bool IsInitialized;
@@ -186,6 +198,12 @@ namespace helengine::wiiu {
 
         /// Stores the DRC color buffer used for steady-state presentation.
         GX2ColorBuffer DrcColorBuffer;
+
+        /// Stores the TV depth buffer used for scene-driven 3D depth testing.
+        GX2DepthBuffer TvDepthBuffer;
+
+        /// Stores the DRC depth buffer used for scene-driven 3D depth testing.
+        GX2DepthBuffer DrcDepthBuffer;
 
         /// Stores the TV GX2 context state used before copying the TV color buffer to the scan buffer.
         GX2ContextState* TvContextState;
@@ -244,8 +262,8 @@ namespace helengine::wiiu {
         /// Stores the presenter-owned light uniform buffer used by the generic opaque-scene shader path.
         GX2RBuffer SceneOpaqueLightBuffer;
 
-        /// Stores the number of indices currently uploaded for the generic opaque-scene path.
-        std::uint32_t SceneOpaqueIndexCount;
+        /// Stores the number of expanded vertices currently uploaded for the generic opaque-scene path.
+        std::uint32_t SceneOpaqueVertexCount;
 
         /// Tracks whether the temporary scene-cube shader group and uniform resources were initialized successfully.
         bool AreSceneCubeResourcesInitialized;
@@ -291,5 +309,8 @@ namespace helengine::wiiu {
 
         /// Stores the raw scan-buffer size required for DRC presentation.
         std::uint32_t DrcScanBufferSize;
+
+        /// Limits how many scene-driven 3D draw diagnostics are written into the runtime trace.
+        std::uint32_t Scene3DDebugLogCount;
     };
 }

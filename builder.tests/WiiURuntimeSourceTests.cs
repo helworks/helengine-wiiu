@@ -592,6 +592,73 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
+    /// Ensures the current incremental Wii U opaque-scene shader slice binds GPU material and light blocks for opaque Lambert-lit draws.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UsesMaterialAndLightBlocksForCurrentOpaqueSceneSlice() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+        string shaderPixelSource = File.ReadAllText(Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_opaque_lit.ps"));
+
+        Assert.Contains("InitializeSceneOpaqueMaterialBuffer();", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("InitializeSceneOpaqueLightBuffer();", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("drawCommand.RuntimeMaterial", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2SetPixelUniformBlock(", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("frame.GetAmbientLightColor()", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("frame.GetHasDirectionalLight()", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("uniform MaterialBlock", shaderPixelSource, StringComparison.Ordinal);
+        Assert.Contains("uniform LightBlock", shaderPixelSource, StringComparison.Ordinal);
+        Assert.Contains("layout(std140, binding = 0) uniform MaterialBlock", shaderPixelSource, StringComparison.Ordinal);
+        Assert.Contains("layout(std140, binding = 1) uniform LightBlock", shaderPixelSource, StringComparison.Ordinal);
+        Assert.Contains("BaseColor", shaderPixelSource, StringComparison.Ordinal);
+        Assert.Contains("DirectionalLightColor", shaderPixelSource, StringComparison.Ordinal);
+        Assert.Contains("DirectionalLightDirection", shaderPixelSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the current Wii U light-block upload stores float payloads in explicit little-endian byte order for GX2 uniform consumption.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_StoresSceneOpaqueLightBlockInLittleEndianByteOrder() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        Assert.Contains("StoreFloatArrayAsLittleEndian(", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("StoreFloatArrayAsLittleEndian(lightUploadBuffer, lightData, sizeof(lightData) / sizeof(lightData[0]));", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2SetPixelUniformBlock(", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("StoreFloatArrayAsLittleEndian(materialUploadBuffer, materialData, sizeof(materialData) / sizeof(materialData[0]));", presenterSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the current opaque-scene shader uses the working light block for ambient plus Lambert directional lighting instead of a flat diagnostic color.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UsesAmbientAndDirectionalLambertLightingForCurrentOpaqueSceneSlice() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string shaderPixelSource = File.ReadAllText(Path.Combine(repositoryRootPath, "tools", "wiiu-shaders", "scene_opaque_lit.ps"));
+
+        Assert.Contains("normalize(VertexNormal)", shaderPixelSource, StringComparison.Ordinal);
+        Assert.Contains("normalize(-DirectionalLightDirection.xyz)", shaderPixelSource, StringComparison.Ordinal);
+        Assert.Contains("dot(surfaceNormal, lightDirection)", shaderPixelSource, StringComparison.Ordinal);
+        Assert.Contains("AmbientLightColor.xyz", shaderPixelSource, StringComparison.Ordinal);
+        Assert.Contains("BaseColor.rgb * litColor", shaderPixelSource, StringComparison.Ordinal);
+        Assert.Contains("DirectionalLightColor.xyz * diffuseStrength", shaderPixelSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("FragColor = vec4(clamp(litColor, 0.0, 1.0), 1.0);", shaderPixelSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the current Wii U material upload path uses the runtime material base color instead of a temporary debug override.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UsesRuntimeMaterialBaseColorForMaterialUpload() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        Assert.Contains("runtimeMaterial.GetBaseColor().X, runtimeMaterial.GetBaseColor().Y, runtimeMaterial.GetBaseColor().Z, runtimeMaterial.GetBaseColor().W", presenterSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("const float4 debugTintColor(0.2f, 0.8f, 0.35f, 1.0f);", presenterSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures the Wii U presenter binds one GPU transform path plus material and light uniform blocks instead of expanding captured scene geometry to clip space on the CPU.
     /// </summary>
     [Fact]

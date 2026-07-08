@@ -19,6 +19,7 @@
 #include "LightComponent.hpp"
 #include "ModelAsset.hpp"
 #include "ObjectManager.hpp"
+#include "PlatformMaterialAsset.hpp"
 #include "RenderFrame.hpp"
 #include "RenderFrameDrawableSubmission.hpp"
 #include "RenderFrameExtractionResult.hpp"

@@ -112,12 +112,15 @@ namespace helengine::wiiu {
         AppendRuntimeTrace("\n=== Wii U application run begin ===\n");
 
         SetBootPhase(WiiUBootPhase::VideoInitialization, StartupClearColor);
+        AppendRuntimeTrace("[WiiUFile] InitializeVideo begin.\n");
         if (!InitializeVideo()) {
             AppendRuntimeTrace("[WiiUFile] InitializeVideo failed.\n");
             SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
             WHBProcShutdown();
             return 1;
         }
+        AppendRuntimeTrace("[WiiUFile] InitializeVideo completed.\n");
+        AppendRuntimeTrace("[WiiUFile] InitializeGx2Presenter begin.\n");
         if (!InitializeGx2Presenter()) {
             AppendRuntimeTrace("[WiiUFile] InitializeGx2Presenter failed.\n");
             SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
@@ -125,6 +128,7 @@ namespace helengine::wiiu {
             WHBProcShutdown();
             return 1;
         }
+        AppendRuntimeTrace("[WiiUFile] InitializeGx2Presenter completed.\n");
         if (!InitializeEngineCore()) {
             AppendRuntimeTrace("[WiiUFile] InitializeEngineCore failed.\n");
             SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
@@ -188,11 +192,13 @@ namespace helengine::wiiu {
 
     /// Initializes the current OSScreen video path and allocates the display work buffers.
     bool WiiUApplication::InitializeVideo() {
+        OSReport("[WiiU] InitializeVideo begin.\n");
         OSScreenInit();
 
         TvBuffer = AllocateScreenBuffer(SCREEN_TV);
         DrcBuffer = AllocateScreenBuffer(SCREEN_DRC);
         if (TvBuffer == nullptr || DrcBuffer == nullptr) {
+            OSReport("[WiiU] InitializeVideo buffer allocation failed.\n");
             return false;
         }
 
@@ -200,6 +206,7 @@ namespace helengine::wiiu {
         OSScreenSetBufferEx(SCREEN_DRC, DrcBuffer);
         OSScreenEnableEx(SCREEN_TV, true);
         OSScreenEnableEx(SCREEN_DRC, true);
+        OSReport("[WiiU] InitializeVideo completed.\n");
         return true;
     }
 
@@ -209,8 +216,12 @@ namespace helengine::wiiu {
             return true;
         }
 
+        OSReport("[WiiU] InitializeGx2Presenter construct presenter.\n");
         Gx2Presenter = new WiiUGx2Presenter();
-        return Gx2Presenter->Initialize();
+        OSReport("[WiiU] InitializeGx2Presenter initialize presenter begin.\n");
+        bool initialized = Gx2Presenter->Initialize();
+        OSReport("[WiiU] InitializeGx2Presenter initialize presenter completed result=%d.\n", initialized ? 1 : 0);
+        return initialized;
     }
 
     /// Initializes the Wii U generated core and queues the packaged startup scene.

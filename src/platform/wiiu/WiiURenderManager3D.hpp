@@ -8,6 +8,7 @@
 class CameraComponent;
 class IDrawable3D;
 class IContentStreamSource;
+class LightComponent;
 class RenderFrame;
 class RenderFrameDrawableSubmission;
 
