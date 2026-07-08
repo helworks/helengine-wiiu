@@ -9,9 +9,10 @@ namespace helengine::wiiu {
     }
 
     /// Replaces the copied model geometry exposed to the Wii U presenter bridge.
-    void WiiURuntimeModel::SetGeometry(std::vector<float> positionData, std::vector<float> normalData, std::vector<std::uint16_t> indexData) {
+    void WiiURuntimeModel::SetGeometry(std::vector<float> positionData, std::vector<float> normalData, std::vector<float> texCoordData, std::vector<std::uint16_t> indexData) {
         PositionData = std::move(positionData);
         NormalData = std::move(normalData);
+        TexCoordData = std::move(texCoordData);
         IndexData = std::move(indexData);
     }
 
@@ -23,6 +24,11 @@ namespace helengine::wiiu {
     /// Returns the copied normal stream as tightly packed XYZ float triplets.
     const std::vector<float>& WiiURuntimeModel::GetNormalData() const {
         return NormalData;
+    }
+
+    /// Returns the copied UV0 stream as tightly packed XY float pairs.
+    const std::vector<float>& WiiURuntimeModel::GetTexCoordData() const {
+        return TexCoordData;
     }
 
     /// Returns the copied 16-bit index stream used for indexed GX2 drawing.

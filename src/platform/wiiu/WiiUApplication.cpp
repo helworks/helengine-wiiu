@@ -69,8 +69,6 @@ namespace helengine::wiiu {
         , Gx2Presenter(nullptr)
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
         , EngineInitialized(false)
-        , UpdateFrameLogCount(0)
-        , DrawFrameLogCount(0)
         , EngineCore(nullptr)
         , EngineRenderManager3D(nullptr)
         , EngineRenderManager2D(nullptr)
@@ -323,9 +321,6 @@ namespace helengine::wiiu {
                 AppendRuntimeTrace("[WiiUFile] Startup scene warm draw failed.\n");
                 return false;
             }
-
-            UpdateFrameLogCount = 0;
-            DrawFrameLogCount = 0;
             SetBootPhase(WiiUBootPhase::Running, 0xFF004000);
             return true;
         }
@@ -388,19 +383,10 @@ namespace helengine::wiiu {
         }
 
         try {
-            if (UpdateFrameLogCount < 2) {
-                OSReport("[WiiU] Engine update begin frame=%u\n", UpdateFrameLogCount);
-                AppendRuntimeTrace("[WiiUFile] Engine update begin frame=%u\n", UpdateFrameLogCount);
-            }
             SetBootPhase(WiiUBootPhase::Running, 0xFF006000);
             EngineCore->Update();
             EngineRenderManager2D->FlushReleasedTextures();
             EngineRenderManager3D->FlushReleasedAssets();
-            if (UpdateFrameLogCount < 2) {
-                OSReport("[WiiU] Engine update completed frame=%u\n", UpdateFrameLogCount);
-                AppendRuntimeTrace("[WiiUFile] Engine update completed frame=%u\n", UpdateFrameLogCount);
-            }
-            UpdateFrameLogCount++;
             return true;
         }
         catch (Exception* exception) {
@@ -435,21 +421,12 @@ namespace helengine::wiiu {
         }
 
         try {
-            if (DrawFrameLogCount < 2) {
-                OSReport("[WiiU] Engine draw begin frame=%u\n", DrawFrameLogCount);
-                AppendRuntimeTrace("[WiiUFile] Engine draw begin frame=%u\n", DrawFrameLogCount);
-            }
             SetBootPhase(WiiUBootPhase::Running, 0xFF008000);
             EngineCore->Draw();
             EngineRenderManager3D->Draw();
             if (DiagnosticFrameLoopModeValue != DiagnosticFrameLoopMode::DrawOnly || RunDiagnosticRenderManager2DDrawInDrawOnlyMode) {
                 EngineRenderManager2D->Draw();
             }
-            if (DrawFrameLogCount < 2) {
-                OSReport("[WiiU] Engine draw completed frame=%u\n", DrawFrameLogCount);
-                AppendRuntimeTrace("[WiiUFile] Engine draw completed frame=%u\n", DrawFrameLogCount);
-            }
-            DrawFrameLogCount++;
             return true;
         }
         catch (Exception* exception) {

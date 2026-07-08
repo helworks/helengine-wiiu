@@ -160,10 +160,10 @@ namespace helengine::wiiu {
         /// Uploads one runtime model into the presenter-owned flat-color mesh path using one CPU-expanded clip-space transform.
         void UploadSceneCubeMesh(const WiiURuntimeModel& runtimeModel, const float4x4& worldViewProjectionMatrix);
 
-        /// Uploads one runtime model into the presenter-owned generic opaque scene buffers using model-space positions and normals.
+        /// Uploads one runtime model into the presenter-owned generic opaque scene buffers using model-space positions, normals, and UVs.
         void UploadSceneOpaqueMesh(const WiiURuntimeModel& runtimeModel);
 
-        /// Uploads one runtime model into the presenter-owned generic opaque scene buffers using CPU-expanded clip-space positions plus CPU-transformed world-space normals.
+        /// Uploads one runtime model into the presenter-owned generic opaque scene buffers using CPU-expanded clip-space positions plus CPU-transformed world-space normals and copied UVs.
         void UploadSceneOpaqueMeshClipSpace(const WiiURuntimeModel& runtimeModel, const float4x4& worldMatrix, const float4x4& worldViewProjectionMatrix);
 
         /// Renders the presenter-owned diagnostic square into one target color buffer with the supplied GX2 context state.
@@ -250,6 +250,9 @@ namespace helengine::wiiu {
         /// Stores the presenter-owned normal buffer used for generic opaque-scene vertices.
         GX2RBuffer SceneOpaqueNormalBuffer;
 
+        /// Stores the presenter-owned UV buffer used for generic opaque-scene vertices.
+        GX2RBuffer SceneOpaqueTexCoordBuffer;
+
         /// Stores the presenter-owned index buffer used for generic opaque-scene triangles.
         GX2RBuffer SceneOpaqueIndexBuffer;
 
@@ -309,8 +312,5 @@ namespace helengine::wiiu {
 
         /// Stores the raw scan-buffer size required for DRC presentation.
         std::uint32_t DrcScanBufferSize;
-
-        /// Limits how many scene-driven 3D draw diagnostics are written into the runtime trace.
-        std::uint32_t Scene3DDebugLogCount;
     };
 }

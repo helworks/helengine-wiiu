@@ -85,6 +85,7 @@ namespace helengine::wiiu {
         constexpr std::uint32_t DiagnosticTriangleTransformSizeInBytes = 16U * sizeof(float);
         constexpr std::uint32_t SceneOpaquePositionElementSize = 4U * sizeof(float);
         constexpr std::uint32_t SceneOpaqueNormalElementSize = 3U * sizeof(float);
+        constexpr std::uint32_t SceneOpaqueTexCoordElementSize = 2U * sizeof(float);
         constexpr std::uint32_t SceneOpaqueIndexElementSize = sizeof(std::uint16_t);
         constexpr std::uint32_t SceneOpaqueTransformSizeInBytes = 48U * sizeof(float);
         constexpr std::uint32_t SceneOpaqueMaterialSizeInBytes = 8U * sizeof(float);
@@ -184,6 +185,7 @@ namespace helengine::wiiu {
         , SceneOpaqueShaderGroup()
         , SceneOpaquePositionBuffer()
         , SceneOpaqueNormalBuffer()
+        , SceneOpaqueTexCoordBuffer()
         , SceneOpaqueIndexBuffer()
         , SceneOpaqueTransformBuffer()
         , SceneOpaqueMaterialBuffer()
@@ -203,8 +205,7 @@ namespace helengine::wiiu {
         , UiQuadColorBuffer()
         , UiSolidWhiteTextureHandle()
         , TvScanBufferSize(0U)
-        , DrcScanBufferSize(0U)
-        , Scene3DDebugLogCount(0U) {
+        , DrcScanBufferSize(0U) {
         std::memset(&TvColorBuffer, 0, sizeof(TvColorBuffer));
         std::memset(&DrcColorBuffer, 0, sizeof(DrcColorBuffer));
         std::memset(&TvDepthBuffer, 0, sizeof(TvDepthBuffer));
@@ -219,6 +220,7 @@ namespace helengine::wiiu {
         std::memset(&SceneOpaqueShaderGroup, 0, sizeof(SceneOpaqueShaderGroup));
         std::memset(&SceneOpaquePositionBuffer, 0, sizeof(SceneOpaquePositionBuffer));
         std::memset(&SceneOpaqueNormalBuffer, 0, sizeof(SceneOpaqueNormalBuffer));
+        std::memset(&SceneOpaqueTexCoordBuffer, 0, sizeof(SceneOpaqueTexCoordBuffer));
         std::memset(&SceneOpaqueIndexBuffer, 0, sizeof(SceneOpaqueIndexBuffer));
         std::memset(&SceneOpaqueTransformBuffer, 0, sizeof(SceneOpaqueTransformBuffer));
         std::memset(&SceneOpaqueMaterialBuffer, 0, sizeof(SceneOpaqueMaterialBuffer));
@@ -377,23 +379,11 @@ namespace helengine::wiiu {
             throw std::runtime_error("Wii U GX2 presenter must initialize UI quad resources before 2D frame rendering.");
         }
 
-        if (Scene3DDebugLogCount < 12U) {
-            AppendInitializationTrace("[WiiUFile] GX2 presenter render begin drawCommands=%u quadCommands=%u hasCamera=%u\n",
-                static_cast<unsigned>(frame3D.GetDrawCommands().size()),
-                static_cast<unsigned>(frame2D.GetQuadCommands().size()),
-                frame3D.GetHasCamera() ? 1U : 0U);
-        }
         Render3DFrameToColorBuffer(TvContextState, &TvColorBuffer, &TvDepthBuffer, frame3D, TvSurfaceWidth, TvSurfaceHeight);
         RenderQuadCommandsToColorBuffer(frame2D, TvSurfaceWidth, TvSurfaceHeight);
         GX2DrawDone();
         Render3DFrameToColorBuffer(DrcContextState, &DrcColorBuffer, &DrcDepthBuffer, frame3D, DrcSurfaceWidth, DrcSurfaceHeight);
         RenderQuadCommandsToColorBuffer(frame2D, DrcSurfaceWidth, DrcSurfaceHeight);
-        if (Scene3DDebugLogCount < 12U) {
-            AppendInitializationTrace("[WiiUFile] GX2 presenter render completed drawCommands=%u quadCommands=%u hasCamera=%u\n",
-                static_cast<unsigned>(frame3D.GetDrawCommands().size()),
-                static_cast<unsigned>(frame2D.GetQuadCommands().size()),
-                frame3D.GetHasCamera() ? 1U : 0U);
-        }
         PresentScanBuffers();
     }
 
@@ -611,42 +601,28 @@ namespace helengine::wiiu {
         }
 
         try {
-            AppendInitializationTrace("[WiiUFile] GX2 initialize: diagnostic square load shader group begin.\n");
             if (!WHBGfxLoadGFDShaderGroup(&DiagnosticSquareShaderGroup, 0, diagnostic_square_shader_bin)) {
                 throw std::runtime_error("Wii U GX2 presenter could not load the embedded diagnostic shader group.");
             }
-            AppendInitializationTrace("[WiiUFile] GX2 initialize: diagnostic square load shader group completed.\n");
 
-            AppendInitializationTrace("[WiiUFile] GX2 initialize: diagnostic square bind position begin.\n");
             if (!WHBGfxInitShaderAttribute(&DiagnosticSquareShaderGroup, "aPosition", 0, 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32)) {
                 throw std::runtime_error("Wii U GX2 presenter could not bind the diagnostic position shader attribute.");
             }
-            AppendInitializationTrace("[WiiUFile] GX2 initialize: diagnostic square bind position completed.\n");
 
-            AppendInitializationTrace("[WiiUFile] GX2 initialize: diagnostic square bind color begin.\n");
             if (!WHBGfxInitShaderAttribute(&DiagnosticSquareShaderGroup, "aColor", 1, 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32)) {
                 throw std::runtime_error("Wii U GX2 presenter could not bind the diagnostic color shader attribute.");
             }
-            AppendInitializationTrace("[WiiUFile] GX2 initialize: diagnostic square bind color completed.\n");
 
-            AppendInitializationTrace("[WiiUFile] GX2 initialize: diagnostic square fetch shader begin.\n");
             if (!WHBGfxInitFetchShader(&DiagnosticSquareShaderGroup)) {
                 throw std::runtime_error("Wii U GX2 presenter could not initialize the diagnostic fetch shader.");
             }
-            AppendInitializationTrace("[WiiUFile] GX2 initialize: diagnostic square fetch shader completed.\n");
 
-            AppendInitializationTrace("[WiiUFile] GX2 initialize: diagnostic square invalidate shaders begin.\n");
             GX2Invalidate(GX2_INVALIDATE_MODE_CPU_SHADER, DiagnosticSquareShaderGroup.vertexShader->program, DiagnosticSquareShaderGroup.vertexShader->size);
             GX2Invalidate(GX2_INVALIDATE_MODE_CPU_SHADER, DiagnosticSquareShaderGroup.pixelShader->program, DiagnosticSquareShaderGroup.pixelShader->size);
             GX2Invalidate(GX2_INVALIDATE_MODE_CPU_SHADER, DiagnosticSquareShaderGroup.fetchShader.program, DiagnosticSquareShaderGroup.fetchShader.size);
-            AppendInitializationTrace("[WiiUFile] GX2 initialize: diagnostic square invalidate shaders completed.\n");
 
-            AppendInitializationTrace("[WiiUFile] GX2 initialize: diagnostic square position buffer begin.\n");
             InitializeDiagnosticSquareBuffer(&DiagnosticSquarePositionBuffer, DiagnosticSquarePositionData, DiagnosticSquareVertexCount);
-            AppendInitializationTrace("[WiiUFile] GX2 initialize: diagnostic square position buffer completed.\n");
-            AppendInitializationTrace("[WiiUFile] GX2 initialize: diagnostic square color buffer begin.\n");
             InitializeDiagnosticSquareBuffer(&DiagnosticSquareColorBuffer, DiagnosticSquareColorData, DiagnosticSquareVertexCount);
-            AppendInitializationTrace("[WiiUFile] GX2 initialize: diagnostic square color buffer completed.\n");
             AreDiagnosticSquareResourcesInitialized = true;
         } catch (...) {
             DestroyDiagnosticSquareResources();
@@ -842,6 +818,10 @@ namespace helengine::wiiu {
                 throw std::runtime_error("Wii U GX2 presenter could not bind the opaque scene normal shader attribute.");
             }
 
+            if (!WHBGfxInitShaderAttribute(&SceneOpaqueShaderGroup, "aTexCoord", 2, 0, GX2_ATTRIB_FORMAT_FLOAT_32_32)) {
+                throw std::runtime_error("Wii U GX2 presenter could not bind the opaque scene texcoord shader attribute.");
+            }
+
             if (!WHBGfxInitFetchShader(&SceneOpaqueShaderGroup)) {
                 throw std::runtime_error("Wii U GX2 presenter could not initialize the opaque scene fetch shader.");
             }
@@ -875,7 +855,7 @@ namespace helengine::wiiu {
             std::memset(&SceneOpaqueTransformBuffer, 0, sizeof(SceneOpaqueTransformBuffer));
         }
 
-        if (SceneOpaquePositionBuffer.buffer != nullptr || SceneOpaqueNormalBuffer.buffer != nullptr || SceneOpaqueIndexBuffer.buffer != nullptr) {
+        if (SceneOpaquePositionBuffer.buffer != nullptr || SceneOpaqueNormalBuffer.buffer != nullptr || SceneOpaqueTexCoordBuffer.buffer != nullptr || SceneOpaqueIndexBuffer.buffer != nullptr) {
             GX2DrawDone();
         }
 
@@ -887,6 +867,11 @@ namespace helengine::wiiu {
         if (SceneOpaqueNormalBuffer.buffer != nullptr) {
             GX2RDestroyBufferEx(&SceneOpaqueNormalBuffer, NoGx2rResourceFlags);
             std::memset(&SceneOpaqueNormalBuffer, 0, sizeof(SceneOpaqueNormalBuffer));
+        }
+
+        if (SceneOpaqueTexCoordBuffer.buffer != nullptr) {
+            GX2RDestroyBufferEx(&SceneOpaqueTexCoordBuffer, NoGx2rResourceFlags);
+            std::memset(&SceneOpaqueTexCoordBuffer, 0, sizeof(SceneOpaqueTexCoordBuffer));
         }
 
         if (SceneOpaqueIndexBuffer.buffer != nullptr) {
@@ -1642,110 +1627,16 @@ namespace helengine::wiiu {
         float4x4 worldMatrix = drawCommand.WorldMatrix;
         float4x4 viewMatrix = cameraState.ViewMatrix;
 
-        const std::vector<float>& sourcePositionData = drawCommand.RuntimeModel->GetPositionData();
         float4x4 worldViewMatrix;
         float4x4 worldViewProjectionMatrix;
         float4x4::Multiply__ref0_ref1_out2(worldMatrix, viewMatrix, worldViewMatrix);
         float4x4::Multiply__ref0_ref1_out2(worldViewMatrix, projectionMatrix, worldViewProjectionMatrix);
-        const bool shouldLogOpaqueDraw = Scene3DDebugLogCount < 12U;
-        if (sourcePositionData.size() >= 4U) {
-            const float sourceX = sourcePositionData[0];
-            const float sourceY = sourcePositionData[1];
-            const float sourceZ = sourcePositionData[2];
-            const float sourceW = sourcePositionData[3];
-            const float clipX =
-                (sourceX * worldViewProjectionMatrix.M11) +
-                (sourceY * worldViewProjectionMatrix.M21) +
-                (sourceZ * worldViewProjectionMatrix.M31) +
-                (sourceW * worldViewProjectionMatrix.M41);
-            const float clipY =
-                (sourceX * worldViewProjectionMatrix.M12) +
-                (sourceY * worldViewProjectionMatrix.M22) +
-                (sourceZ * worldViewProjectionMatrix.M32) +
-                (sourceW * worldViewProjectionMatrix.M42);
-            const float clipZ =
-                (sourceX * worldViewProjectionMatrix.M13) +
-                (sourceY * worldViewProjectionMatrix.M23) +
-                (sourceZ * worldViewProjectionMatrix.M33) +
-                (sourceW * worldViewProjectionMatrix.M43);
-            const float clipW =
-                (sourceX * worldViewProjectionMatrix.M14) +
-                (sourceY * worldViewProjectionMatrix.M24) +
-                (sourceZ * worldViewProjectionMatrix.M34) +
-                (sourceW * worldViewProjectionMatrix.M44);
-            const float ndcX = clipW != 0.0f ? clipX / clipW : 0.0f;
-            const float ndcY = clipW != 0.0f ? clipY / clipW : 0.0f;
-            const float ndcZ = clipW != 0.0f ? clipZ / clipW : 0.0f;
-            if (shouldLogOpaqueDraw) {
-                AppendInitializationTrace(
-                    "[WiiUFile] Opaque draw setup target=%ux%u cpuClipSpace=1 worldNormals=1 lightBlock=1 opaqueShader=1 nonIndexed=1 noCull=1 positions=%u normals=%u indices=%u firstClip=(%f,%f,%f,%f) firstNdc=(%f,%f,%f)\n",
-                    targetWidth,
-                    targetHeight,
-                    static_cast<unsigned>(sourcePositionData.size() / 4U),
-                    static_cast<unsigned>(drawCommand.RuntimeModel->GetNormalData().size() / 3U),
-                    static_cast<unsigned>(drawCommand.RuntimeModel->GetIndexData().size()),
-                    clipX,
-                    clipY,
-                    clipZ,
-                    clipW,
-                    ndcX,
-                    ndcY,
-                    ndcZ);
-            }
-        }
-
-        if (shouldLogOpaqueDraw && sourcePositionData.size() >= 12U && drawCommand.RuntimeModel->GetNormalData().size() >= 9U && drawCommand.RuntimeModel->GetIndexData().size() >= 3U) {
-            const std::vector<std::uint16_t>& sourceIndices = drawCommand.RuntimeModel->GetIndexData();
-            const std::vector<float>& sourceNormals = drawCommand.RuntimeModel->GetNormalData();
-            const std::size_t index0 = static_cast<std::size_t>(sourceIndices[0]);
-            const std::size_t index1 = static_cast<std::size_t>(sourceIndices[1]);
-            const std::size_t index2 = static_cast<std::size_t>(sourceIndices[2]);
-            const std::size_t positionOffset0 = index0 * 4U;
-            const std::size_t positionOffset1 = index1 * 4U;
-            const std::size_t positionOffset2 = index2 * 4U;
-            const std::size_t normalOffset0 = index0 * 3U;
-            if (positionOffset2 + 3U < sourcePositionData.size() && normalOffset0 + 2U < sourceNormals.size()) {
-                const double ax = static_cast<double>(sourcePositionData[positionOffset0 + 0U]);
-                const double ay = static_cast<double>(sourcePositionData[positionOffset0 + 1U]);
-                const double az = static_cast<double>(sourcePositionData[positionOffset0 + 2U]);
-                const double bx = static_cast<double>(sourcePositionData[positionOffset1 + 0U]);
-                const double by = static_cast<double>(sourcePositionData[positionOffset1 + 1U]);
-                const double bz = static_cast<double>(sourcePositionData[positionOffset1 + 2U]);
-                const double cx = static_cast<double>(sourcePositionData[positionOffset2 + 0U]);
-                const double cy = static_cast<double>(sourcePositionData[positionOffset2 + 1U]);
-                const double cz = static_cast<double>(sourcePositionData[positionOffset2 + 2U]);
-                const double edgeAx = bx - ax;
-                const double edgeAy = by - ay;
-                const double edgeAz = bz - az;
-                const double edgeBx = cx - ax;
-                const double edgeBy = cy - ay;
-                const double edgeBz = cz - az;
-                const double faceNormalX = (edgeAy * edgeBz) - (edgeAz * edgeBy);
-                const double faceNormalY = (edgeAz * edgeBx) - (edgeAx * edgeBz);
-                const double faceNormalZ = (edgeAx * edgeBy) - (edgeAy * edgeBx);
-                const double sourceNormalX = static_cast<double>(sourceNormals[normalOffset0 + 0U]);
-                const double sourceNormalY = static_cast<double>(sourceNormals[normalOffset0 + 1U]);
-                const double sourceNormalZ = static_cast<double>(sourceNormals[normalOffset0 + 2U]);
-                const double alignmentDot =
-                    (faceNormalX * sourceNormalX) +
-                    (faceNormalY * sourceNormalY) +
-                    (faceNormalZ * sourceNormalZ);
-                AppendInitializationTrace(
-                    "[WiiUFile] Opaque firstTriangle indices=(%u,%u,%u) faceNormal=(%f,%f,%f) sourceNormal=(%f,%f,%f) alignmentDot=%f\n",
-                    static_cast<unsigned>(sourceIndices[0]),
-                    static_cast<unsigned>(sourceIndices[1]),
-                    static_cast<unsigned>(sourceIndices[2]),
-                    faceNormalX,
-                    faceNormalY,
-                    faceNormalZ,
-                    sourceNormalX,
-                    sourceNormalY,
-                    sourceNormalZ,
-                    alignmentDot);
-            }
-        }
 
         const WiiURuntimeMaterial& runtimeMaterial = *drawCommand.RuntimeMaterial;
+        const WiiUGx2TextureHandle* baseColorTextureHandle = runtimeMaterial.GetBaseColorTextureHandle();
+        if (baseColorTextureHandle == nullptr) {
+            baseColorTextureHandle = &UiSolidWhiteTextureHandle;
+        }
 
         if (SceneOpaqueMaterialBuffer.buffer != nullptr || SceneOpaqueLightBuffer.buffer != nullptr) {
             GX2DrawDone();
@@ -1804,16 +1695,6 @@ namespace helengine::wiiu {
             throw std::runtime_error("Wii U GX2 presenter requires the opaque-scene LightBlock uniform block before drawing.");
         }
 
-        if (shouldLogOpaqueDraw) {
-            AppendInitializationTrace(
-                "[WiiUFile] Pixel LightBlock metadata uniformBlockCount=%u offset=%u size=%u bufferElemSize=%u bufferElemCount=%u\n",
-                static_cast<unsigned>(SceneOpaqueShaderGroup.pixelShader->uniformBlockCount),
-                static_cast<unsigned>(lightUniformBlock->offset),
-                static_cast<unsigned>(lightUniformBlock->size),
-                static_cast<unsigned>(SceneOpaqueLightBuffer.elemSize),
-                static_cast<unsigned>(SceneOpaqueLightBuffer.elemCount));
-        }
-
         GX2SetPixelUniformBlock(
             materialUniformBlock->offset,
             materialUniformBlock->size,
@@ -1822,6 +1703,8 @@ namespace helengine::wiiu {
             lightUniformBlock->offset,
             lightUniformBlock->size,
             SceneOpaqueLightBuffer.buffer);
+        GX2SetPixelTexture(&baseColorTextureHandle->Texture, SceneOpaqueShaderGroup.pixelShader->samplerVars[0].location);
+        GX2SetPixelSampler(&baseColorTextureHandle->Sampler, SceneOpaqueShaderGroup.pixelShader->samplerVars[0].location);
         GX2SetCullOnlyControl(GX2_FRONT_FACE_CCW, FALSE, FALSE);
         GX2SetColorControl(GX2_LOGIC_OP_COPY, 0x1, FALSE, TRUE);
         GX2SetBlendControl(
@@ -1844,30 +1727,15 @@ namespace helengine::wiiu {
             GX2_CHANNEL_MASK_RGBA);
         GX2RSetAttributeBuffer(&SceneOpaquePositionBuffer, 0, SceneOpaquePositionBuffer.elemSize, 0);
         GX2RSetAttributeBuffer(&SceneOpaqueNormalBuffer, 1, SceneOpaqueNormalBuffer.elemSize, 0);
+        GX2RSetAttributeBuffer(&SceneOpaqueTexCoordBuffer, 2, SceneOpaqueTexCoordBuffer.elemSize, 0);
         GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, SceneOpaqueVertexCount, 0, 1);
-        if (shouldLogOpaqueDraw) {
-            AppendInitializationTrace(
-                "[WiiUFile] SceneOpaque light-block draw submitted target=%ux%u expandedVertices=%u ambient=(%f,%f,%f) directional=(%f,%f,%f) direction=(%f,%f,%f)\n",
-                targetWidth,
-                targetHeight,
-                SceneOpaqueVertexCount,
-                ambientLightColor.X,
-                ambientLightColor.Y,
-                ambientLightColor.Z,
-                directionalLightColor.X,
-                directionalLightColor.Y,
-                directionalLightColor.Z,
-                directionalLightDirection.X,
-                directionalLightDirection.Y,
-                directionalLightDirection.Z);
-            Scene3DDebugLogCount++;
-        }
     }
 
     /// Uploads one runtime model into the presenter-owned generic opaque scene buffers using model-space positions and normals.
     void WiiUGx2Presenter::UploadSceneOpaqueMesh(const WiiURuntimeModel& runtimeModel) {
         const std::vector<float>& sourcePositionData = runtimeModel.GetPositionData();
         const std::vector<float>& sourceNormalData = runtimeModel.GetNormalData();
+        const std::vector<float>& sourceTexCoordData = runtimeModel.GetTexCoordData();
         const std::vector<std::uint16_t>& indexData = runtimeModel.GetIndexData();
         if (!AreSceneOpaqueResourcesInitialized) {
             throw std::runtime_error("Wii U GX2 presenter must initialize opaque scene resources before uploading geometry.");
@@ -1875,21 +1743,28 @@ namespace helengine::wiiu {
             throw std::runtime_error("Wii U GX2 presenter requires non-empty opaque-scene position data.");
         } else if (sourceNormalData.empty()) {
             throw std::runtime_error("Wii U GX2 presenter requires non-empty opaque-scene normal data.");
+        } else if (sourceTexCoordData.empty()) {
+            throw std::runtime_error("Wii U GX2 presenter requires non-empty opaque-scene texcoord data.");
         } else if (indexData.empty()) {
             throw std::runtime_error("Wii U GX2 presenter requires non-empty opaque-scene index data.");
         }
 
         std::vector<float> expandedPositionData;
         std::vector<float> expandedNormalData;
+        std::vector<float> expandedTexCoordData;
         expandedPositionData.reserve(static_cast<std::size_t>(indexData.size()) * 4U);
         expandedNormalData.reserve(static_cast<std::size_t>(indexData.size()) * 3U);
+        expandedTexCoordData.reserve(static_cast<std::size_t>(indexData.size()) * 2U);
         for (std::uint16_t sourceIndex : indexData) {
             const std::size_t positionOffset = static_cast<std::size_t>(sourceIndex) * 4U;
             const std::size_t normalOffset = static_cast<std::size_t>(sourceIndex) * 3U;
+            const std::size_t texCoordOffset = static_cast<std::size_t>(sourceIndex) * 2U;
             if (positionOffset + 3U >= sourcePositionData.size()) {
                 throw std::runtime_error("Wii U GX2 presenter received one opaque-scene index outside the uploaded position range.");
             } else if (normalOffset + 2U >= sourceNormalData.size()) {
                 throw std::runtime_error("Wii U GX2 presenter received one opaque-scene index outside the uploaded normal range.");
+            } else if (texCoordOffset + 1U >= sourceTexCoordData.size()) {
+                throw std::runtime_error("Wii U GX2 presenter received one opaque-scene index outside the uploaded texcoord range.");
             }
 
             expandedPositionData.push_back(sourcePositionData[positionOffset + 0U]);
@@ -1899,6 +1774,8 @@ namespace helengine::wiiu {
             expandedNormalData.push_back(sourceNormalData[normalOffset + 0U]);
             expandedNormalData.push_back(sourceNormalData[normalOffset + 1U]);
             expandedNormalData.push_back(sourceNormalData[normalOffset + 2U]);
+            expandedTexCoordData.push_back(sourceTexCoordData[texCoordOffset + 0U]);
+            expandedTexCoordData.push_back(sourceTexCoordData[texCoordOffset + 1U]);
         }
 
         if (SceneOpaquePositionBuffer.buffer != nullptr) {
@@ -1911,6 +1788,11 @@ namespace helengine::wiiu {
             std::memset(&SceneOpaqueNormalBuffer, 0, sizeof(SceneOpaqueNormalBuffer));
         }
 
+        if (SceneOpaqueTexCoordBuffer.buffer != nullptr) {
+            GX2RDestroyBufferEx(&SceneOpaqueTexCoordBuffer, NoGx2rResourceFlags);
+            std::memset(&SceneOpaqueTexCoordBuffer, 0, sizeof(SceneOpaqueTexCoordBuffer));
+        }
+
         if (SceneOpaqueIndexBuffer.buffer != nullptr) {
             GX2RDestroyBufferEx(&SceneOpaqueIndexBuffer, NoGx2rResourceFlags);
             std::memset(&SceneOpaqueIndexBuffer, 0, sizeof(SceneOpaqueIndexBuffer));
@@ -1918,6 +1800,7 @@ namespace helengine::wiiu {
 
         InitializeSceneOpaqueVertexBuffer(&SceneOpaquePositionBuffer, expandedPositionData.data(), static_cast<std::uint32_t>(expandedPositionData.size()), SceneOpaquePositionElementSize, 4U);
         InitializeSceneOpaqueVertexBuffer(&SceneOpaqueNormalBuffer, expandedNormalData.data(), static_cast<std::uint32_t>(expandedNormalData.size()), SceneOpaqueNormalElementSize, 3U);
+        InitializeSceneOpaqueVertexBuffer(&SceneOpaqueTexCoordBuffer, expandedTexCoordData.data(), static_cast<std::uint32_t>(expandedTexCoordData.size()), SceneOpaqueTexCoordElementSize, 2U);
         SceneOpaqueVertexCount = static_cast<std::uint32_t>(expandedPositionData.size() / 4U);
     }
 
@@ -1925,6 +1808,7 @@ namespace helengine::wiiu {
     void WiiUGx2Presenter::UploadSceneOpaqueMeshClipSpace(const WiiURuntimeModel& runtimeModel, const float4x4& worldMatrix, const float4x4& worldViewProjectionMatrix) {
         const std::vector<float>& sourcePositionData = runtimeModel.GetPositionData();
         const std::vector<float>& sourceNormalData = runtimeModel.GetNormalData();
+        const std::vector<float>& sourceTexCoordData = runtimeModel.GetTexCoordData();
         const std::vector<std::uint16_t>& indexData = runtimeModel.GetIndexData();
         if (!AreSceneOpaqueResourcesInitialized) {
             throw std::runtime_error("Wii U GX2 presenter must initialize opaque scene resources before uploading clip-space geometry.");
@@ -1932,21 +1816,28 @@ namespace helengine::wiiu {
             throw std::runtime_error("Wii U GX2 presenter requires non-empty opaque-scene position data for clip-space upload.");
         } else if (sourceNormalData.empty()) {
             throw std::runtime_error("Wii U GX2 presenter requires non-empty opaque-scene normal data for clip-space upload.");
+        } else if (sourceTexCoordData.empty()) {
+            throw std::runtime_error("Wii U GX2 presenter requires non-empty opaque-scene texcoord data for clip-space upload.");
         } else if (indexData.empty()) {
             throw std::runtime_error("Wii U GX2 presenter requires non-empty opaque-scene index data for clip-space upload.");
         }
 
         std::vector<float> expandedPositionData;
         std::vector<float> expandedNormalData;
+        std::vector<float> expandedTexCoordData;
         expandedPositionData.reserve(static_cast<std::size_t>(indexData.size()) * 4U);
         expandedNormalData.reserve(static_cast<std::size_t>(indexData.size()) * 3U);
+        expandedTexCoordData.reserve(static_cast<std::size_t>(indexData.size()) * 2U);
         for (std::uint16_t sourceIndex : indexData) {
             const std::size_t positionOffset = static_cast<std::size_t>(sourceIndex) * 4U;
             const std::size_t normalOffset = static_cast<std::size_t>(sourceIndex) * 3U;
+            const std::size_t texCoordOffset = static_cast<std::size_t>(sourceIndex) * 2U;
             if (positionOffset + 3U >= sourcePositionData.size()) {
                 throw std::runtime_error("Wii U GX2 presenter received one opaque-scene clip-space index outside the uploaded position range.");
             } else if (normalOffset + 2U >= sourceNormalData.size()) {
                 throw std::runtime_error("Wii U GX2 presenter received one opaque-scene clip-space index outside the uploaded normal range.");
+            } else if (texCoordOffset + 1U >= sourceTexCoordData.size()) {
+                throw std::runtime_error("Wii U GX2 presenter received one opaque-scene clip-space index outside the uploaded texcoord range.");
             }
 
             const float sourceX = sourcePositionData[positionOffset + 0U];
@@ -2005,9 +1896,11 @@ namespace helengine::wiiu {
             expandedNormalData.push_back(static_cast<float>(worldNormalX * worldNormalInverseLength));
             expandedNormalData.push_back(static_cast<float>(worldNormalY * worldNormalInverseLength));
             expandedNormalData.push_back(static_cast<float>(worldNormalZ * worldNormalInverseLength));
+            expandedTexCoordData.push_back(sourceTexCoordData[texCoordOffset + 0U]);
+            expandedTexCoordData.push_back(sourceTexCoordData[texCoordOffset + 1U]);
         }
 
-        if (SceneOpaquePositionBuffer.buffer != nullptr || SceneOpaqueNormalBuffer.buffer != nullptr || SceneOpaqueIndexBuffer.buffer != nullptr) {
+        if (SceneOpaquePositionBuffer.buffer != nullptr || SceneOpaqueNormalBuffer.buffer != nullptr || SceneOpaqueTexCoordBuffer.buffer != nullptr || SceneOpaqueIndexBuffer.buffer != nullptr) {
             GX2DrawDone();
         }
 
@@ -2021,6 +1914,11 @@ namespace helengine::wiiu {
             std::memset(&SceneOpaqueNormalBuffer, 0, sizeof(SceneOpaqueNormalBuffer));
         }
 
+        if (SceneOpaqueTexCoordBuffer.buffer != nullptr) {
+            GX2RDestroyBufferEx(&SceneOpaqueTexCoordBuffer, NoGx2rResourceFlags);
+            std::memset(&SceneOpaqueTexCoordBuffer, 0, sizeof(SceneOpaqueTexCoordBuffer));
+        }
+
         if (SceneOpaqueIndexBuffer.buffer != nullptr) {
             GX2RDestroyBufferEx(&SceneOpaqueIndexBuffer, NoGx2rResourceFlags);
             std::memset(&SceneOpaqueIndexBuffer, 0, sizeof(SceneOpaqueIndexBuffer));
@@ -2028,6 +1926,7 @@ namespace helengine::wiiu {
 
         InitializeSceneOpaqueVertexBuffer(&SceneOpaquePositionBuffer, expandedPositionData.data(), static_cast<std::uint32_t>(expandedPositionData.size()), SceneOpaquePositionElementSize, 4U);
         InitializeSceneOpaqueVertexBuffer(&SceneOpaqueNormalBuffer, expandedNormalData.data(), static_cast<std::uint32_t>(expandedNormalData.size()), SceneOpaqueNormalElementSize, 3U);
+        InitializeSceneOpaqueVertexBuffer(&SceneOpaqueTexCoordBuffer, expandedTexCoordData.data(), static_cast<std::uint32_t>(expandedTexCoordData.size()), SceneOpaqueTexCoordElementSize, 2U);
         SceneOpaqueVertexCount = static_cast<std::uint32_t>(expandedPositionData.size() / 4U);
     }
 

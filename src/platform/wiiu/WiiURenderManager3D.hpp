@@ -2,8 +2,12 @@
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
 
+#include <cstdint>
+#include <vector>
+
 #include "RenderManager3D.hpp"
 #include "platform/wiiu/WiiUGx23DRenderFrame.hpp"
+#include "platform/wiiu/WiiUGx2TextureHandle.hpp"
 
 class CameraComponent;
 class IDrawable3D;
@@ -11,6 +15,7 @@ class IContentStreamSource;
 class LightComponent;
 class RenderFrame;
 class RenderFrameDrawableSubmission;
+class TextureAsset;
 
 namespace helengine::wiiu {
     class WiiURuntimeMaterial;
@@ -58,6 +63,9 @@ namespace helengine::wiiu {
         /// Releases one runtime model built by the Wii U bridge.
         void ReleaseModel(::RuntimeModel* model) override;
 
+        /// Releases one runtime material built by the Wii U bridge.
+        void ReleaseMaterial(::RuntimeMaterial* material) override;
+
     private:
         /// Resets the current frame before capture begins.
         void BeginFrame();
@@ -98,11 +106,47 @@ namespace helengine::wiiu {
         /// Creates one concrete Wii U runtime material from the supplied material fields.
         WiiURuntimeMaterial* CreateRuntimeMaterial(std::string runtimeMaterialId, float4 baseColor, bool isLit, bool isDoubleSided);
 
+        /// Builds one GX2 texture handle from a cooked runtime texture payload path.
+        static WiiUGx2TextureHandle BuildTextureHandleFromCooked(std::string cookedAssetPath);
+
+        /// Builds one GX2 texture handle from a cooked runtime texture payload path through the content-stream contract.
+        static WiiUGx2TextureHandle BuildTextureHandleFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource);
+
+        /// Builds one GX2 texture handle from one shared-engine texture payload.
+        static WiiUGx2TextureHandle BuildTextureHandleFromRaw(::TextureAsset* data);
+
         /// Builds one Wii U runtime model from a shared model asset payload.
         WiiURuntimeModel* BuildRuntimeModelFromAsset(::ModelAsset* data);
 
+        /// Initializes one GX2 texture handle from decoded ARGB pixels.
+        static void InitializeTextureHandle(WiiUGx2TextureHandle* textureHandle, std::uint32_t width, std::uint32_t height, const std::vector<std::uint32_t>& pixels);
+
+        /// Releases one GX2 texture handle owned by one Wii U runtime material.
+        static void DestroyTextureHandle(WiiUGx2TextureHandle* textureHandle);
+
+        /// Decodes one shared-engine texture payload into ARGB texels ready for GX2 upload.
+        static std::vector<std::uint32_t> DecodeTexturePixels(::TextureAsset* data);
+
+        /// Packs one 8-bit RGBA color into one ARGB8888 word.
+        static std::uint32_t PackArgb(std::uint8_t red, std::uint8_t green, std::uint8_t blue, std::uint8_t alpha);
+
+        /// Expands one 4-bit color channel into 8-bit precision.
+        static std::uint8_t Expand4To8(std::uint8_t value);
+
+        /// Expands one 5-bit color channel into 8-bit precision.
+        static std::uint8_t Expand5To8(std::uint16_t value);
+
+        /// Expands one 3-bit alpha channel into 8-bit precision.
+        static std::uint8_t Expand3To8(std::uint16_t value);
+
+        /// Decodes one packed GX RGB5A3 texel into ARGB8888.
+        static std::uint32_t DecodeRgb5A3(std::uint16_t pixel);
+
         /// Releases one transient cooked model asset after the runtime geometry has been copied out.
         static void ReleaseTransientModelAsset(::ModelAsset* asset);
+
+        /// Releases one transient cooked texture asset after one runtime GX2 texture handle has been rebuilt from its payload.
+        static void ReleaseTransientTextureAsset(::TextureAsset* asset);
 
         /// Stores the most recently captured 3D frame.
         WiiUGx23DRenderFrame CurrentFrame;

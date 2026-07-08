@@ -2,6 +2,7 @@
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
 
+#include "platform/wiiu/WiiUGx2TextureHandle.hpp"
 #include "RuntimeMaterial.hpp"
 #include "float4.hpp"
 
@@ -15,7 +16,9 @@ namespace helengine::wiiu {
             , BaseColor(1.0f, 1.0f, 1.0f, 1.0f)
             , EmissiveColor(0.0f, 0.0f, 0.0f, 0.0f)
             , Lit(true)
-            , DoubleSided(false) {
+            , DoubleSided(false)
+            , HasBaseColorTexture(false)
+            , BaseColorTextureHandle() {
         }
 
         /// Stores the material tint consumed by the opaque Wii U shader path.
@@ -58,6 +61,24 @@ namespace helengine::wiiu {
             return DoubleSided;
         }
 
+        /// Stores the GX2 base-color texture handle consumed by the opaque Wii U shader path.
+        void SetBaseColorTextureHandle(const WiiUGx2TextureHandle& textureHandle) {
+            BaseColorTextureHandle = textureHandle;
+            HasBaseColorTexture = true;
+        }
+
+        /// Returns the optional GX2 base-color texture handle consumed by the opaque Wii U shader path.
+        const WiiUGx2TextureHandle* GetBaseColorTextureHandle() const {
+            return HasBaseColorTexture
+                ? &BaseColorTextureHandle
+                : nullptr;
+        }
+
+        /// Returns writable access to the stored GX2 base-color texture handle for final destruction.
+        WiiUGx2TextureHandle* GetBaseColorTextureHandleStorage() {
+            return &BaseColorTextureHandle;
+        }
+
     private:
         /// Stores the material tint consumed by the opaque Wii U shader path.
         float4 BaseColor;
@@ -70,6 +91,12 @@ namespace helengine::wiiu {
 
         /// Tracks whether the material should render without back-face culling.
         bool DoubleSided;
+
+        /// Tracks whether one GX2 base-color texture handle was uploaded for this material.
+        bool HasBaseColorTexture;
+
+        /// Stores the GX2 base-color texture handle consumed by the opaque Wii U shader path.
+        WiiUGx2TextureHandle BaseColorTextureHandle;
     };
 }
 

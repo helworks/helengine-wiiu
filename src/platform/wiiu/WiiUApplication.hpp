@@ -90,12 +90,6 @@ namespace helengine::wiiu {
         /// Tracks whether the generated core initialized far enough to enter the steady-state frame loop.
         bool EngineInitialized;
 
-        /// Counts the generated-core update frames reported through the Wii U runtime diagnostics.
-        std::uint32_t UpdateFrameLogCount;
-
-        /// Counts the generated-core draw frames reported through the Wii U runtime diagnostics.
-        std::uint32_t DrawFrameLogCount;
-
         /// Stores the generated core instance that owns scene loading and frame updates.
         Core* EngineCore;
 

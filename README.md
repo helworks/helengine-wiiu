@@ -18,7 +18,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\launch_in_emulator
   -ArtifactPath ..\helprojs\city\wiiu-build\helengine_wiiu.wuhb
 ```
 
-The current packaged startup target is the authored `colored_cube_grid` scene. After building the `city` project, launch the generated WUHB through `launch_in_emulator.ps1` and verify that `colored_cube_grid` boots successfully in Cemu. The output root also keeps the generated RPX for lower-level diagnostics.
+The current packaged startup target is the authored `textured_cube_grid` scene. After building the `city` project, launch the generated WUHB through `launch_in_emulator.ps1` and verify that `textured_cube_grid` boots successfully in Cemu. The output root also keeps the generated RPX for lower-level diagnostics.
 
 ## More Docs
 

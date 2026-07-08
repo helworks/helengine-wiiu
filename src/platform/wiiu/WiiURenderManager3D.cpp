@@ -2,8 +2,17 @@
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <vector>
+
+#include <gx2/mem.h>
+#include <gx2/surface.h>
+#include <gx2/utils.h>
+#include <gx2r/resource.h>
+#include <gx2r/surface.h>
 
 #include "Asset.hpp"
 #include "AssetSerializer.hpp"
@@ -28,12 +37,16 @@
 #include "RenderFrameShadowCasterSubmission.hpp"
 #include "RendererBackendCapabilityProfile.hpp"
 #include "RuntimeMaterial.hpp"
+#include "TextureAsset.hpp"
+#include "TextureAssetAlphaPrecision.hpp"
+#include "TextureAssetColorFormat.hpp"
 #include "runtime/finally.hpp"
 #include "runtime/native_cast.hpp"
 #include "runtime/native_exceptions.hpp"
 #include "runtime/native_list.hpp"
 #include "runtime/native_string.hpp"
 #include "system/io/file.hpp"
+#include "float2.hpp"
 #include "float3.hpp"
 #include "float4.hpp"
 #include "float4x4.hpp"
@@ -42,6 +55,12 @@
 #include <coreinit/debug.h>
 
 namespace helengine::wiiu {
+    namespace {
+        constexpr GX2RResourceFlags NoGx2rResourceFlags = static_cast<GX2RResourceFlags>(0);
+        constexpr GX2RResourceFlags TextureSurfaceFlags = static_cast<GX2RResourceFlags>(
+            GX2R_RESOURCE_BIND_TEXTURE | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ);
+    }
+
     /// Creates one Wii U 3D bridge with an empty captured frame.
     WiiURenderManager3D::WiiURenderManager3D()
         : RenderManager3D()
@@ -167,7 +186,13 @@ namespace helengine::wiiu {
             throw new ArgumentNullException("materialAsset");
         }
 
-        return CreateRuntimeMaterial("wiiu:material", CreateBaseColor(materialAsset), materialAsset->Lit, materialAsset->DoubleSided);
+        WiiURuntimeMaterial* runtimeMaterial = CreateRuntimeMaterial("wiiu:material", CreateBaseColor(materialAsset), materialAsset->Lit, materialAsset->DoubleSided);
+        if (!String::IsNullOrWhiteSpace(materialAsset->TextureRelativePath)) {
+            WiiUGx2TextureHandle textureHandle = BuildTextureHandleFromCooked(materialAsset->TextureRelativePath);
+            runtimeMaterial->SetBaseColorTextureHandle(textureHandle);
+        }
+
+        return runtimeMaterial;
     }
 
     /// Builds one concrete Wii U runtime material from a cooked Wii U material asset path.
@@ -195,6 +220,11 @@ namespace helengine::wiiu {
             delete materialAsset;
         });
         WiiURuntimeMaterial* runtimeMaterial = CreateRuntimeMaterial(cookedAssetPath, CreateBaseColor(materialAsset), materialAsset->Lit, materialAsset->DoubleSided);
+        if (!String::IsNullOrWhiteSpace(materialAsset->TextureRelativePath)) {
+            WiiUGx2TextureHandle textureHandle = BuildTextureHandleFromCooked(materialAsset->TextureRelativePath);
+            runtimeMaterial->SetBaseColorTextureHandle(textureHandle);
+        }
+
         return runtimeMaterial;
     }
 
@@ -223,6 +253,11 @@ namespace helengine::wiiu {
             delete materialAsset;
         });
         WiiURuntimeMaterial* runtimeMaterial = CreateRuntimeMaterial(cookedAssetPath, CreateBaseColor(materialAsset), materialAsset->Lit, materialAsset->DoubleSided);
+        if (!String::IsNullOrWhiteSpace(materialAsset->TextureRelativePath)) {
+            WiiUGx2TextureHandle textureHandle = BuildTextureHandleFromCooked(materialAsset->TextureRelativePath, contentStreamSource);
+            runtimeMaterial->SetBaseColorTextureHandle(textureHandle);
+        }
+
         return runtimeMaterial;
     }
 
@@ -329,6 +364,20 @@ namespace helengine::wiiu {
         }
 
         RenderManager3D::ReleaseModel(model);
+    }
+
+    /// Releases one runtime material built by the Wii U bridge.
+    void WiiURenderManager3D::ReleaseMaterial(::RuntimeMaterial* material) {
+        if (material == nullptr) {
+            throw new ArgumentNullException("material");
+        }
+
+        WiiURuntimeMaterial* runtimeMaterial = he_cpp_try_cast<WiiURuntimeMaterial>(material);
+        if (runtimeMaterial != nullptr) {
+            DestroyTextureHandle(runtimeMaterial->GetBaseColorTextureHandleStorage());
+        }
+
+        RenderManager3D::ReleaseMaterial(material);
     }
 
     /// Resets the current frame before capture begins.
@@ -562,6 +611,74 @@ namespace helengine::wiiu {
         return runtimeMaterial;
     }
 
+    /// Builds one GX2 texture handle from a cooked runtime texture payload path.
+    WiiUGx2TextureHandle WiiURenderManager3D::BuildTextureHandleFromCooked(std::string cookedAssetPath) {
+        if (String::IsNullOrWhiteSpace(cookedAssetPath)) {
+            throw new ArgumentException("Cooked texture asset path must be provided.", "cookedAssetPath");
+        }
+
+        FileStream* stream = File::OpenRead(cookedAssetPath.c_str());
+        auto streamGuard = he_cpp_make_scope_exit([&]() {
+            if (stream != nullptr) {
+                stream->Dispose();
+                delete stream;
+            }
+        });
+
+        Asset* asset = AssetSerializer::Deserialize(stream);
+        TextureAsset* textureAsset = he_cpp_try_cast<TextureAsset>(asset);
+        if (textureAsset == nullptr) {
+            delete asset;
+            throw new InvalidOperationException("Wii U cooked texture payload did not deserialize into a TextureAsset.");
+        }
+
+        auto textureAssetGuard = he_cpp_make_scope_exit([&]() {
+            ReleaseTransientTextureAsset(textureAsset);
+        });
+        return BuildTextureHandleFromRaw(textureAsset);
+    }
+
+    /// Builds one GX2 texture handle from a cooked runtime texture payload path through the content-stream contract.
+    WiiUGx2TextureHandle WiiURenderManager3D::BuildTextureHandleFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {
+        if (contentStreamSource == nullptr) {
+            throw new ArgumentNullException("contentStreamSource");
+        }
+
+        ::Stream* stream = contentStreamSource->OpenRead(cookedAssetPath);
+        auto streamGuard = he_cpp_make_scope_exit([&]() {
+            if (stream != nullptr) {
+                stream->Dispose();
+                delete stream;
+            }
+        });
+
+        Asset* asset = AssetSerializer::Deserialize(stream);
+        TextureAsset* textureAsset = he_cpp_try_cast<TextureAsset>(asset);
+        if (textureAsset == nullptr) {
+            delete asset;
+            throw new InvalidOperationException("Wii U cooked texture payload did not deserialize into a TextureAsset.");
+        }
+
+        auto textureAssetGuard = he_cpp_make_scope_exit([&]() {
+            ReleaseTransientTextureAsset(textureAsset);
+        });
+        return BuildTextureHandleFromRaw(textureAsset);
+    }
+
+    /// Builds one GX2 texture handle from one shared-engine texture payload.
+    WiiUGx2TextureHandle WiiURenderManager3D::BuildTextureHandleFromRaw(::TextureAsset* data) {
+        if (data == nullptr) {
+            throw new ArgumentNullException("data");
+        } else if (data->Width == 0U || data->Height == 0U) {
+            throw new InvalidOperationException("Wii U runtime textures require nonzero dimensions.");
+        }
+
+        std::vector<std::uint32_t> pixels = DecodeTexturePixels(data);
+        WiiUGx2TextureHandle textureHandle {};
+        InitializeTextureHandle(&textureHandle, data->Width, data->Height, pixels);
+        return textureHandle;
+    }
+
     /// Builds one Wii U runtime model from a shared model asset payload.
     WiiURuntimeModel* WiiURenderManager3D::BuildRuntimeModelFromAsset(::ModelAsset* data) {
         if (data == nullptr) {
@@ -574,8 +691,10 @@ namespace helengine::wiiu {
 
         std::vector<float> positionData;
         std::vector<float> normalData;
+        std::vector<float> texCoordData;
         std::vector<std::uint16_t> indexData;
         const int32_t positionCount = data->Positions->get_Length();
+        Array<float2>* texCoords = data->TexCoords;
         float minX = 0.0f;
         float minY = 0.0f;
         float minZ = 0.0f;
@@ -584,9 +703,17 @@ namespace helengine::wiiu {
         float maxZ = 0.0f;
         positionData.reserve(static_cast<std::size_t>(positionCount) * 4U);
         normalData.reserve(static_cast<std::size_t>(positionCount) * 3U);
+        texCoordData.reserve(static_cast<std::size_t>(positionCount) * 2U);
+        if (texCoords != nullptr && texCoords->get_Length() != positionCount) {
+            throw new InvalidOperationException("Wii U runtime model creation requires one authored UV for every authored vertex position when UVs are present.");
+        }
+
         for (int32_t positionIndex = 0; positionIndex < positionCount; positionIndex++) {
             const float3 position = (*data->Positions)[positionIndex];
             const float3 normal = (*data->Normals)[positionIndex];
+            const float2 texCoord = texCoords != nullptr
+                ? (*texCoords)[positionIndex]
+                : float2(0.0f, 0.0f);
             if (positionIndex == 0) {
                 minX = position.X;
                 minY = position.Y;
@@ -621,6 +748,8 @@ namespace helengine::wiiu {
             normalData.push_back(normal.X);
             normalData.push_back(normal.Y);
             normalData.push_back(normal.Z);
+            texCoordData.push_back(texCoord.X);
+            texCoordData.push_back(texCoord.Y);
         }
 
         if (data->Indices16 != nullptr && data->Indices16->get_Length() > 0) {
@@ -646,18 +775,250 @@ namespace helengine::wiiu {
         }
 
         WiiURuntimeModel* runtimeModel = new WiiURuntimeModel();
-        runtimeModel->SetGeometry(std::move(positionData), std::move(normalData), std::move(indexData));
-        OSReport(
-            "[WiiUModel] positions=%d indices=%u boundsMin=(%.3f, %.3f, %.3f) boundsMax=(%.3f, %.3f, %.3f)\n",
-            positionCount,
-            static_cast<unsigned int>(runtimeModel->GetIndexData().size()),
-            minX,
-            minY,
-            minZ,
-            maxX,
-            maxY,
-            maxZ);
+        runtimeModel->SetGeometry(std::move(positionData), std::move(normalData), std::move(texCoordData), std::move(indexData));
         return runtimeModel;
+    }
+
+    /// Initializes one GX2 texture handle from decoded ARGB pixels.
+    void WiiURenderManager3D::InitializeTextureHandle(WiiUGx2TextureHandle* textureHandle, std::uint32_t width, std::uint32_t height, const std::vector<std::uint32_t>& pixels) {
+        if (textureHandle == nullptr) {
+            throw new ArgumentNullException("textureHandle");
+        } else if (width == 0U || height == 0U) {
+            throw new InvalidOperationException("Wii U GX2 textures require nonzero dimensions.");
+        } else if (pixels.size() != static_cast<std::size_t>(width) * static_cast<std::size_t>(height)) {
+            throw new InvalidOperationException("Wii U GX2 texture upload requires one ARGB pixel per texture texel.");
+        }
+
+        std::memset(&textureHandle->Texture, 0, sizeof(textureHandle->Texture));
+        std::memset(&textureHandle->Sampler, 0, sizeof(textureHandle->Sampler));
+
+        textureHandle->Texture.surface.use = GX2_SURFACE_USE_TEXTURE;
+        textureHandle->Texture.surface.dim = GX2_SURFACE_DIM_TEXTURE_2D;
+        textureHandle->Texture.surface.width = width;
+        textureHandle->Texture.surface.height = height;
+        textureHandle->Texture.surface.depth = 1U;
+        textureHandle->Texture.surface.mipLevels = 1U;
+        textureHandle->Texture.surface.format = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;
+        textureHandle->Texture.surface.aa = GX2_AA_MODE1X;
+        textureHandle->Texture.surface.tileMode = GX2_TILE_MODE_LINEAR_ALIGNED;
+        GX2CalcSurfaceSizeAndAlignment(&textureHandle->Texture.surface);
+        if (!GX2RCreateSurface(&textureHandle->Texture.surface, TextureSurfaceFlags)) {
+            throw new InvalidOperationException("Wii U GX2 texture allocation failed.");
+        }
+
+        textureHandle->Texture.viewFirstMip = 0U;
+        textureHandle->Texture.viewNumMips = 1U;
+        textureHandle->Texture.viewFirstSlice = 0U;
+        textureHandle->Texture.viewNumSlices = 1U;
+        textureHandle->Texture.compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_G, GX2_SQ_SEL_B, GX2_SQ_SEL_A);
+        GX2InitTextureRegs(&textureHandle->Texture);
+        GX2InitSampler(&textureHandle->Sampler, GX2_TEX_CLAMP_MODE_CLAMP, GX2_TEX_XY_FILTER_MODE_LINEAR);
+
+        std::uint32_t* destinationPixels = static_cast<std::uint32_t*>(GX2RLockSurfaceEx(&textureHandle->Texture.surface, 0, NoGx2rResourceFlags));
+        if (destinationPixels == nullptr) {
+            DestroyTextureHandle(textureHandle);
+            throw new InvalidOperationException("Wii U GX2 texture surface lock failed.");
+        }
+
+        const std::uint32_t destinationPitch = textureHandle->Texture.surface.pitch;
+        for (std::uint32_t row = 0U; row < height; row++) {
+            for (std::uint32_t column = 0U; column < width; column++) {
+                const std::uint32_t sourcePixel = pixels[(row * width) + column];
+                destinationPixels[(row * destinationPitch) + column] = (sourcePixel << 8U)
+                    | ((sourcePixel >> 24U) & 0x000000FFU);
+            }
+        }
+
+        GX2RUnlockSurfaceEx(&textureHandle->Texture.surface, 0, NoGx2rResourceFlags);
+        GX2RInvalidateSurface(&textureHandle->Texture.surface, 0, GX2R_RESOURCE_USAGE_CPU_WRITE);
+        GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, textureHandle->Texture.surface.image, textureHandle->Texture.surface.imageSize);
+    }
+
+    /// Releases one GX2 texture handle owned by one Wii U runtime material.
+    void WiiURenderManager3D::DestroyTextureHandle(WiiUGx2TextureHandle* textureHandle) {
+        if (textureHandle == nullptr) {
+            return;
+        }
+
+        if (textureHandle->Texture.surface.image != nullptr) {
+            GX2RDestroySurfaceEx(&textureHandle->Texture.surface, NoGx2rResourceFlags);
+        }
+
+        std::memset(&textureHandle->Texture, 0, sizeof(textureHandle->Texture));
+        std::memset(&textureHandle->Sampler, 0, sizeof(textureHandle->Sampler));
+    }
+
+    /// Decodes one shared-engine texture payload into ARGB texels ready for GX2 upload.
+    std::vector<std::uint32_t> WiiURenderManager3D::DecodeTexturePixels(::TextureAsset* data) {
+        if (data == nullptr) {
+            throw new ArgumentNullException("data");
+        } else if (data->Width == 0U || data->Height == 0U) {
+            throw new InvalidOperationException("Wii U texture decoding requires nonzero dimensions.");
+        } else if (data->Colors == nullptr) {
+            throw new InvalidOperationException("Wii U texture decoding requires a color payload.");
+        }
+
+        const std::size_t pixelCount = static_cast<std::size_t>(data->Width) * static_cast<std::size_t>(data->Height);
+        std::vector<std::uint32_t> pixels(pixelCount, 0U);
+
+        if (data->ColorFormat == TextureAssetColorFormat::Rgba32) {
+            const std::size_t expectedByteCount = pixelCount * 4U;
+            if (data->Colors->get_Length() != static_cast<int32_t>(expectedByteCount)) {
+                throw new InvalidOperationException("Wii U RGBA32 textures must contain tightly packed RGBA bytes.");
+            }
+
+            for (std::size_t pixelIndex = 0; pixelIndex < pixelCount; pixelIndex++) {
+                const std::size_t colorOffset = pixelIndex * 4U;
+                pixels[pixelIndex] = PackArgb(
+                    (*data->Colors)[static_cast<int32_t>(colorOffset + 0U)],
+                    (*data->Colors)[static_cast<int32_t>(colorOffset + 1U)],
+                    (*data->Colors)[static_cast<int32_t>(colorOffset + 2U)],
+                    (*data->Colors)[static_cast<int32_t>(colorOffset + 3U)]);
+            }
+
+            return pixels;
+        }
+
+        if (data->ColorFormat == TextureAssetColorFormat::Rgba4444) {
+            const std::size_t expectedByteCount = pixelCount * 2U;
+            if (data->Colors->get_Length() != static_cast<int32_t>(expectedByteCount)) {
+                throw new InvalidOperationException("Wii U RGBA4444 textures must contain tightly packed 16-bit texels.");
+            }
+
+            for (std::size_t pixelIndex = 0; pixelIndex < pixelCount; pixelIndex++) {
+                const std::size_t colorOffset = pixelIndex * 2U;
+                const std::uint16_t packedPixel =
+                    static_cast<std::uint16_t>((*data->Colors)[static_cast<int32_t>(colorOffset + 0U)])
+                    | (static_cast<std::uint16_t>((*data->Colors)[static_cast<int32_t>(colorOffset + 1U)]) << 8U);
+                pixels[pixelIndex] = PackArgb(
+                    Expand4To8(static_cast<std::uint8_t>(packedPixel & 0x0FU)),
+                    Expand4To8(static_cast<std::uint8_t>((packedPixel >> 4U) & 0x0FU)),
+                    Expand4To8(static_cast<std::uint8_t>((packedPixel >> 8U) & 0x0FU)),
+                    Expand4To8(static_cast<std::uint8_t>((packedPixel >> 12U) & 0x0FU)));
+            }
+
+            return pixels;
+        }
+
+        if (data->ColorFormat == TextureAssetColorFormat::Indexed4 || data->ColorFormat == TextureAssetColorFormat::Indexed8) {
+            if (data->PaletteColors == nullptr) {
+                throw new InvalidOperationException("Wii U indexed textures require a palette payload.");
+            }
+
+            const std::size_t paletteByteCount = static_cast<std::size_t>(data->PaletteColors->get_Length());
+            if ((paletteByteCount % 4U) != 0U) {
+                throw new InvalidOperationException("Wii U indexed texture palettes must contain RGBA entries.");
+            }
+
+            const std::size_t paletteEntryCount = paletteByteCount / 4U;
+            const std::size_t expectedByteCount = data->ColorFormat == TextureAssetColorFormat::Indexed4
+                ? ((pixelCount + 1U) / 2U)
+                : pixelCount;
+            if (data->Colors->get_Length() != static_cast<int32_t>(expectedByteCount)) {
+                throw new InvalidOperationException("Wii U indexed textures must contain tightly packed palette indices.");
+            }
+
+            for (std::size_t pixelIndex = 0; pixelIndex < pixelCount; pixelIndex++) {
+                std::size_t paletteIndex = 0U;
+                if (data->ColorFormat == TextureAssetColorFormat::Indexed8) {
+                    paletteIndex = (*data->Colors)[static_cast<int32_t>(pixelIndex)];
+                } else {
+                    const std::uint8_t packedIndex = (*data->Colors)[static_cast<int32_t>(pixelIndex / 2U)];
+                    paletteIndex = (pixelIndex & 1U) == 0U
+                        ? static_cast<std::size_t>(packedIndex & 0x0FU)
+                        : static_cast<std::size_t>((packedIndex >> 4U) & 0x0FU);
+                }
+
+                if (paletteIndex >= paletteEntryCount) {
+                    throw new InvalidOperationException("Wii U indexed texture referenced a palette entry that does not exist.");
+                }
+
+                const std::size_t paletteByteIndex = paletteIndex * 4U;
+                pixels[pixelIndex] = PackArgb(
+                    (*data->PaletteColors)[static_cast<int32_t>(paletteByteIndex + 0U)],
+                    (*data->PaletteColors)[static_cast<int32_t>(paletteByteIndex + 1U)],
+                    (*data->PaletteColors)[static_cast<int32_t>(paletteByteIndex + 2U)],
+                    (*data->PaletteColors)[static_cast<int32_t>(paletteByteIndex + 3U)]);
+            }
+
+            return pixels;
+        }
+
+        if (data->ColorFormat == TextureAssetColorFormat::GxRgb5A3) {
+            const std::uint32_t paddedWidth = (static_cast<std::uint32_t>(data->Width) + 3U) & ~3U;
+            const std::uint32_t paddedHeight = (static_cast<std::uint32_t>(data->Height) + 3U) & ~3U;
+            const std::size_t expectedByteCount = static_cast<std::size_t>(paddedWidth) * static_cast<std::size_t>(paddedHeight) * 2U;
+            if (data->Colors->get_Length() != static_cast<int32_t>(expectedByteCount)) {
+                throw new InvalidOperationException("Wii U GX RGB5A3 textures must contain padded tiled texel bytes.");
+            }
+
+            std::size_t sourceByteIndex = 0U;
+            for (std::uint32_t blockY = 0U; blockY < paddedHeight; blockY += 4U) {
+                for (std::uint32_t blockX = 0U; blockX < paddedWidth; blockX += 4U) {
+                    for (std::uint32_t innerY = 0U; innerY < 4U; innerY++) {
+                        for (std::uint32_t innerX = 0U; innerX < 4U; innerX++) {
+                            const std::uint16_t packedPixel =
+                                static_cast<std::uint16_t>((*data->Colors)[static_cast<int32_t>(sourceByteIndex + 0U)])
+                                | (static_cast<std::uint16_t>((*data->Colors)[static_cast<int32_t>(sourceByteIndex + 1U)]) << 8U);
+                            sourceByteIndex += 2U;
+
+                            const std::uint32_t sampleX = blockX + innerX;
+                            const std::uint32_t sampleY = blockY + innerY;
+                            if (sampleX >= data->Width || sampleY >= data->Height) {
+                                continue;
+                            }
+
+                            const std::size_t pixelIndex = static_cast<std::size_t>(sampleY) * static_cast<std::size_t>(data->Width) + sampleX;
+                            pixels[pixelIndex] = DecodeRgb5A3(packedPixel);
+                        }
+                    }
+                }
+            }
+
+            return pixels;
+        }
+
+        throw new InvalidOperationException("Wii U runtime textures received an unsupported color format.");
+    }
+
+    /// Packs one 8-bit RGBA color into one ARGB8888 word.
+    std::uint32_t WiiURenderManager3D::PackArgb(std::uint8_t red, std::uint8_t green, std::uint8_t blue, std::uint8_t alpha) {
+        return (static_cast<std::uint32_t>(alpha) << 24U)
+            | (static_cast<std::uint32_t>(red) << 16U)
+            | (static_cast<std::uint32_t>(green) << 8U)
+            | static_cast<std::uint32_t>(blue);
+    }
+
+    /// Expands one 4-bit color channel into 8-bit precision.
+    std::uint8_t WiiURenderManager3D::Expand4To8(std::uint8_t value) {
+        return static_cast<std::uint8_t>((value << 4U) | value);
+    }
+
+    /// Expands one 5-bit color channel into 8-bit precision.
+    std::uint8_t WiiURenderManager3D::Expand5To8(std::uint16_t value) {
+        return static_cast<std::uint8_t>((value * 255U + 15U) / 31U);
+    }
+
+    /// Expands one 3-bit alpha channel into 8-bit precision.
+    std::uint8_t WiiURenderManager3D::Expand3To8(std::uint16_t value) {
+        return static_cast<std::uint8_t>((value * 255U + 3U) / 7U);
+    }
+
+    /// Decodes one packed GX RGB5A3 texel into ARGB8888.
+    std::uint32_t WiiURenderManager3D::DecodeRgb5A3(std::uint16_t pixel) {
+        if ((pixel & 0x8000U) != 0U) {
+            return PackArgb(
+                Expand5To8((pixel >> 10U) & 0x1FU),
+                Expand5To8((pixel >> 5U) & 0x1FU),
+                Expand5To8(pixel & 0x1FU),
+                0xFFU);
+        }
+
+        return PackArgb(
+            Expand4To8(static_cast<std::uint8_t>((pixel >> 8U) & 0x0FU)),
+            Expand4To8(static_cast<std::uint8_t>((pixel >> 4U) & 0x0FU)),
+            Expand4To8(static_cast<std::uint8_t>(pixel & 0x0FU)),
+            Expand3To8((pixel >> 12U) & 0x07U));
     }
 
     /// Releases one transient cooked model asset after the runtime geometry has been copied out.
@@ -694,6 +1055,25 @@ namespace helengine::wiiu {
 
         if (indices32 != nullptr && indices32 != Array<std::uint32_t>::Empty()) {
             delete indices32;
+        }
+    }
+
+    /// Releases one transient cooked texture asset after one runtime GX2 texture handle has been rebuilt from its payload.
+    void WiiURenderManager3D::ReleaseTransientTextureAsset(::TextureAsset* asset) {
+        if (asset == nullptr) {
+            return;
+        }
+
+        Array<std::uint8_t>* colors = asset->Colors;
+        Array<std::uint8_t>* paletteColors = asset->PaletteColors;
+        asset->Colors = nullptr;
+        asset->PaletteColors = nullptr;
+        if (colors != nullptr && colors != Array<std::uint8_t>::Empty()) {
+            delete colors;
+        }
+
+        if (paletteColors != nullptr && paletteColors != Array<std::uint8_t>::Empty()) {
+            delete paletteColors;
         }
     }
 }
