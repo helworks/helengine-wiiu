@@ -167,6 +167,7 @@ public static class WiiUPlatformDefinitionFactory {
             new RuntimeGenerationContract(
                 RuntimeMaterialResolutionMode.CookedPlatformOwned,
                 true,
-                PackagedPathPolicy.ContentRelativeOnly));
+                PackagedPathPolicy.ContentRelativeOnly,
+                [PortableInputPreprocessorSymbolCatalog.BepuUseClassicBroadPhaseUpdateSymbol]));
     }
 }
