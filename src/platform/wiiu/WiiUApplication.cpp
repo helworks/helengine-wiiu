@@ -1,6 +1,7 @@
 #include "platform/wiiu/WiiUApplication.hpp"
-#include "platform/wiiu/audio/WiiUAudioBackend.hpp"
 #include "platform/wiiu/WiiUGx2Presenter.hpp"
+#include "platform/wiiu/WiiUInputBackend.hpp"
+#include "platform/wiiu/WiiURuntimeDiagnosticsProvider.hpp"
 #include "platform/wiiu/WiiUSceneBootstrap.hpp"
 
 #include <cstdarg>
@@ -9,13 +10,22 @@
 #include "Core.hpp"
 #include "CoreInitializationOptions.hpp"
 #include "HostFileSystemContentStreamSource.hpp"
+#include "InputControlId.hpp"
+#include "InputControlKind.hpp"
+#include "InputDeviceKind.hpp"
 #if HELENGINE_WIIU_HAS_GENERATED_RUNTIME_MODULE_REGISTRATION
 #include "GeneratedRuntimeModuleRegistration.hpp"
 #endif
+#include "platform/wiiu/audio/WiiUAudioBackend.hpp"
 #include "PlatformInfo.hpp"
 #include "SceneLoadMode.hpp"
 #include "SceneManager.hpp"
+#include "StandardPlatformAction.hpp"
+#include "StandardPlatformActionBinding.hpp"
+#include "StandardPlatformInputConfiguration.hpp"
+#include "runtime/native_list.hpp"
 #include "runtime/native_exceptions.hpp"
+#include "runtime/runtime_standard_platform_input_manifest.hpp"
 #include "platform/wiiu/WiiURenderManager2D.hpp"
 #include "platform/wiiu/WiiURenderManager3D.hpp"
 #endif
@@ -42,27 +52,38 @@ namespace helengine::wiiu {
             "wiiu_runtime_trace.txt"
         };
         constexpr const char* BuildStamp = __DATE__ " " __TIME__;
+        enum class DiagnosticFrameLoopMode {
+            PresentOnly,
+            UpdateOnly,
+            DrawOnly,
+            FullEngine
+        };
+        constexpr DiagnosticFrameLoopMode DiagnosticFrameLoopModeValue = DiagnosticFrameLoopMode::FullEngine;
+        constexpr bool RunDiagnosticRenderManager2DDrawInDrawOnlyMode = true;
     }
+
+#if defined(HELENGINE_WIIU_RUNTIME_STAGE_TRACE)
+#define HELENGINE_WIIU_FRAME_TRACE(...) AppendRuntimeTrace(__VA_ARGS__)
+#else
+#define HELENGINE_WIIU_FRAME_TRACE(...) do { } while (false)
+#endif
 
     /// Creates the Wii U application with no allocated screen buffers and the startup clear color.
     WiiUApplication::WiiUApplication()
         : TvBuffer(nullptr)
         , DrcBuffer(nullptr)
-        , TvSurface(nullptr)
-        , DrcSurface(nullptr)
         , BootPhase(WiiUBootPhase::NativeStartup)
         , ClearColor(StartupClearColor)
         , Gx2Presenter(nullptr)
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
         , EngineInitialized(false)
-        , UpdateFrameLogCount(0)
-        , DrawFrameLogCount(0)
-        , PresentFrameLogCount(0)
         , EngineCore(nullptr)
         , EngineRenderManager3D(nullptr)
         , EngineRenderManager2D(nullptr)
-        , EnginePlatformInfo(nullptr)
+        , EngineInputBackend(nullptr)
         , EngineAudioBackend(nullptr)
+        , EnginePlatformInfo(nullptr)
+        , EngineRuntimeDiagnosticsProvider(nullptr)
         , EngineContentStreamSource(nullptr)
 #endif
     {
@@ -74,16 +95,15 @@ namespace helengine::wiiu {
         Gx2Presenter = nullptr;
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
-        delete EngineAudioBackend;
-        EngineAudioBackend = nullptr;
         delete EngineRenderManager2D;
         delete EngineRenderManager3D;
+        delete EngineInputBackend;
+        delete EngineAudioBackend;
         delete EnginePlatformInfo;
         delete EngineCore;
+        delete EngineRuntimeDiagnosticsProvider;
         delete EngineContentStreamSource;
 #endif
-        delete TvSurface;
-        delete DrcSurface;
 
         if (TvBuffer != nullptr) {
             MEMFreeToDefaultHeap(TvBuffer);
@@ -99,15 +119,18 @@ namespace helengine::wiiu {
     /// Runs the current Wii U proof-of-life application loop until the process shuts down.
     int WiiUApplication::Run() {
         WHBProcInit();
+        AppendRuntimeTrace("\n=== Wii U application run begin ===\n");
 
         SetBootPhase(WiiUBootPhase::VideoInitialization, StartupClearColor);
+        AppendRuntimeTrace("[WiiUFile] InitializeVideo begin.\n");
         if (!InitializeVideo()) {
             AppendRuntimeTrace("[WiiUFile] InitializeVideo failed.\n");
             SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
             WHBProcShutdown();
             return 1;
         }
-
+        AppendRuntimeTrace("[WiiUFile] InitializeVideo completed.\n");
+        AppendRuntimeTrace("[WiiUFile] InitializeGx2Presenter begin.\n");
         if (!InitializeGx2Presenter()) {
             AppendRuntimeTrace("[WiiUFile] InitializeGx2Presenter failed.\n");
             SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
@@ -115,7 +138,7 @@ namespace helengine::wiiu {
             WHBProcShutdown();
             return 1;
         }
-
+        AppendRuntimeTrace("[WiiUFile] InitializeGx2Presenter completed.\n");
         if (!InitializeEngineCore()) {
             AppendRuntimeTrace("[WiiUFile] InitializeEngineCore failed.\n");
             SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
@@ -123,9 +146,37 @@ namespace helengine::wiiu {
             WHBProcShutdown();
             return 1;
         }
-
         SetBootPhase(WiiUBootPhase::Running, StartupClearColor);
         while (WHBProcIsRunning()) {
+            if (DiagnosticFrameLoopModeValue == DiagnosticFrameLoopMode::PresentOnly) {
+                PresentFrame();
+                continue;
+            }
+
+            if (DiagnosticFrameLoopModeValue == DiagnosticFrameLoopMode::UpdateOnly) {
+                if (!UpdateEngineCore()) {
+                    SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
+                    OSScreenShutdown();
+                    WHBProcShutdown();
+                    return 1;
+                }
+
+                PresentFrame();
+                continue;
+            }
+
+            if (DiagnosticFrameLoopModeValue == DiagnosticFrameLoopMode::DrawOnly) {
+                if (!DrawEngineCore()) {
+                    SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
+                    OSScreenShutdown();
+                    WHBProcShutdown();
+                    return 1;
+                }
+
+                PresentFrame();
+                continue;
+            }
+
             if (!UpdateEngineCore()) {
                 SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
                 OSScreenShutdown();
@@ -151,11 +202,13 @@ namespace helengine::wiiu {
 
     /// Initializes the current OSScreen video path and allocates the display work buffers.
     bool WiiUApplication::InitializeVideo() {
+        OSReport("[WiiU] InitializeVideo begin.\n");
         OSScreenInit();
 
         TvBuffer = AllocateScreenBuffer(SCREEN_TV);
         DrcBuffer = AllocateScreenBuffer(SCREEN_DRC);
         if (TvBuffer == nullptr || DrcBuffer == nullptr) {
+            OSReport("[WiiU] InitializeVideo buffer allocation failed.\n");
             return false;
         }
 
@@ -163,8 +216,7 @@ namespace helengine::wiiu {
         OSScreenSetBufferEx(SCREEN_DRC, DrcBuffer);
         OSScreenEnableEx(SCREEN_TV, true);
         OSScreenEnableEx(SCREEN_DRC, true);
-        TvSurface = new WiiUSoftwareSurface(TvSurfaceWidth, TvSurfaceHeight);
-        DrcSurface = new WiiUSoftwareSurface(DrcSurfaceWidth, DrcSurfaceHeight);
+        OSReport("[WiiU] InitializeVideo completed.\n");
         return true;
     }
 
@@ -174,8 +226,12 @@ namespace helengine::wiiu {
             return true;
         }
 
+        OSReport("[WiiU] InitializeGx2Presenter construct presenter.\n");
         Gx2Presenter = new WiiUGx2Presenter();
-        return Gx2Presenter->Initialize();
+        OSReport("[WiiU] InitializeGx2Presenter initialize presenter begin.\n");
+        bool initialized = Gx2Presenter->Initialize();
+        OSReport("[WiiU] InitializeGx2Presenter initialize presenter completed result=%d.\n", initialized ? 1 : 0);
+        return initialized;
     }
 
     /// Initializes the Wii U generated core and queues the packaged startup scene.
@@ -187,16 +243,6 @@ namespace helengine::wiiu {
             OSReport("[WiiU] InitializeEngineCore begin.\n");
             AppendRuntimeTrace("[WiiUFile] InitializeEngineCore begin.\n");
             SetBootPhase(WiiUBootPhase::Running, 0xFF804000);
-
-            initializationStage = "ConstructCore";
-            EngineCore = new Core();
-
-            initializationStage = "ReadInitializationOptions";
-            CoreInitializationOptions* initializationOptions = EngineCore->get_InitializationOptions();
-            if (initializationOptions == nullptr) {
-                OSReport("[WiiU] Initialization options were null.\n");
-                return false;
-            }
 
             initializationStage = "ResolvePackagedContentRoot";
             std::string packagedContentRootPath = WiiUSceneBootstrap::GetPackagedContentRootPath();
@@ -216,8 +262,12 @@ namespace helengine::wiiu {
                 return false;
             }
 
-            initializationStage = "AssignInitializationOptions";
+            initializationStage = "ConstructInitializationOptions";
+            CoreInitializationOptions* initializationOptions = new CoreInitializationOptions();
             EngineContentStreamSource = new HostFileSystemContentStreamSource(packagedContentRootPath);
+            EngineRuntimeDiagnosticsProvider = new WiiURuntimeDiagnosticsProvider();
+
+            initializationStage = "AssignInitializationOptions";
             initializationOptions->ContentStreamSource = EngineContentStreamSource;
             initializationOptions->SceneCatalog = packagedCatalog;
             initializationOptions->UpdateOrderLayers = 4;
@@ -225,13 +275,18 @@ namespace helengine::wiiu {
             initializationOptions->UpdateListInitialCapacity = 64;
             initializationOptions->RenderList2DInitialCapacity = 64;
             initializationOptions->RenderList3DInitialCapacity = 64;
+            initializationOptions->RuntimeDiagnosticsProvider = EngineRuntimeDiagnosticsProvider;
+            initializationOptions->StandardPlatformInputConfiguration = CreateStandardPlatformInputConfiguration();
+
+            initializationStage = "ConstructCore";
+            EngineCore = new Core(initializationOptions);
 
             initializationStage = "ConstructBridgeServices";
             EngineRenderManager3D = new WiiURenderManager3D();
             EngineRenderManager2D = new WiiURenderManager2D();
-            EnginePlatformInfo = new PlatformInfo("wiiu", "1.0");
+            EngineInputBackend = new WiiUInputBackend();
             EngineAudioBackend = new WiiUAudioBackend();
-            EngineRenderManager2D->AttachSurface(TvSurface, DrcSurface);
+            EnginePlatformInfo = new PlatformInfo("wiiu", "1.0");
 
             initializationStage = "AddPrimaryWindow";
             EngineRenderManager3D->AddWindow(0, TvSurfaceWidth, TvSurfaceHeight);
@@ -239,7 +294,7 @@ namespace helengine::wiiu {
             initializationStage = "InitializeCore";
             OSReport("[WiiU] Calling EngineCore->Initialize.\n");
             AppendRuntimeTrace("[WiiUFile] Calling EngineCore->Initialize.\n");
-            EngineCore->Initialize(EngineRenderManager3D, EngineRenderManager2D, nullptr, EnginePlatformInfo, initializationOptions);
+            EngineCore->Initialize(EngineRenderManager3D, EngineRenderManager2D, EngineInputBackend, EnginePlatformInfo, initializationOptions);
             EngineCore->SetAudioBackend(EngineAudioBackend);
             OSReport("[WiiU] Engine core initialized.\n");
             AppendRuntimeTrace("[WiiUFile] Engine core initialized.\n");
@@ -265,9 +320,23 @@ namespace helengine::wiiu {
             OSReport("[WiiU] Packaged startup scene queued.\n");
             AppendRuntimeTrace("[WiiUFile] Packaged startup scene queued.\n");
             EngineInitialized = true;
-            UpdateFrameLogCount = 0;
-            DrawFrameLogCount = 0;
-            PresentFrameLogCount = 0;
+            initializationStage = "WarmStartupScene";
+            OSReport("[WiiU] Warming startup scene through one engine update.\n");
+            AppendRuntimeTrace("[WiiUFile] Warming startup scene through one engine update.\n");
+            if (!UpdateEngineCore()) {
+                OSReport("[WiiU] Startup scene warm update failed.\n");
+                AppendRuntimeTrace("[WiiUFile] Startup scene warm update failed.\n");
+                return false;
+            }
+
+            initializationStage = "WarmStartupSceneDraw";
+            OSReport("[WiiU] Warming startup scene through one engine draw.\n");
+            AppendRuntimeTrace("[WiiUFile] Warming startup scene through one engine draw.\n");
+            if (!DrawEngineCore()) {
+                OSReport("[WiiU] Startup scene warm draw failed.\n");
+                AppendRuntimeTrace("[WiiUFile] Startup scene warm draw failed.\n");
+                return false;
+            }
             SetBootPhase(WiiUBootPhase::Running, 0xFF004000);
             return true;
         }
@@ -295,6 +364,33 @@ namespace helengine::wiiu {
 #endif
     }
 
+    /// Builds the generated standard-platform input configuration emitted by the Wii U builder so packaged Accept and Return actions reach gameplay code.
+    StandardPlatformInputConfiguration* WiiUApplication::CreateStandardPlatformInputConfiguration() const {
+#if HELENGINE_WIIU_HAS_GENERATED_CORE
+        std::size_t actionEntryCount = 0;
+        const HERuntimeStandardPlatformActionEntry* actionEntries = he_runtime_standard_platform_action_entries(&actionEntryCount);
+        if (actionEntries == nullptr && actionEntryCount != 0U) {
+            throw std::runtime_error("Standard platform input manifest reported bindings without entries.");
+        }
+
+        List<StandardPlatformActionBinding*>* bindings = new List<StandardPlatformActionBinding*>();
+        for (std::size_t index = 0; index < actionEntryCount; index++) {
+            const HERuntimeStandardPlatformActionEntry& actionEntry = actionEntries[index];
+            bindings->Add(new StandardPlatformActionBinding(
+                static_cast<StandardPlatformAction>(actionEntry.ActionId),
+                InputControlId(
+                    static_cast<InputDeviceKind>(actionEntry.DeviceKind),
+                    static_cast<InputControlKind>(actionEntry.ControlKind),
+                    actionEntry.DeviceIndex,
+                    actionEntry.ControlIndex)));
+        }
+
+        return new StandardPlatformInputConfiguration(bindings);
+#else
+        return nullptr;
+#endif
+    }
+
     /// Advances one generated-core update tick for the packaged Wii U runtime.
     bool WiiUApplication::UpdateEngineCore() {
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
@@ -303,19 +399,16 @@ namespace helengine::wiiu {
         }
 
         try {
-            if (UpdateFrameLogCount < 2) {
-                OSReport("[WiiU] Engine update begin frame=%u\n", UpdateFrameLogCount);
-                AppendRuntimeTrace("[WiiUFile] Engine update begin frame=%u\n", UpdateFrameLogCount);
-            }
             SetBootPhase(WiiUBootPhase::Running, 0xFF006000);
+            HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] Engine update stage: EngineCore->Update begin.\n");
             EngineCore->Update();
+            HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] Engine update stage: EngineCore->Update completed.\n");
+            HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] Engine update stage: EngineRenderManager2D->FlushReleasedTextures begin.\n");
             EngineRenderManager2D->FlushReleasedTextures();
+            HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] Engine update stage: EngineRenderManager2D->FlushReleasedTextures completed.\n");
+            HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] Engine update stage: EngineRenderManager3D->FlushReleasedAssets begin.\n");
             EngineRenderManager3D->FlushReleasedAssets();
-            if (UpdateFrameLogCount < 2) {
-                OSReport("[WiiU] Engine update completed frame=%u\n", UpdateFrameLogCount);
-                AppendRuntimeTrace("[WiiUFile] Engine update completed frame=%u\n", UpdateFrameLogCount);
-            }
-            UpdateFrameLogCount++;
+            HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] Engine update stage: EngineRenderManager3D->FlushReleasedAssets completed.\n");
             return true;
         }
         catch (Exception* exception) {
@@ -345,53 +438,23 @@ namespace helengine::wiiu {
     /// Draws one generated-core frame for the packaged Wii U runtime.
     bool WiiUApplication::DrawEngineCore() {
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
-        if (!EngineInitialized || EngineCore == nullptr || EngineRenderManager2D == nullptr) {
+        if (!EngineInitialized || EngineCore == nullptr || EngineRenderManager2D == nullptr || EngineRenderManager3D == nullptr) {
             return false;
         }
 
         try {
-            if (DrawFrameLogCount < 2) {
-                OSReport("[WiiU] Engine draw begin frame=%u\n", DrawFrameLogCount);
-                AppendRuntimeTrace("[WiiUFile] Engine draw begin frame=%u\n", DrawFrameLogCount);
-            }
             SetBootPhase(WiiUBootPhase::Running, 0xFF008000);
+            HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] Engine draw stage: EngineCore->Draw begin.\n");
             EngineCore->Draw();
-            EngineRenderManager2D->Draw();
-            if (DrawFrameLogCount < 4U && TvSurface != nullptr) {
-                const std::uint32_t* tvPixels = TvSurface->GetPixels();
-                const std::uint32_t tvWidth = TvSurface->GetWidth();
-                const std::uint32_t tvHeight = TvSurface->GetHeight();
-                const std::uint32_t topLeftPixel = tvPixels[0];
-                const std::uint32_t centerPixel = tvPixels[((tvHeight / 2U) * tvWidth) + (tvWidth / 2U)];
-                const std::uint32_t bottomRightPixel = tvPixels[((tvHeight - 1U) * tvWidth) + (tvWidth - 1U)];
-                std::uint32_t nonBlackSampleCount = 0U;
-                constexpr std::uint32_t SampleGridWidth = 8U;
-                constexpr std::uint32_t SampleGridHeight = 8U;
-
-                for (std::uint32_t sampleRow = 0U; sampleRow < SampleGridHeight; sampleRow++) {
-                    const std::uint32_t y = (sampleRow * (tvHeight - 1U)) / (SampleGridHeight - 1U);
-                    for (std::uint32_t sampleColumn = 0U; sampleColumn < SampleGridWidth; sampleColumn++) {
-                        const std::uint32_t x = (sampleColumn * (tvWidth - 1U)) / (SampleGridWidth - 1U);
-                        if (tvPixels[(y * tvWidth) + x] != 0xFF000000U) {
-                            nonBlackSampleCount++;
-                        }
-                    }
-                }
-
-                AppendRuntimeTrace(
-                    "[WiiUFile] Draw surface frame=%u topLeft=%08X center=%08X bottomRight=%08X nonBlackSamples=%u/%u\n",
-                    DrawFrameLogCount,
-                    topLeftPixel,
-                    centerPixel,
-                    bottomRightPixel,
-                    nonBlackSampleCount,
-                    SampleGridWidth * SampleGridHeight);
+            HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] Engine draw stage: EngineCore->Draw completed.\n");
+            HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] Engine draw stage: EngineRenderManager3D->Draw begin.\n");
+            EngineRenderManager3D->Draw();
+            HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] Engine draw stage: EngineRenderManager3D->Draw completed.\n");
+            if (DiagnosticFrameLoopModeValue != DiagnosticFrameLoopMode::DrawOnly || RunDiagnosticRenderManager2DDrawInDrawOnlyMode) {
+                HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] Engine draw stage: EngineRenderManager2D->Draw begin.\n");
+                EngineRenderManager2D->Draw();
+                HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] Engine draw stage: EngineRenderManager2D->Draw completed.\n");
             }
-            if (DrawFrameLogCount < 2) {
-                OSReport("[WiiU] Engine draw completed frame=%u\n", DrawFrameLogCount);
-                AppendRuntimeTrace("[WiiUFile] Engine draw completed frame=%u\n", DrawFrameLogCount);
-            }
-            DrawFrameLogCount++;
             return true;
         }
         catch (Exception* exception) {
@@ -442,45 +505,17 @@ namespace helengine::wiiu {
 
     /// Presents one renderer-owned frame after the generated core has initialized.
     void WiiUApplication::PresentRenderedFrame() {
-        if (TvSurface == nullptr || DrcSurface == nullptr) {
-            throw std::runtime_error("Wii U software surfaces must exist before rendered presentation can begin.");
-        } else if (Gx2Presenter == nullptr) {
+        if (Gx2Presenter == nullptr) {
             throw std::runtime_error("Wii U GX2 presenter must exist before rendered presentation can begin.");
+        } else if (EngineRenderManager3D == nullptr) {
+            throw std::runtime_error("Wii U 3D render manager must exist before rendered presentation can begin.");
+        } else if (EngineRenderManager2D == nullptr) {
+            throw std::runtime_error("Wii U 2D render manager must exist before rendered presentation can begin.");
         }
 
-        if (PresentFrameLogCount < 4U) {
-            const std::uint32_t* tvPixels = TvSurface->GetPixels();
-            const std::uint32_t tvWidth = TvSurface->GetWidth();
-            const std::uint32_t tvHeight = TvSurface->GetHeight();
-            const std::uint32_t topLeftPixel = tvPixels[0];
-            const std::uint32_t centerPixel = tvPixels[((tvHeight / 2U) * tvWidth) + (tvWidth / 2U)];
-            const std::uint32_t bottomRightPixel = tvPixels[((tvHeight - 1U) * tvWidth) + (tvWidth - 1U)];
-            std::uint32_t nonBlackSampleCount = 0U;
-            constexpr std::uint32_t SampleGridWidth = 8U;
-            constexpr std::uint32_t SampleGridHeight = 8U;
-
-            for (std::uint32_t sampleRow = 0U; sampleRow < SampleGridHeight; sampleRow++) {
-                const std::uint32_t y = (sampleRow * (tvHeight - 1U)) / (SampleGridHeight - 1U);
-                for (std::uint32_t sampleColumn = 0U; sampleColumn < SampleGridWidth; sampleColumn++) {
-                    const std::uint32_t x = (sampleColumn * (tvWidth - 1U)) / (SampleGridWidth - 1U);
-                    if (tvPixels[(y * tvWidth) + x] != 0xFF000000U) {
-                        nonBlackSampleCount++;
-                    }
-                }
-            }
-
-            AppendRuntimeTrace(
-                "[WiiUFile] Present source frame=%u topLeft=%08X center=%08X bottomRight=%08X nonBlackSamples=%u/%u\n",
-                PresentFrameLogCount,
-                topLeftPixel,
-                centerPixel,
-                bottomRightPixel,
-                nonBlackSampleCount,
-                SampleGridWidth * SampleGridHeight);
-            PresentFrameLogCount++;
-        }
-
-        Gx2Presenter->Present(TvSurface, DrcSurface);
+        HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] PresentRenderedFrame begin.\n");
+        Gx2Presenter->RenderFrame(EngineRenderManager3D->GetCurrentFrame(), EngineRenderManager2D->GetCurrentFrame());
+        HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] PresentRenderedFrame completed.\n");
     }
 
     /// Appends one host-readable Wii U runtime trace line to every supported trace sink.
@@ -520,3 +555,5 @@ namespace helengine::wiiu {
         return buffer;
     }
 }
+
+#undef HELENGINE_WIIU_FRAME_TRACE

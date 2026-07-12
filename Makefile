@@ -12,10 +12,14 @@ include $(DEVKITPRO)/wut/share/wut_rules
 TARGET := helengine_wiiu
 BUILD := build
 SOURCES := src src/platform/wiiu src/platform/wiiu/audio
-# WiiUApplication.cpp, WiiUSceneBootstrap.cpp, and future runtime seam sources remain under src/platform/wiiu and are discovered through wildcard source enumeration.
-DATA :=
+# WiiUApplication.cpp, WiiUInputBackend.cpp, WiiUSceneBootstrap.cpp, and future runtime seam sources remain under src/platform/wiiu and are discovered through wildcard source enumeration.
+DATA := data
+SHADER_SOURCES := tools/wiiu-shaders
+SHADER_COMPILER := tools/cafeglsl/glslcompiler.elf
+REQUIRED_SHADER_BINFILES := diagnostic_square_shader.bin diagnostic_triangle_shader.bin scene_opaque_lit_shader.bin ui_quad_shader.bin
 INCLUDES := src
 CONTENT :=
+APP_CONTENT := $(CONTENT)
 ICON :=
 TV_SPLASH :=
 DRC_SPLASH :=
@@ -62,13 +66,16 @@ ifneq ($(BUILD),$(notdir $(CURDIR)))
 export OUTPUT := $(CURDIR)/$(BUILD)/$(TARGET)
 export TOPDIR := $(CURDIR)
 export VPATH := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
+	$(foreach dir,$(DATA),$(CURDIR)/$(dir)) \
+	$(CURDIR)/$(SHADER_SOURCES) \
 	$(if $(strip $(GENERATED_CORE_TRANSLATION_UNIT)),$(HELENGINE_CORE_CPP_ROOT))
 export DEPSDIR := $(CURDIR)/$(BUILD)
 
 CFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp))) $(GENERATED_CORE_TRANSLATION_UNIT)
 SFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
-BINFILES :=
+RAW_BINFILES := $(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
+BINFILES := $(sort $(filter-out $(REQUIRED_SHADER_BINFILES),$(RAW_BINFILES)) $(REQUIRED_SHADER_BINFILES))
 
 ifeq ($(strip $(CPPFILES)),)
 export LD := $(CC)
@@ -76,9 +83,10 @@ else
 export LD := $(CXX)
 endif
 
-export OFILES_BIN :=
+export OFILES_BIN := $(addsuffix .o,$(BINFILES))
 export OFILES_SRC := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
 export OFILES := $(OFILES_BIN) $(OFILES_SRC)
+export HFILES := $(addsuffix .h,$(subst .,_,$(BINFILES)))
 export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 	$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
 	-I$(CURDIR)/$(BUILD)
@@ -105,6 +113,15 @@ all: $(OUTPUT).wuhb
 $(OUTPUT).wuhb: $(OUTPUT).rpx
 $(OUTPUT).rpx: $(OUTPUT).elf
 $(OUTPUT).elf: $(OFILES)
+$(OFILES_SRC): $(HFILES)
+
+%_shader.bin: $(TOPDIR)/$(SHADER_SOURCES)/%.vs $(TOPDIR)/$(SHADER_SOURCES)/%.ps
+	@echo $(notdir $@)
+	@$(TOPDIR)/$(SHADER_COMPILER) -ps $(TOPDIR)/$(SHADER_SOURCES)/$*.ps -vs $(TOPDIR)/$(SHADER_SOURCES)/$*.vs -o $@
+
+%_bin.h %.bin.o: %.bin
+	@echo $(notdir $<)
+	@$(bin2o)
 
 -include $(DEPENDS)
 endif

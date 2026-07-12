@@ -5,21 +5,23 @@
 #include <coreinit/screen.h>
 
 #include "platform/wiiu/WiiUBootPhase.hpp"
-#include "platform/wiiu/WiiUSoftwareSurface.hpp"
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
 class Core;
 class HostFileSystemContentStreamSource;
+class IAudioBackend;
 class PlatformInfo;
+class StandardPlatformInputConfiguration;
 #endif
 
 namespace helengine::wiiu {
     class WiiUGx2Presenter;
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
-    class WiiUAudioBackend;
+    class WiiUInputBackend;
     class WiiURenderManager2D;
     class WiiURenderManager3D;
+    class WiiURuntimeDiagnosticsProvider;
 #endif
 
     /// Owns the first Wii U steady-state application seam after the boot host transfers control.
@@ -43,6 +45,9 @@ namespace helengine::wiiu {
 
         /// Initializes the Wii U GX2 presenter used for steady-state rendered output.
         bool InitializeGx2Presenter();
+
+        /// Builds the generated standard-platform input configuration emitted by the Wii U builder so gameplay Accept and Return actions work at runtime.
+        StandardPlatformInputConfiguration* CreateStandardPlatformInputConfiguration() const;
 
         /// Advances one generated-core update tick for the packaged Wii U runtime.
         bool UpdateEngineCore();
@@ -74,12 +79,6 @@ namespace helengine::wiiu {
         /// Stores the allocated GamePad screen backing buffer.
         void* DrcBuffer;
 
-        /// Stores the TV software surface used by the minimal Wii U menu renderer.
-        WiiUSoftwareSurface* TvSurface;
-
-        /// Stores the DRC software surface used by the minimal Wii U menu renderer.
-        WiiUSoftwareSurface* DrcSurface;
-
         /// Stores the current boot phase for the application loop.
         WiiUBootPhase BootPhase;
 
@@ -93,15 +92,6 @@ namespace helengine::wiiu {
         /// Tracks whether the generated core initialized far enough to enter the steady-state frame loop.
         bool EngineInitialized;
 
-        /// Counts the generated-core update frames reported through the Wii U runtime diagnostics.
-        std::uint32_t UpdateFrameLogCount;
-
-        /// Counts the generated-core draw frames reported through the Wii U runtime diagnostics.
-        std::uint32_t DrawFrameLogCount;
-
-        /// Counts the rendered-present source-surface frames sampled through the Wii U runtime diagnostics.
-        std::uint32_t PresentFrameLogCount;
-
         /// Stores the generated core instance that owns scene loading and frame updates.
         Core* EngineCore;
 
@@ -111,11 +101,17 @@ namespace helengine::wiiu {
         /// Stores the Wii U 2D render bridge used by the generated core.
         WiiURenderManager2D* EngineRenderManager2D;
 
+        /// Stores the Wii U input backend used by the generated core.
+        WiiUInputBackend* EngineInputBackend;
+
+        /// Stores the Wii U audio backend used by the generated core.
+        IAudioBackend* EngineAudioBackend;
+
         /// Stores the current Wii U platform information record exposed to gameplay code.
         PlatformInfo* EnginePlatformInfo;
 
-        /// Stores the Wii U AX audio backend passed into generated core.
-        WiiUAudioBackend* EngineAudioBackend;
+        /// Stores the runtime diagnostics provider that bridges generated-core update-stage callbacks into the persistent Wii U trace file.
+        WiiURuntimeDiagnosticsProvider* EngineRuntimeDiagnosticsProvider;
 
         /// Stores the content stream source that backs core-owned runtime asset reads for the packaged Wii U build.
         HostFileSystemContentStreamSource* EngineContentStreamSource;
