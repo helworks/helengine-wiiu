@@ -23,6 +23,7 @@ namespace helengine::wiiu {
         constexpr std::uint32_t DrcSurfaceHeight = 480U;
         constexpr GX2SurfaceFormat PresentationSurfaceFormat = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;
         constexpr GX2TVRenderMode PresentationTvRenderMode = GX2_TV_RENDER_MODE_WIDE_720P;
+        constexpr GX2RResourceFlags NoGx2rResourceFlags = static_cast<GX2RResourceFlags>(0);
     }
 
     /// Creates one uninitialized GX2 presenter.
@@ -100,12 +101,12 @@ namespace helengine::wiiu {
     /// Releases all allocated GX2 resources and returns the presenter to the uninitialized state.
     void WiiUGx2Presenter::Shutdown() {
         if (TvColorBuffer.surface.image != nullptr) {
-            GX2RDestroySurfaceEx(&TvColorBuffer.surface, 0);
+            GX2RDestroySurfaceEx(&TvColorBuffer.surface, NoGx2rResourceFlags);
             TvColorBuffer.surface.image = nullptr;
         }
 
         if (DrcColorBuffer.surface.image != nullptr) {
-            GX2RDestroySurfaceEx(&DrcColorBuffer.surface, 0);
+            GX2RDestroySurfaceEx(&DrcColorBuffer.surface, NoGx2rResourceFlags);
             DrcColorBuffer.surface.image = nullptr;
         }
 
@@ -184,7 +185,7 @@ namespace helengine::wiiu {
             throw std::runtime_error("Wii U GX2 presenter requires a valid destination buffer.");
         }
 
-        std::uint32_t* destinationPixels = static_cast<std::uint32_t*>(GX2RLockSurfaceEx(&destinationBuffer->surface, 0, 0));
+        std::uint32_t* destinationPixels = static_cast<std::uint32_t*>(GX2RLockSurfaceEx(&destinationBuffer->surface, 0, NoGx2rResourceFlags));
         if (destinationPixels == nullptr) {
             throw std::runtime_error("Wii U GX2 presenter could not lock the destination color buffer surface.");
         }
@@ -201,7 +202,7 @@ namespace helengine::wiiu {
             }
         }
 
-        GX2RUnlockSurfaceEx(&destinationBuffer->surface, 0, 0);
+        GX2RUnlockSurfaceEx(&destinationBuffer->surface, 0, NoGx2rResourceFlags);
         GX2RInvalidateSurface(&destinationBuffer->surface, 0, GX2R_RESOURCE_USAGE_CPU_WRITE);
     }
 

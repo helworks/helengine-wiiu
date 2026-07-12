@@ -15,6 +15,7 @@
 #include "Entity.hpp"
 #include "FontAsset.hpp"
 #include "ICamera.hpp"
+#include "IContentStreamSource.hpp"
 #include "IDrawable2D.hpp"
 #include "IRenderQueue2D.hpp"
 #include "IRoundedRectDrawable2D.hpp"
@@ -73,13 +74,13 @@ namespace helengine::wiiu {
         DrcSurface = drcSurface;
     }
 
-    /// Rebuilds one platform-owned cooked texture payload into a CPU-readable Wii U runtime texture.
-    ::RuntimeTexture* WiiURenderManager2D::BuildTextureFromCooked(std::string cookedAssetPath) {
-        if (cookedAssetPath.empty()) {
-            throw new ArgumentException("Wii U cooked texture path is required.", "cookedAssetPath");
+    /// Rebuilds one platform-owned cooked texture payload into a CPU-readable Wii U runtime texture through the content-stream-based generated-core contract.
+    ::RuntimeTexture* WiiURenderManager2D::BuildTextureFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {
+        if (contentStreamSource == nullptr) {
+            throw new ArgumentNullException("contentStreamSource");
         }
 
-        FileStream* stream = File::OpenRead(cookedAssetPath.c_str());
+        ::Stream* stream = contentStreamSource->OpenRead(cookedAssetPath);
         auto streamGuard = he_cpp_make_scope_exit([&]() {
             if (stream != nullptr) {
                 stream->Dispose();

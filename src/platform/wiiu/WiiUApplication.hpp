@@ -9,6 +9,7 @@
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
 class Core;
+class HostFileSystemContentStreamSource;
 class PlatformInfo;
 #endif
 
@@ -16,6 +17,7 @@ namespace helengine::wiiu {
     class WiiUGx2Presenter;
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
+    class WiiUAudioBackend;
     class WiiURenderManager2D;
     class WiiURenderManager3D;
 #endif
@@ -111,6 +113,12 @@ namespace helengine::wiiu {
 
         /// Stores the current Wii U platform information record exposed to gameplay code.
         PlatformInfo* EnginePlatformInfo;
+
+        /// Stores the Wii U AX audio backend passed into generated core.
+        WiiUAudioBackend* EngineAudioBackend;
+
+        /// Stores the content stream source that backs core-owned runtime asset reads for the packaged Wii U build.
+        HostFileSystemContentStreamSource* EngineContentStreamSource;
 #endif
     };
 }

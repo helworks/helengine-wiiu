@@ -12,6 +12,7 @@
 class RuntimeTexture;
 class FontAsset;
 class IDrawable2D;
+class IContentStreamSource;
 class TextureAsset;
 class byte4;
 class float4;
@@ -65,7 +66,7 @@ namespace helengine::wiiu {
         void AttachSurface(WiiUSoftwareSurface* tvSurface, WiiUSoftwareSurface* drcSurface);
 
         /// Rebuilds one platform-owned cooked texture payload into a CPU-readable Wii U runtime texture.
-        ::RuntimeTexture* BuildTextureFromCooked(std::string cookedAssetPath) override;
+        ::RuntimeTexture* BuildTextureFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) override;
 
         /// Rebuilds one shared-engine texture asset into a CPU-readable Wii U runtime texture.
         ::RuntimeTexture* BuildTextureFromRaw(::TextureAsset* data) override;

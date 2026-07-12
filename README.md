@@ -18,6 +18,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\launch_in_emulator
   -ArtifactPath ..\helprojs\city\wiiu-build\helengine_wiiu.wuhb
 ```
 
+## Packaged Bootstrap Fallback
+
+When no authored startup override is present, the packaged Wii U bootstrap falls back to `cube_test`.
+
 ## More Docs
 
 - [Docker Build Notes](docs/Docker.md)

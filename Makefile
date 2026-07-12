@@ -11,7 +11,7 @@ include $(DEVKITPRO)/wut/share/wut_rules
 
 TARGET := helengine_wiiu
 BUILD := build
-SOURCES := src src/platform/wiiu
+SOURCES := src src/platform/wiiu src/platform/wiiu/audio
 # WiiUApplication.cpp, WiiUSceneBootstrap.cpp, and future runtime seam sources remain under src/platform/wiiu and are discovered through wildcard source enumeration.
 DATA :=
 INCLUDES := src
@@ -19,10 +19,12 @@ CONTENT :=
 ICON :=
 TV_SPLASH :=
 DRC_SPLASH :=
+GENERATED_CONFIG := $(HELENGINE_CORE_CPP_ROOT)/helcpp_config.hpp
+GENERATED_CORE_TRANSLATION_UNIT :=
 
 CFLAGS := -g -Wall -O2 -ffunction-sections $(MACHDEP)
 CFLAGS += $(INCLUDE) -D__WIIU__ -D__WUT__
-CXXFLAGS := $(CFLAGS) -std=gnu++17
+CXXFLAGS := $(CFLAGS) -std=gnu++20
 ASFLAGS := -g $(ARCH)
 LDFLAGS := -g $(ARCH) $(RPXSPECS) -Wl,-Map,$(notdir $*.map)
 LIBS := -lwut
@@ -30,9 +32,28 @@ LIBS := -lwut
 ifeq ($(strip $(HELENGINE_CORE_CPP_ROOT)),)
 CFLAGS += -DHELENGINE_WIIU_HAS_GENERATED_CORE=0
 CXXFLAGS += -DHELENGINE_WIIU_HAS_GENERATED_CORE=0
+CFLAGS += -DHELENGINE_WIIU_HAS_GENERATED_RUNTIME_MODULE_REGISTRATION=0
+CXXFLAGS += -DHELENGINE_WIIU_HAS_GENERATED_RUNTIME_MODULE_REGISTRATION=0
 else
+ifneq ($(wildcard $(HELENGINE_CORE_CPP_ROOT)/helengine_core_amalgamated.cpp),)
+GENERATED_CORE_TRANSLATION_UNIT := helengine_core_amalgamated.cpp
+else ifneq ($(wildcard $(HELENGINE_CORE_CPP_ROOT)/helengine_core_unity.cpp),)
+GENERATED_CORE_TRANSLATION_UNIT := helengine_core_unity.cpp
+else
+$(error HELENGINE_CORE_CPP_ROOT does not contain helengine_core_amalgamated.cpp or helengine_core_unity.cpp)
+endif
+ifeq ($(wildcard $(GENERATED_CONFIG)),)
+$(error HELENGINE_CORE_CPP_ROOT does not contain helcpp_config.hpp)
+endif
 CFLAGS += -DHELENGINE_WIIU_HAS_GENERATED_CORE=1
 CXXFLAGS += -DHELENGINE_WIIU_HAS_GENERATED_CORE=1 -I$(HELENGINE_CORE_CPP_ROOT)
+ifneq ($(wildcard $(HELENGINE_CORE_CPP_ROOT)/GeneratedRuntimeModuleRegistration.hpp),)
+CFLAGS += -DHELENGINE_WIIU_HAS_GENERATED_RUNTIME_MODULE_REGISTRATION=1
+CXXFLAGS += -DHELENGINE_WIIU_HAS_GENERATED_RUNTIME_MODULE_REGISTRATION=1
+else
+CFLAGS += -DHELENGINE_WIIU_HAS_GENERATED_RUNTIME_MODULE_REGISTRATION=0
+CXXFLAGS += -DHELENGINE_WIIU_HAS_GENERATED_RUNTIME_MODULE_REGISTRATION=0
+endif
 endif
 
 LIBDIRS := $(PORTLIBS) $(WUT_ROOT)
@@ -40,11 +61,12 @@ LIBDIRS := $(PORTLIBS) $(WUT_ROOT)
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 export OUTPUT := $(CURDIR)/$(BUILD)/$(TARGET)
 export TOPDIR := $(CURDIR)
-export VPATH := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
+export VPATH := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
+	$(if $(strip $(GENERATED_CORE_TRANSLATION_UNIT)),$(HELENGINE_CORE_CPP_ROOT))
 export DEPSDIR := $(CURDIR)/$(BUILD)
 
 CFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
-CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
+CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp))) $(GENERATED_CORE_TRANSLATION_UNIT)
 SFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 BINFILES :=
 

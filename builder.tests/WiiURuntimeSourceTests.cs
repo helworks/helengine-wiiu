@@ -85,6 +85,53 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
+    /// Ensures the Wii U runtime seam constructs and registers the dedicated AX audio backend with the generated core.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_WiresDedicatedAudioBackendIntoGeneratedCore() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string makefileSource = File.ReadAllText(Path.Combine(repositoryRootPath, "Makefile"));
+        string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+        string audioBackendHeaderPath = Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "audio", "WiiUAudioBackend.hpp");
+        string audioBackendSourcePath = Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "audio", "WiiUAudioBackend.cpp");
+
+        Assert.Contains("src/platform/wiiu/audio", makefileSource, StringComparison.Ordinal);
+        Assert.True(File.Exists(audioBackendHeaderPath), "Expected WiiUAudioBackend.hpp to exist.");
+        Assert.True(File.Exists(audioBackendSourcePath), "Expected WiiUAudioBackend.cpp to exist.");
+        Assert.Contains("class HostFileSystemContentStreamSource;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("WiiUAudioBackend* EngineAudioBackend;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("HostFileSystemContentStreamSource* EngineContentStreamSource;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"platform/wiiu/audio/WiiUAudioBackend.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"HostFileSystemContentStreamSource.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("EngineAudioBackend = new WiiUAudioBackend();", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("EngineCore->SetAudioBackend(EngineAudioBackend);", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("EngineContentStreamSource = new HostFileSystemContentStreamSource(packagedContentRootPath);", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("initializationOptions->ContentStreamSource = EngineContentStreamSource;", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("delete EngineAudioBackend;", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the clean Wii U host still provides the minimal 3D bridge source files that the generated core expects.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_ProvidesMinimal3DRenderBridge() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+        string renderManagerHeaderPath = Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.hpp");
+        string renderManagerSourcePath = Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.cpp");
+        string renderManagerHeaderSource = File.ReadAllText(renderManagerHeaderPath);
+        string renderManagerSource = File.ReadAllText(renderManagerSourcePath);
+
+        Assert.True(File.Exists(renderManagerHeaderPath), "Expected WiiURenderManager3D.hpp to exist.");
+        Assert.True(File.Exists(renderManagerSourcePath), "Expected WiiURenderManager3D.cpp to exist.");
+        Assert.Contains("#include \"platform/wiiu/WiiURenderManager3D.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("class WiiURenderManager3D final : public ::RenderManager3D", renderManagerHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("::RuntimeModel* BuildModelFromRaw(::ModelAsset* data) override;", renderManagerHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("return CreatePlaceholderModel();", renderManagerSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures the Wii U host presents the renderer-owned frame once the generated core has initialized instead of clearing over the visible output every loop.
     /// </summary>
     [Fact]
@@ -186,8 +233,8 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("#include <gx2r/surface.h>", presenterSource, StringComparison.Ordinal);
         Assert.Contains("GX2RCreateSurface(", presenterSource, StringComparison.Ordinal);
         Assert.Contains("GX2R_RESOURCE_BIND_COLOR_BUFFER | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("GX2RLockSurfaceEx(&destinationBuffer->surface, 0, 0)", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("GX2RUnlockSurfaceEx(&destinationBuffer->surface, 0, 0)", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RLockSurfaceEx(&destinationBuffer->surface, 0, NoGx2rResourceFlags)", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RUnlockSurfaceEx(&destinationBuffer->surface, 0, NoGx2rResourceFlags)", presenterSource, StringComparison.Ordinal);
         Assert.DoesNotContain("std::memcpy(destinationBuffer->surface.image, sourceSurface->GetPixels(), sourceByteCount);", presenterSource, StringComparison.Ordinal);
     }
 }

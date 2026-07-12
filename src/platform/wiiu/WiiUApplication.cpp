@@ -1,4 +1,5 @@
 #include "platform/wiiu/WiiUApplication.hpp"
+#include "platform/wiiu/audio/WiiUAudioBackend.hpp"
 #include "platform/wiiu/WiiUGx2Presenter.hpp"
 #include "platform/wiiu/WiiUSceneBootstrap.hpp"
 
@@ -7,6 +8,7 @@
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
 #include "Core.hpp"
 #include "CoreInitializationOptions.hpp"
+#include "HostFileSystemContentStreamSource.hpp"
 #if HELENGINE_WIIU_HAS_GENERATED_RUNTIME_MODULE_REGISTRATION
 #include "GeneratedRuntimeModuleRegistration.hpp"
 #endif
@@ -60,6 +62,8 @@ namespace helengine::wiiu {
         , EngineRenderManager3D(nullptr)
         , EngineRenderManager2D(nullptr)
         , EnginePlatformInfo(nullptr)
+        , EngineAudioBackend(nullptr)
+        , EngineContentStreamSource(nullptr)
 #endif
     {
     }
@@ -70,10 +74,13 @@ namespace helengine::wiiu {
         Gx2Presenter = nullptr;
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
+        delete EngineAudioBackend;
+        EngineAudioBackend = nullptr;
         delete EngineRenderManager2D;
         delete EngineRenderManager3D;
         delete EnginePlatformInfo;
         delete EngineCore;
+        delete EngineContentStreamSource;
 #endif
         delete TvSurface;
         delete DrcSurface;
@@ -210,7 +217,8 @@ namespace helengine::wiiu {
             }
 
             initializationStage = "AssignInitializationOptions";
-            initializationOptions->ContentRootPath = packagedContentRootPath;
+            EngineContentStreamSource = new HostFileSystemContentStreamSource(packagedContentRootPath);
+            initializationOptions->ContentStreamSource = EngineContentStreamSource;
             initializationOptions->SceneCatalog = packagedCatalog;
             initializationOptions->UpdateOrderLayers = 4;
             initializationOptions->RenderOrderLayers3D = 4;
@@ -222,6 +230,7 @@ namespace helengine::wiiu {
             EngineRenderManager3D = new WiiURenderManager3D();
             EngineRenderManager2D = new WiiURenderManager2D();
             EnginePlatformInfo = new PlatformInfo("wiiu", "1.0");
+            EngineAudioBackend = new WiiUAudioBackend();
             EngineRenderManager2D->AttachSurface(TvSurface, DrcSurface);
 
             initializationStage = "AddPrimaryWindow";
@@ -231,6 +240,7 @@ namespace helengine::wiiu {
             OSReport("[WiiU] Calling EngineCore->Initialize.\n");
             AppendRuntimeTrace("[WiiUFile] Calling EngineCore->Initialize.\n");
             EngineCore->Initialize(EngineRenderManager3D, EngineRenderManager2D, nullptr, EnginePlatformInfo, initializationOptions);
+            EngineCore->SetAudioBackend(EngineAudioBackend);
             OSReport("[WiiU] Engine core initialized.\n");
             AppendRuntimeTrace("[WiiUFile] Engine core initialized.\n");
 
