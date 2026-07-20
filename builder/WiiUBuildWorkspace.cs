@@ -23,7 +23,7 @@ public static class WiiUBuildWorkspace {
     /// <param name="cancellationToken">Cancellation token that can stop the build cooperatively.</param>
     /// <param name="nativeBuildExecutor">Native build executor used to produce the RPX.</param>
     /// <returns>The final build report.</returns>
-    public static async Task<PlatformBuildReport> BuildAsync(
+    public static PlatformBuildReport Build(
         PlatformBuildRequest request,
         IPlatformBuildProgressReporter progressReporter,
         IPlatformBuildDiagnosticReporter diagnosticReporter,
@@ -49,7 +49,7 @@ public static class WiiUBuildWorkspace {
         }
 
         progressReporter.Report(new PlatformBuildProgressUpdate("Build Native Executable", WiiUBuilderPaths.WuhbFileName, 2, 4, "Building native Wii U packaged artifacts."));
-        WiiUNativeBuildResult nativeBuildResult = await nativeBuildExecutor.BuildAsync(request, diagnosticReporter, cancellationToken);
+        WiiUNativeBuildResult nativeBuildResult = nativeBuildExecutor.Build(request, diagnosticReporter, cancellationToken);
         StageNativeArtifacts(request, nativeBuildResult);
         progressReporter.Report(new PlatformBuildProgressUpdate("Stage Native Artifacts", WiiUBuilderPaths.WuhbFileName, 3, 4, "Copied the native Wii U RPX and WUHB into the output root."));
 

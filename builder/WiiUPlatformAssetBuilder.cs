@@ -90,6 +90,6 @@ public sealed class WiiUPlatformAssetBuilder : IPlatformAssetBuilder {
             throw new ArgumentNullException(nameof(diagnosticReporter));
         }
 
-        return WiiUBuildWorkspace.BuildAsync(request, progressReporter, diagnosticReporter, cancellationToken, NativeBuildExecutor);
+        return Task.FromResult(WiiUBuildWorkspace.Build(request, progressReporter, diagnosticReporter, cancellationToken, NativeBuildExecutor));
     }
 }

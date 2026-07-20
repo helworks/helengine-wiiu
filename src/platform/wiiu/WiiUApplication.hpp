@@ -9,6 +9,7 @@
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
 class Core;
 class HostFileSystemContentStreamSource;
+class IAudioBackend;
 class PlatformInfo;
 class StandardPlatformInputConfiguration;
 #endif
@@ -20,6 +21,7 @@ namespace helengine::wiiu {
     class WiiUInputBackend;
     class WiiURenderManager2D;
     class WiiURenderManager3D;
+    class WiiURuntimeDiagnosticsProvider;
 #endif
 
     /// Owns the first Wii U steady-state application seam after the boot host transfers control.
@@ -102,8 +104,14 @@ namespace helengine::wiiu {
         /// Stores the Wii U input backend used by the generated core.
         WiiUInputBackend* EngineInputBackend;
 
+        /// Stores the Wii U audio backend used by the generated core.
+        IAudioBackend* EngineAudioBackend;
+
         /// Stores the current Wii U platform information record exposed to gameplay code.
         PlatformInfo* EnginePlatformInfo;
+
+        /// Stores the runtime diagnostics provider that bridges generated-core update-stage callbacks into the persistent Wii U trace file.
+        WiiURuntimeDiagnosticsProvider* EngineRuntimeDiagnosticsProvider;
 
         /// Stores the content stream source that backs core-owned runtime asset reads for the packaged Wii U build.
         HostFileSystemContentStreamSource* EngineContentStreamSource;

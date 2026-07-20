@@ -15,7 +15,7 @@ public interface IWiiUNativeBuildExecutor {
     /// <param name="diagnosticReporter">Diagnostic reporter for streamed build failures.</param>
     /// <param name="cancellationToken">Cancellation token that can stop the build cooperatively.</param>
     /// <returns>Absolute paths to the produced RPX and WUHB artifacts.</returns>
-    Task<WiiUNativeBuildResult> BuildAsync(
+    WiiUNativeBuildResult Build(
         PlatformBuildRequest request,
         IPlatformBuildDiagnosticReporter diagnosticReporter,
         CancellationToken cancellationToken);

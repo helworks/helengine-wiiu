@@ -3,7 +3,6 @@
 #include "diagnostic_triangle_shader_bin.h"
 #include "diagnostic_square_shader_bin.h"
 #include "scene_opaque_lit_shader_bin.h"
-#include "scene_cube_flat_color_shader_bin.h"
 #include "ui_quad_shader_bin.h"
 
 #include <cmath>
@@ -47,6 +46,7 @@ namespace helengine::wiiu {
         constexpr std::uint32_t LogicalFrameWidth = 1280U;
         constexpr std::uint32_t LogicalFrameHeight = 720U;
         constexpr GX2SurfaceFormat PresentationSurfaceFormat = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;
+        constexpr GX2SurfaceFormat DepthSurfaceFormat = GX2_SURFACE_FORMAT_FLOAT_R32;
         constexpr GX2TVRenderMode PresentationTvRenderMode = GX2_TV_RENDER_MODE_WIDE_720P;
         constexpr std::uint32_t CommandBufferPoolSize = 0x400000U;
         constexpr GX2RResourceFlags NoGx2rResourceFlags = static_cast<GX2RResourceFlags>(0);
@@ -58,6 +58,10 @@ namespace helengine::wiiu {
             GX2R_RESOURCE_BIND_UNIFORM_BLOCK | GX2R_RESOURCE_USAGE_CPU_READ | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ);
         constexpr GX2RResourceFlags TextureSurfaceFlags = static_cast<GX2RResourceFlags>(
             GX2R_RESOURCE_BIND_TEXTURE | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ);
+        constexpr GX2RResourceFlags ColorBufferSurfaceFlags = static_cast<GX2RResourceFlags>(
+            GX2R_RESOURCE_BIND_COLOR_BUFFER | GX2R_RESOURCE_USAGE_GPU_READ | GX2R_RESOURCE_USAGE_GPU_WRITE);
+        constexpr GX2RResourceFlags DepthBufferSurfaceFlags = static_cast<GX2RResourceFlags>(
+            GX2R_RESOURCE_BIND_DEPTH_BUFFER | GX2R_RESOURCE_USAGE_GPU_READ | GX2R_RESOURCE_USAGE_GPU_WRITE);
         constexpr float DiagnosticClearRed = 0.5294118f;
         constexpr float DiagnosticClearGreen = 0.36862746f;
         constexpr float DiagnosticClearBlue = 0.6392157f;
@@ -90,9 +94,6 @@ namespace helengine::wiiu {
         constexpr std::uint32_t SceneOpaqueTransformSizeInBytes = 48U * sizeof(float);
         constexpr std::uint32_t SceneOpaqueMaterialSizeInBytes = 8U * sizeof(float);
         constexpr std::uint32_t SceneOpaqueLightSizeInBytes = 12U * sizeof(float);
-        constexpr std::uint32_t SceneCubeVertexElementSize = 4U * sizeof(float);
-        constexpr std::uint32_t SceneCubeIndexElementSize = sizeof(std::uint16_t);
-        constexpr std::uint32_t SceneCubeTransformSizeInBytes = 16U * sizeof(float);
         constexpr double SceneDrivenFieldOfViewRadians = 1.0;
         constexpr std::uint32_t UiQuadVertexCount = 6U;
         constexpr std::uint32_t UiQuadPositionElementSize = 2U * sizeof(float);
@@ -134,12 +135,6 @@ namespace helengine::wiiu {
             0.0f, 1.0f, 0.0f, 0.0f,
             0.0f, 0.0f, 1.0f, 0.0f,
             0.25f, 0.20f, 0.0f, 1.0f
-        };
-        const float SceneCubeTransformData[] = {
-            1.0f, 0.0f, 0.0f, 0.0f,
-            0.0f, 1.0f, 0.0f, 0.0f,
-            0.0f, 0.0f, 1.0f, 0.0f,
-            0.0f, 0.0f, 0.0f, 1.0f
         };
 
         void StoreFloat32LittleEndian(void* destination, float value) {
@@ -191,13 +186,6 @@ namespace helengine::wiiu {
         , SceneOpaqueMaterialBuffer()
         , SceneOpaqueLightBuffer()
         , SceneOpaqueVertexCount(0U)
-        , AreSceneCubeResourcesInitialized(false)
-        , IsSceneCubeMeshConfigured(false)
-        , SceneCubeShaderGroup()
-        , SceneCubePositionBuffer()
-        , SceneCubeIndexBuffer()
-        , SceneCubeTransformBuffer()
-        , SceneCubeIndexCount(0U)
         , AreUiQuadResourcesInitialized(false)
         , UiQuadShaderGroup()
         , UiQuadPositionBuffer()
@@ -225,10 +213,6 @@ namespace helengine::wiiu {
         std::memset(&SceneOpaqueTransformBuffer, 0, sizeof(SceneOpaqueTransformBuffer));
         std::memset(&SceneOpaqueMaterialBuffer, 0, sizeof(SceneOpaqueMaterialBuffer));
         std::memset(&SceneOpaqueLightBuffer, 0, sizeof(SceneOpaqueLightBuffer));
-        std::memset(&SceneCubeShaderGroup, 0, sizeof(SceneCubeShaderGroup));
-        std::memset(&SceneCubePositionBuffer, 0, sizeof(SceneCubePositionBuffer));
-        std::memset(&SceneCubeIndexBuffer, 0, sizeof(SceneCubeIndexBuffer));
-        std::memset(&SceneCubeTransformBuffer, 0, sizeof(SceneCubeTransformBuffer));
         std::memset(&UiQuadShaderGroup, 0, sizeof(UiQuadShaderGroup));
         std::memset(&UiQuadPositionBuffer, 0, sizeof(UiQuadPositionBuffer));
         std::memset(&UiQuadTexCoordBuffer, 0, sizeof(UiQuadTexCoordBuffer));
@@ -320,9 +304,6 @@ namespace helengine::wiiu {
         AppendInitializationTrace("[WiiUFile] GX2 initialize: scene opaque resources begin.\n");
         InitializeSceneOpaqueResources();
         AppendInitializationTrace("[WiiUFile] GX2 initialize: scene opaque resources completed.\n");
-        AppendInitializationTrace("[WiiUFile] GX2 initialize: scene cube resources begin.\n");
-        InitializeSceneCubeResources();
-        AppendInitializationTrace("[WiiUFile] GX2 initialize: scene cube resources completed.\n");
         AppendInitializationTrace("[WiiUFile] GX2 initialize: UI quad resources begin.\n");
         InitializeUiQuadResources();
         AppendInitializationTrace("[WiiUFile] GX2 initialize: UI quad resources completed.\n");
@@ -422,117 +403,10 @@ namespace helengine::wiiu {
         PresentScanBuffers();
     }
 
-    /// Uploads one runtime model into the temporary scene-cube GX2 mesh path.
-    void WiiUGx2Presenter::ConfigureSceneCubeMesh(const WiiURuntimeModel& runtimeModel) {
-        constexpr double SceneCubeYawRadians = 0.65;
-        constexpr double SceneCubePitchRadians = 0.55;
-        constexpr double SceneCubeFieldOfViewRadians = 1.0;
-        constexpr double SceneCubeCameraDistance = 5.0;
-        constexpr double SceneCubeNearPlane = 0.1;
-        constexpr double SceneCubeFarPlane = 64.0;
-        constexpr double SceneCubeAspectRatio = 1280.0 / 720.0;
-        const double cosYaw = std::cos(SceneCubeYawRadians);
-        const double sinYaw = std::sin(SceneCubeYawRadians);
-        const double cosPitch = std::cos(SceneCubePitchRadians);
-        const double sinPitch = std::sin(SceneCubePitchRadians);
-        const double projectionScaleY = 1.0 / std::tan(SceneCubeFieldOfViewRadians * 0.5);
-        const double projectionScaleX = projectionScaleY / SceneCubeAspectRatio;
-        const double depthProjectionScale = (SceneCubeFarPlane + SceneCubeNearPlane) / (SceneCubeNearPlane - SceneCubeFarPlane);
-        const double depthProjectionOffset = (2.0 * SceneCubeFarPlane * SceneCubeNearPlane) / (SceneCubeNearPlane - SceneCubeFarPlane);
-
-        float4x4 worldViewProjectionMatrix;
-        worldViewProjectionMatrix.M11 = static_cast<float>(projectionScaleX * cosYaw);
-        worldViewProjectionMatrix.M21 = 0.0f;
-        worldViewProjectionMatrix.M31 = static_cast<float>(projectionScaleX * sinYaw);
-        worldViewProjectionMatrix.M41 = 0.0f;
-        worldViewProjectionMatrix.M12 = static_cast<float>(projectionScaleY * sinYaw * sinPitch);
-        worldViewProjectionMatrix.M22 = static_cast<float>(projectionScaleY * cosPitch);
-        worldViewProjectionMatrix.M32 = static_cast<float>(-projectionScaleY * cosYaw * sinPitch);
-        worldViewProjectionMatrix.M42 = 0.0f;
-        worldViewProjectionMatrix.M13 = static_cast<float>(-depthProjectionScale * sinYaw * cosPitch);
-        worldViewProjectionMatrix.M23 = static_cast<float>(depthProjectionScale * sinPitch);
-        worldViewProjectionMatrix.M33 = static_cast<float>(depthProjectionScale * cosYaw * cosPitch);
-        worldViewProjectionMatrix.M43 = static_cast<float>(-depthProjectionScale * SceneCubeCameraDistance + depthProjectionOffset);
-        worldViewProjectionMatrix.M14 = static_cast<float>(sinYaw * cosPitch);
-        worldViewProjectionMatrix.M24 = static_cast<float>(-sinPitch);
-        worldViewProjectionMatrix.M34 = static_cast<float>(-cosYaw * cosPitch);
-        worldViewProjectionMatrix.M44 = static_cast<float>(SceneCubeCameraDistance);
-
-        const std::vector<float>& sourcePositionData = runtimeModel.GetPositionData();
-        const std::vector<std::uint16_t>& indexData = runtimeModel.GetIndexData();
-        if (!AreSceneCubeResourcesInitialized) {
-            throw std::runtime_error("Wii U GX2 presenter must initialize scene cube resources before uploading geometry.");
-        } else if (sourcePositionData.empty()) {
-            throw std::runtime_error("Wii U GX2 presenter requires non-empty scene cube position data.");
-        } else if (indexData.empty()) {
-            throw std::runtime_error("Wii U GX2 presenter requires non-empty scene cube index data.");
-        }
-
-        std::vector<float> expandedPositionData;
-        expandedPositionData.reserve(static_cast<std::size_t>(indexData.size()) * 4U);
-        for (std::uint16_t sourceIndex : indexData) {
-            const std::size_t sourceOffset = static_cast<std::size_t>(sourceIndex) * 4U;
-            if (sourceOffset + 3U >= sourcePositionData.size()) {
-                throw std::runtime_error("Wii U GX2 presenter received one scene cube index outside the uploaded position range.");
-            }
-
-            const double sourceX = sourcePositionData[sourceOffset + 0U];
-            const double sourceY = sourcePositionData[sourceOffset + 1U];
-            const double sourceZ = sourcePositionData[sourceOffset + 2U];
-            const double yawX = sourceX * cosYaw + sourceZ * sinYaw;
-            const double yawZ = sourceZ * cosYaw - sourceX * sinYaw;
-            const double pitchY = sourceY * cosPitch - yawZ * sinPitch;
-            const double rotatedZ = sourceY * sinPitch + yawZ * cosPitch;
-            const double viewZ = rotatedZ - SceneCubeCameraDistance;
-            const double clipX = yawX * projectionScaleX;
-            const double clipY = pitchY * projectionScaleY;
-            const double clipZ =
-                depthProjectionScale * viewZ +
-                depthProjectionOffset;
-            const double clipW = -viewZ;
-
-            expandedPositionData.push_back(static_cast<float>(clipX));
-            expandedPositionData.push_back(static_cast<float>(clipY));
-            expandedPositionData.push_back(static_cast<float>(clipZ));
-            expandedPositionData.push_back(static_cast<float>(clipW));
-        }
-
-        if (SceneCubePositionBuffer.buffer != nullptr) {
-            GX2RDestroyBufferEx(&SceneCubePositionBuffer, NoGx2rResourceFlags);
-            std::memset(&SceneCubePositionBuffer, 0, sizeof(SceneCubePositionBuffer));
-        }
-
-        if (SceneCubeIndexBuffer.buffer != nullptr) {
-            GX2RDestroyBufferEx(&SceneCubeIndexBuffer, NoGx2rResourceFlags);
-            std::memset(&SceneCubeIndexBuffer, 0, sizeof(SceneCubeIndexBuffer));
-        }
-
-        InitializeSceneCubeVertexBuffer(&SceneCubePositionBuffer, expandedPositionData.data(), static_cast<std::uint32_t>(expandedPositionData.size()));
-        InitializeSceneCubeIndexBuffer(&SceneCubeIndexBuffer, indexData.data(), static_cast<std::uint32_t>(indexData.size()));
-        SceneCubeIndexCount = static_cast<std::uint32_t>(expandedPositionData.size() / 4U);
-        IsSceneCubeMeshConfigured = true;
-    }
-
-    /// Renders the configured scene-cube mesh to both displays.
-    void WiiUGx2Presenter::RenderSceneCubeFrame() {
-        if (!IsInitialized) {
-            throw std::runtime_error("Wii U GX2 presenter must be initialized before RenderSceneCubeFrame.");
-        } else if (!AreSceneCubeResourcesInitialized) {
-            throw std::runtime_error("Wii U GX2 presenter must initialize scene cube resources before RenderSceneCubeFrame.");
-        } else if (!IsSceneCubeMeshConfigured) {
-            throw std::runtime_error("Wii U GX2 presenter must upload scene cube geometry before RenderSceneCubeFrame.");
-        }
-
-        RenderSceneCubeToColorBuffer(TvContextState, &TvColorBuffer);
-        RenderSceneCubeToColorBuffer(DrcContextState, &DrcColorBuffer);
-        PresentScanBuffers();
-    }
-
     /// Releases all allocated GX2 resources and returns the presenter to the uninitialized state.
     void WiiUGx2Presenter::Shutdown() {
         DestroyUiQuadResources();
         DestroySceneOpaqueResources();
-        DestroySceneCubeResources();
         DestroyDiagnosticTriangleResources();
         DestroyDiagnosticSquareResources();
 
@@ -1010,152 +884,6 @@ namespace helengine::wiiu {
         }
     }
 
-    /// Initializes the presenter-owned shader resources used by the temporary scene-cube GX2 mesh path.
-    void WiiUGx2Presenter::InitializeSceneCubeResources() {
-        if (AreSceneCubeResourcesInitialized) {
-            return;
-        }
-
-        try {
-            if (!WHBGfxLoadGFDShaderGroup(&SceneCubeShaderGroup, 0, scene_cube_flat_color_shader_bin)) {
-                throw std::runtime_error("Wii U GX2 presenter could not load the embedded scene cube shader group.");
-            }
-
-            if (!WHBGfxInitShaderAttribute(&SceneCubeShaderGroup, "aPosition", 0, 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32)) {
-                throw std::runtime_error("Wii U GX2 presenter could not bind the scene cube position shader attribute.");
-            }
-
-            if (!WHBGfxInitFetchShader(&SceneCubeShaderGroup)) {
-                throw std::runtime_error("Wii U GX2 presenter could not initialize the scene cube fetch shader.");
-            }
-
-            GX2Invalidate(GX2_INVALIDATE_MODE_CPU_SHADER, SceneCubeShaderGroup.vertexShader->program, SceneCubeShaderGroup.vertexShader->size);
-            GX2Invalidate(GX2_INVALIDATE_MODE_CPU_SHADER, SceneCubeShaderGroup.pixelShader->program, SceneCubeShaderGroup.pixelShader->size);
-            GX2Invalidate(GX2_INVALIDATE_MODE_CPU_SHADER, SceneCubeShaderGroup.fetchShader.program, SceneCubeShaderGroup.fetchShader.size);
-            InitializeSceneCubeTransformBuffer();
-            AreSceneCubeResourcesInitialized = true;
-        } catch (...) {
-            DestroySceneCubeResources();
-            throw;
-        }
-    }
-
-    /// Releases the presenter-owned shader resources used by the temporary scene-cube GX2 mesh path.
-    void WiiUGx2Presenter::DestroySceneCubeResources() {
-        if (SceneCubeTransformBuffer.buffer != nullptr) {
-            GX2RDestroyBufferEx(&SceneCubeTransformBuffer, NoGx2rResourceFlags);
-            std::memset(&SceneCubeTransformBuffer, 0, sizeof(SceneCubeTransformBuffer));
-        }
-
-        if (SceneCubePositionBuffer.buffer != nullptr) {
-            GX2RDestroyBufferEx(&SceneCubePositionBuffer, NoGx2rResourceFlags);
-            std::memset(&SceneCubePositionBuffer, 0, sizeof(SceneCubePositionBuffer));
-        }
-
-        if (SceneCubeIndexBuffer.buffer != nullptr) {
-            GX2RDestroyBufferEx(&SceneCubeIndexBuffer, NoGx2rResourceFlags);
-            std::memset(&SceneCubeIndexBuffer, 0, sizeof(SceneCubeIndexBuffer));
-        }
-
-        if (SceneCubeShaderGroup.vertexShader != nullptr || SceneCubeShaderGroup.pixelShader != nullptr || SceneCubeShaderGroup.fetchShaderProgram != nullptr) {
-            WHBGfxFreeShaderGroup(&SceneCubeShaderGroup);
-            std::memset(&SceneCubeShaderGroup, 0, sizeof(SceneCubeShaderGroup));
-        }
-
-        SceneCubeIndexCount = 0U;
-        IsSceneCubeMeshConfigured = false;
-        AreSceneCubeResourcesInitialized = false;
-    }
-
-    /// Initializes one presenter-owned scene-cube vertex buffer from immutable float vertex data.
-    void WiiUGx2Presenter::InitializeSceneCubeVertexBuffer(GX2RBuffer* buffer, const float* sourceData, std::uint32_t floatCount) {
-        if (buffer == nullptr) {
-            throw std::runtime_error("Wii U GX2 presenter requires a valid scene cube position buffer.");
-        } else if (sourceData == nullptr) {
-            throw std::runtime_error("Wii U GX2 presenter requires valid scene cube position data.");
-        } else if (floatCount == 0U || (floatCount % 4U) != 0U) {
-            throw std::runtime_error("Wii U GX2 presenter requires scene cube position data stored as XYZW float quads.");
-        }
-
-        std::memset(buffer, 0, sizeof(GX2RBuffer));
-        buffer->flags = DiagnosticVertexBufferFlags;
-        buffer->elemSize = SceneCubeVertexElementSize;
-        buffer->elemCount = floatCount / 4U;
-        if (!GX2RCreateBuffer(buffer)) {
-            throw std::runtime_error("Wii U GX2 presenter could not allocate a scene cube position buffer.");
-        }
-
-        void* uploadBuffer = GX2RLockBufferEx(buffer, NoGx2rResourceFlags);
-        if (uploadBuffer == nullptr) {
-            throw std::runtime_error("Wii U GX2 presenter could not lock a scene cube position buffer.");
-        }
-
-        std::memcpy(uploadBuffer, sourceData, static_cast<std::size_t>(buffer->elemSize) * static_cast<std::size_t>(buffer->elemCount));
-        GX2RUnlockBufferEx(buffer, NoGx2rResourceFlags);
-        GX2RInvalidateBuffer(buffer, GX2R_RESOURCE_USAGE_CPU_WRITE);
-    }
-
-    /// Initializes one presenter-owned scene-cube index buffer from immutable 16-bit index data.
-    void WiiUGx2Presenter::InitializeSceneCubeIndexBuffer(GX2RBuffer* buffer, const std::uint16_t* sourceData, std::uint32_t indexCount) {
-        if (buffer == nullptr) {
-            throw std::runtime_error("Wii U GX2 presenter requires a valid scene cube index buffer.");
-        } else if (sourceData == nullptr) {
-            throw std::runtime_error("Wii U GX2 presenter requires valid scene cube index data.");
-        } else if (indexCount == 0U) {
-            throw std::runtime_error("Wii U GX2 presenter requires at least one scene cube index.");
-        }
-
-        std::memset(buffer, 0, sizeof(GX2RBuffer));
-        buffer->flags = DiagnosticIndexBufferFlags;
-        buffer->elemSize = SceneCubeIndexElementSize;
-        buffer->elemCount = indexCount;
-        if (!GX2RCreateBuffer(buffer)) {
-            throw std::runtime_error("Wii U GX2 presenter could not allocate a scene cube index buffer.");
-        }
-
-        void* uploadBuffer = GX2RLockBufferEx(buffer, NoGx2rResourceFlags);
-        if (uploadBuffer == nullptr) {
-            throw std::runtime_error("Wii U GX2 presenter could not lock a scene cube index buffer.");
-        }
-
-        std::memcpy(uploadBuffer, sourceData, static_cast<std::size_t>(SceneCubeIndexElementSize) * static_cast<std::size_t>(indexCount));
-        GX2RUnlockBufferEx(buffer, NoGx2rResourceFlags);
-        GX2RInvalidateBuffer(buffer, GX2R_RESOURCE_USAGE_CPU_WRITE);
-    }
-
-    /// Initializes the presenter-owned uniform buffer that stores the fixed transform used by the scene-cube path.
-    void WiiUGx2Presenter::InitializeSceneCubeTransformBuffer() {
-        if (SceneCubeShaderGroup.vertexShader == nullptr) {
-            throw std::runtime_error("Wii U GX2 presenter requires a valid scene cube vertex shader before allocating the transform buffer.");
-        } else if (SceneCubeShaderGroup.vertexShader->uniformBlockCount == 0U || SceneCubeShaderGroup.vertexShader->uniformBlocks == nullptr) {
-            return;
-        }
-
-        GX2UniformBlock* transformUniformBlock = GX2GetVertexUniformBlock(SceneCubeShaderGroup.vertexShader, "TransformBlock");
-        if (transformUniformBlock == nullptr) {
-            throw std::runtime_error("Wii U GX2 presenter requires the scene cube TransformBlock uniform block.");
-        } else if (transformUniformBlock->size != SceneCubeTransformSizeInBytes) {
-            throw std::runtime_error("Wii U GX2 presenter requires the scene cube transform buffer to match one 4x4 matrix.");
-        }
-
-        std::memset(&SceneCubeTransformBuffer, 0, sizeof(SceneCubeTransformBuffer));
-        SceneCubeTransformBuffer.flags = DiagnosticUniformBufferFlags;
-        SceneCubeTransformBuffer.elemSize = transformUniformBlock->size;
-        SceneCubeTransformBuffer.elemCount = 1U;
-        if (!GX2RCreateBuffer(&SceneCubeTransformBuffer)) {
-            throw std::runtime_error("Wii U GX2 presenter could not allocate a scene cube transform buffer.");
-        }
-
-        void* uploadBuffer = GX2RLockBufferEx(&SceneCubeTransformBuffer, NoGx2rResourceFlags);
-        if (uploadBuffer == nullptr) {
-            throw std::runtime_error("Wii U GX2 presenter could not lock the scene cube transform buffer.");
-        }
-
-        std::memcpy(uploadBuffer, SceneCubeTransformData, transformUniformBlock->size);
-        GX2RUnlockBufferEx(&SceneCubeTransformBuffer, NoGx2rResourceFlags);
-        GX2RInvalidateBuffer(&SceneCubeTransformBuffer, GX2R_RESOURCE_USAGE_CPU_WRITE);
-    }
-
     /// Initializes the presenter-owned shader, buffers, and fallback texture used by the pure GX2 UI path.
     void WiiUGx2Presenter::InitializeUiQuadResources() {
         if (AreUiQuadResourcesInitialized) {
@@ -1351,12 +1079,10 @@ namespace helengine::wiiu {
         TvColorBuffer.surface.mipLevels = 1U;
         TvColorBuffer.surface.format = PresentationSurfaceFormat;
         TvColorBuffer.surface.aa = GX2_AA_MODE1X;
-        TvColorBuffer.surface.tileMode = GX2_TILE_MODE_LINEAR_ALIGNED;
+        TvColorBuffer.surface.tileMode = GX2_TILE_MODE_DEFAULT;
         TvColorBuffer.viewNumSlices = 1U;
         GX2CalcSurfaceSizeAndAlignment(&TvColorBuffer.surface);
-        if (!GX2RCreateSurface(
-            &TvColorBuffer.surface,
-            GX2R_RESOURCE_BIND_COLOR_BUFFER | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ)) {
+        if (!GX2RCreateSurface(&TvColorBuffer.surface, ColorBufferSurfaceFlags)) {
             throw std::runtime_error("Wii U GX2 presenter could not allocate the TV color buffer.");
         }
 
@@ -1374,12 +1100,10 @@ namespace helengine::wiiu {
         DrcColorBuffer.surface.mipLevels = 1U;
         DrcColorBuffer.surface.format = PresentationSurfaceFormat;
         DrcColorBuffer.surface.aa = GX2_AA_MODE1X;
-        DrcColorBuffer.surface.tileMode = GX2_TILE_MODE_LINEAR_ALIGNED;
+        DrcColorBuffer.surface.tileMode = GX2_TILE_MODE_DEFAULT;
         DrcColorBuffer.viewNumSlices = 1U;
         GX2CalcSurfaceSizeAndAlignment(&DrcColorBuffer.surface);
-        if (!GX2RCreateSurface(
-            &DrcColorBuffer.surface,
-            GX2R_RESOURCE_BIND_COLOR_BUFFER | GX2R_RESOURCE_USAGE_CPU_WRITE | GX2R_RESOURCE_USAGE_GPU_READ)) {
+        if (!GX2RCreateSurface(&DrcColorBuffer.surface, ColorBufferSurfaceFlags)) {
             throw std::runtime_error("Wii U GX2 presenter could not allocate the DRC color buffer.");
         }
 
@@ -1395,16 +1119,14 @@ namespace helengine::wiiu {
         TvDepthBuffer.surface.height = TvSurfaceHeight;
         TvDepthBuffer.surface.depth = 1U;
         TvDepthBuffer.surface.mipLevels = 1U;
-        TvDepthBuffer.surface.format = GX2_SURFACE_FORMAT_FLOAT_D24_S8;
+        TvDepthBuffer.surface.format = DepthSurfaceFormat;
         TvDepthBuffer.surface.aa = GX2_AA_MODE1X;
-        TvDepthBuffer.surface.tileMode = GX2_TILE_MODE_LINEAR_ALIGNED;
+        TvDepthBuffer.surface.tileMode = GX2_TILE_MODE_DEFAULT;
         TvDepthBuffer.viewNumSlices = 1U;
         TvDepthBuffer.depthClear = 1.0f;
         TvDepthBuffer.stencilClear = 0U;
         GX2CalcSurfaceSizeAndAlignment(&TvDepthBuffer.surface);
-        if (!GX2RCreateSurface(
-            &TvDepthBuffer.surface,
-            GX2R_RESOURCE_BIND_DEPTH_BUFFER | GX2R_RESOURCE_USAGE_GPU_READ | GX2R_RESOURCE_USAGE_GPU_WRITE)) {
+        if (!GX2RCreateSurface(&TvDepthBuffer.surface, DepthBufferSurfaceFlags)) {
             throw std::runtime_error("Wii U GX2 presenter could not allocate the TV depth buffer.");
         }
 
@@ -1420,16 +1142,14 @@ namespace helengine::wiiu {
         DrcDepthBuffer.surface.height = DrcSurfaceHeight;
         DrcDepthBuffer.surface.depth = 1U;
         DrcDepthBuffer.surface.mipLevels = 1U;
-        DrcDepthBuffer.surface.format = GX2_SURFACE_FORMAT_FLOAT_D24_S8;
+        DrcDepthBuffer.surface.format = DepthSurfaceFormat;
         DrcDepthBuffer.surface.aa = GX2_AA_MODE1X;
-        DrcDepthBuffer.surface.tileMode = GX2_TILE_MODE_LINEAR_ALIGNED;
+        DrcDepthBuffer.surface.tileMode = GX2_TILE_MODE_DEFAULT;
         DrcDepthBuffer.viewNumSlices = 1U;
         DrcDepthBuffer.depthClear = 1.0f;
         DrcDepthBuffer.stencilClear = 0U;
         GX2CalcSurfaceSizeAndAlignment(&DrcDepthBuffer.surface);
-        if (!GX2RCreateSurface(
-            &DrcDepthBuffer.surface,
-            GX2R_RESOURCE_BIND_DEPTH_BUFFER | GX2R_RESOURCE_USAGE_GPU_READ | GX2R_RESOURCE_USAGE_GPU_WRITE)) {
+        if (!GX2RCreateSurface(&DrcDepthBuffer.surface, DepthBufferSurfaceFlags)) {
             throw std::runtime_error("Wii U GX2 presenter could not allocate the DRC depth buffer.");
         }
 
@@ -1930,73 +1650,6 @@ namespace helengine::wiiu {
         SceneOpaqueVertexCount = static_cast<std::uint32_t>(expandedPositionData.size() / 4U);
     }
 
-    /// Uploads one runtime model into the presenter-owned flat-color mesh path using one CPU-expanded clip-space transform.
-    void WiiUGx2Presenter::UploadSceneCubeMesh(const WiiURuntimeModel& runtimeModel, const float4x4& worldViewProjectionMatrix) {
-        const std::vector<float>& sourcePositionData = runtimeModel.GetPositionData();
-        const std::vector<std::uint16_t>& indexData = runtimeModel.GetIndexData();
-        if (!AreSceneCubeResourcesInitialized) {
-            throw std::runtime_error("Wii U GX2 presenter must initialize scene cube resources before uploading geometry.");
-        } else if (sourcePositionData.empty()) {
-            throw std::runtime_error("Wii U GX2 presenter requires non-empty scene cube position data.");
-        } else if (indexData.empty()) {
-            throw std::runtime_error("Wii U GX2 presenter requires non-empty scene cube index data.");
-        }
-
-        std::vector<float> expandedPositionData;
-        expandedPositionData.reserve(static_cast<std::size_t>(indexData.size()) * 4U);
-        for (std::uint16_t sourceIndex : indexData) {
-            const std::size_t sourceOffset = static_cast<std::size_t>(sourceIndex) * 4U;
-            if (sourceOffset + 3U >= sourcePositionData.size()) {
-                throw std::runtime_error("Wii U GX2 presenter received one scene cube index outside the uploaded position range.");
-            }
-
-            const float sourceX = sourcePositionData[sourceOffset + 0U];
-            const float sourceY = sourcePositionData[sourceOffset + 1U];
-            const float sourceZ = sourcePositionData[sourceOffset + 2U];
-            const float sourceW = sourcePositionData[sourceOffset + 3U];
-            const float sceneCubeClipX =
-                (sourceX * worldViewProjectionMatrix.M11) +
-                (sourceY * worldViewProjectionMatrix.M21) +
-                (sourceZ * worldViewProjectionMatrix.M31) +
-                (sourceW * worldViewProjectionMatrix.M41);
-            const float sceneCubeClipY =
-                (sourceX * worldViewProjectionMatrix.M12) +
-                (sourceY * worldViewProjectionMatrix.M22) +
-                (sourceZ * worldViewProjectionMatrix.M32) +
-                (sourceW * worldViewProjectionMatrix.M42);
-            const float sceneCubeClipZ =
-                (sourceX * worldViewProjectionMatrix.M13) +
-                (sourceY * worldViewProjectionMatrix.M23) +
-                (sourceZ * worldViewProjectionMatrix.M33) +
-                (sourceW * worldViewProjectionMatrix.M43);
-            const float sceneCubeClipW =
-                (sourceX * worldViewProjectionMatrix.M14) +
-                (sourceY * worldViewProjectionMatrix.M24) +
-                (sourceZ * worldViewProjectionMatrix.M34) +
-                (sourceW * worldViewProjectionMatrix.M44);
-
-            expandedPositionData.push_back(sceneCubeClipX);
-            expandedPositionData.push_back(sceneCubeClipY);
-            expandedPositionData.push_back(sceneCubeClipZ);
-            expandedPositionData.push_back(sceneCubeClipW);
-        }
-
-        if (SceneCubePositionBuffer.buffer != nullptr) {
-            GX2RDestroyBufferEx(&SceneCubePositionBuffer, NoGx2rResourceFlags);
-            std::memset(&SceneCubePositionBuffer, 0, sizeof(SceneCubePositionBuffer));
-        }
-
-        if (SceneCubeIndexBuffer.buffer != nullptr) {
-            GX2RDestroyBufferEx(&SceneCubeIndexBuffer, NoGx2rResourceFlags);
-            std::memset(&SceneCubeIndexBuffer, 0, sizeof(SceneCubeIndexBuffer));
-        }
-
-        InitializeSceneCubeVertexBuffer(&SceneCubePositionBuffer, expandedPositionData.data(), static_cast<std::uint32_t>(expandedPositionData.size()));
-        InitializeSceneCubeIndexBuffer(&SceneCubeIndexBuffer, indexData.data(), static_cast<std::uint32_t>(indexData.size()));
-        SceneCubeIndexCount = static_cast<std::uint32_t>(expandedPositionData.size() / 4U);
-        IsSceneCubeMeshConfigured = true;
-    }
-
     /// Renders one captured quad command into one target color buffer using the already-uploaded vertex data for the supplied quad index.
     void WiiUGx2Presenter::RenderQuadCommandToColorBuffer(const WiiUGx2QuadCommand& command, std::uint32_t quadIndex, std::uint32_t logicalWidth, std::uint32_t logicalHeight, std::uint32_t targetWidth, std::uint32_t targetHeight) {
         if (logicalWidth == 0U || logicalHeight == 0U || targetWidth == 0U || targetHeight == 0U) {
@@ -2086,39 +1739,6 @@ namespace helengine::wiiu {
         GX2RSetAttributeBuffer(&DiagnosticTrianglePositionBuffer, 0, DiagnosticTrianglePositionBuffer.elemSize, 0);
         GX2RSetAttributeBuffer(&DiagnosticTriangleColorBuffer, 1, DiagnosticTriangleColorBuffer.elemSize, 0);
         GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, DiagnosticTriangleVertexCount, 0, 1);
-    }
-
-    /// Renders the configured scene-cube mesh into one target color buffer with the supplied GX2 context state.
-    void WiiUGx2Presenter::RenderSceneCubeToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer) {
-        if (contextState == nullptr) {
-            throw std::runtime_error("Wii U GX2 presenter requires a valid scene cube context state.");
-        } else if (colorBuffer == nullptr) {
-            throw std::runtime_error("Wii U GX2 presenter requires a valid scene cube color buffer.");
-        } else if (!AreSceneCubeResourcesInitialized) {
-            throw std::runtime_error("Wii U GX2 presenter must initialize scene cube resources before drawing.");
-        } else if (!IsSceneCubeMeshConfigured) {
-            throw std::runtime_error("Wii U GX2 presenter must upload scene cube geometry before drawing.");
-        }
-
-        GX2SetContextState(contextState);
-        GX2SetColorBuffer(colorBuffer, GX2_RENDER_TARGET_0);
-        GX2SetViewport(0.0f, 0.0f, static_cast<float>(colorBuffer->surface.width), static_cast<float>(colorBuffer->surface.height), 0.0f, 1.0f);
-        GX2SetScissor(0, 0, colorBuffer->surface.width, colorBuffer->surface.height);
-        GX2ClearColor(colorBuffer, DiagnosticClearRed, DiagnosticClearGreen, DiagnosticClearBlue, DiagnosticClearAlpha);
-        GX2SetFetchShader(&SceneCubeShaderGroup.fetchShader);
-        GX2SetVertexShader(SceneCubeShaderGroup.vertexShader);
-        GX2SetPixelShader(SceneCubeShaderGroup.pixelShader);
-        if (SceneCubeShaderGroup.vertexShader->uniformBlockCount != 0U && SceneCubeTransformBuffer.buffer != nullptr) {
-            GX2SetShaderMode(GX2_SHADER_MODE_UNIFORM_BLOCK);
-            GX2UniformBlock* transformUniformBlock = GX2GetVertexUniformBlock(SceneCubeShaderGroup.vertexShader, "TransformBlock");
-            if (transformUniformBlock == nullptr) {
-                throw std::runtime_error("Wii U GX2 presenter requires the scene cube TransformBlock uniform block before drawing.");
-            }
-
-            GX2RSetVertexUniformBlock(&SceneCubeTransformBuffer, transformUniformBlock->offset, 0);
-        }
-        GX2RSetAttributeBuffer(&SceneCubePositionBuffer, 0, SceneCubePositionBuffer.elemSize, 0);
-        GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, SceneCubeIndexCount, 0, 1);
     }
 
     /// Presents the current TV and DRC color buffers to their scan buffers.

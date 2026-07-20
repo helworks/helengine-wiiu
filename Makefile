@@ -11,12 +11,12 @@ include $(DEVKITPRO)/wut/share/wut_rules
 
 TARGET := helengine_wiiu
 BUILD := build
-SOURCES := src src/platform/wiiu
+SOURCES := src src/platform/wiiu src/platform/wiiu/audio
 # WiiUApplication.cpp, WiiUInputBackend.cpp, WiiUSceneBootstrap.cpp, and future runtime seam sources remain under src/platform/wiiu and are discovered through wildcard source enumeration.
 DATA := data
 SHADER_SOURCES := tools/wiiu-shaders
 SHADER_COMPILER := tools/cafeglsl/glslcompiler.elf
-REQUIRED_SHADER_BINFILES := diagnostic_square_shader.bin diagnostic_triangle_shader.bin scene_cube_flat_color_shader.bin scene_opaque_lit_shader.bin ui_quad_shader.bin
+REQUIRED_SHADER_BINFILES := diagnostic_square_shader.bin diagnostic_triangle_shader.bin scene_opaque_lit_shader.bin ui_quad_shader.bin
 INCLUDES := src
 CONTENT :=
 APP_CONTENT := $(CONTENT)

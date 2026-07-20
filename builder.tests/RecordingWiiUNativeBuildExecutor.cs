@@ -26,7 +26,7 @@ public sealed class RecordingWiiUNativeBuildExecutor : IWiiUNativeBuildExecutor 
     /// <param name="diagnosticReporter">Diagnostic reporter passed through the builder contract.</param>
     /// <param name="cancellationToken">Cancellation token passed through the builder contract.</param>
     /// <returns>Absolute paths to the fake RPX and WUHB artifacts.</returns>
-    public Task<WiiUNativeBuildResult> BuildAsync(
+    public WiiUNativeBuildResult Build(
         PlatformBuildRequest request,
         IPlatformBuildDiagnosticReporter diagnosticReporter,
         CancellationToken cancellationToken) {
@@ -37,6 +37,6 @@ public sealed class RecordingWiiUNativeBuildExecutor : IWiiUNativeBuildExecutor 
         File.WriteAllText(bundlePath, "fake-wuhb");
         LastProducedArtifactPath = artifactPath;
         LastProducedBundlePath = bundlePath;
-        return Task.FromResult(new WiiUNativeBuildResult(artifactPath, bundlePath));
+        return new WiiUNativeBuildResult(artifactPath, bundlePath);
     }
 }

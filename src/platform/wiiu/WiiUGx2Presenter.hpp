@@ -18,7 +18,7 @@
 namespace helengine::wiiu {
     class WiiURuntimeModel;
 
-    /// Owns the minimal GX2 presentation seam that renders captured Wii U 2D frames into GX2-owned display buffers.
+    /// Owns the minimal GX2 presentation seam that renders captured Wii U 3D and 2D frames into GX2-owned display buffers.
     class WiiUGx2Presenter {
     public:
         /// Creates one uninitialized GX2 presenter.
@@ -44,12 +44,6 @@ namespace helengine::wiiu {
 
         /// Renders one presenter-owned pure GX2 clear-plus-triangle frame for first 3D shader verification.
         void RenderDiagnosticTriangleFrame();
-
-        /// Uploads one runtime model into the temporary scene-cube GX2 mesh path.
-        void ConfigureSceneCubeMesh(const WiiURuntimeModel& runtimeModel);
-
-        /// Renders the configured scene-cube mesh to both displays.
-        void RenderSceneCubeFrame();
 
     private:
         /// Releases all allocated GX2 resources and returns the presenter to the uninitialized state.
@@ -109,21 +103,6 @@ namespace helengine::wiiu {
         /// Initializes the presenter-owned light uniform buffer used by the generic opaque Wii U scene path.
         void InitializeSceneOpaqueLightBuffer();
 
-        /// Initializes the presenter-owned shader resources used by the temporary scene-cube GX2 mesh path.
-        void InitializeSceneCubeResources();
-
-        /// Releases the presenter-owned shader resources used by the temporary scene-cube GX2 mesh path.
-        void DestroySceneCubeResources();
-
-        /// Initializes one presenter-owned scene-cube vertex buffer from immutable float vertex data.
-        void InitializeSceneCubeVertexBuffer(GX2RBuffer* buffer, const float* sourceData, std::uint32_t floatCount);
-
-        /// Initializes one presenter-owned scene-cube index buffer from immutable 16-bit index data.
-        void InitializeSceneCubeIndexBuffer(GX2RBuffer* buffer, const std::uint16_t* sourceData, std::uint32_t indexCount);
-
-        /// Initializes the presenter-owned uniform buffer that stores the fixed transform used by the scene-cube path.
-        void InitializeSceneCubeTransformBuffer();
-
         /// Initializes the presenter-owned shader, buffers, and fallback texture used by the pure GX2 UI path.
         void InitializeUiQuadResources();
 
@@ -157,9 +136,6 @@ namespace helengine::wiiu {
         /// Renders one captured quad command into one target color buffer using the already-uploaded vertex data for the supplied quad index.
         void RenderQuadCommandToColorBuffer(const WiiUGx2QuadCommand& command, std::uint32_t quadIndex, std::uint32_t logicalWidth, std::uint32_t logicalHeight, std::uint32_t targetWidth, std::uint32_t targetHeight);
 
-        /// Uploads one runtime model into the presenter-owned flat-color mesh path using one CPU-expanded clip-space transform.
-        void UploadSceneCubeMesh(const WiiURuntimeModel& runtimeModel, const float4x4& worldViewProjectionMatrix);
-
         /// Uploads one runtime model into the presenter-owned generic opaque scene buffers using model-space positions, normals, and UVs.
         void UploadSceneOpaqueMesh(const WiiURuntimeModel& runtimeModel);
 
@@ -171,9 +147,6 @@ namespace helengine::wiiu {
 
         /// Renders the presenter-owned diagnostic triangle into one target color buffer with the supplied GX2 context state.
         void RenderDiagnosticTriangleToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer);
-
-        /// Renders the configured scene-cube mesh into one target color buffer with the supplied GX2 context state.
-        void RenderSceneCubeToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer);
 
         /// Presents the current TV and DRC color buffers to their scan buffers.
         void PresentScanBuffers();
@@ -267,27 +240,6 @@ namespace helengine::wiiu {
 
         /// Stores the number of expanded vertices currently uploaded for the generic opaque-scene path.
         std::uint32_t SceneOpaqueVertexCount;
-
-        /// Tracks whether the temporary scene-cube shader group and uniform resources were initialized successfully.
-        bool AreSceneCubeResourcesInitialized;
-
-        /// Tracks whether scene-cube mesh geometry has been uploaded successfully.
-        bool IsSceneCubeMeshConfigured;
-
-        /// Stores the presenter-owned shader group loaded from the embedded scene-cube shader blob.
-        WHBGfxShaderGroup SceneCubeShaderGroup;
-
-        /// Stores the presenter-owned position buffer used for scene-cube vertices.
-        GX2RBuffer SceneCubePositionBuffer;
-
-        /// Stores the presenter-owned index buffer used for scene-cube triangles.
-        GX2RBuffer SceneCubeIndexBuffer;
-
-        /// Stores the presenter-owned uniform buffer used to transform the scene cube before clip-space output.
-        GX2RBuffer SceneCubeTransformBuffer;
-
-        /// Stores the number of indices currently uploaded for the scene cube.
-        std::uint32_t SceneCubeIndexCount;
 
         /// Tracks whether the pure GX2 UI shader, buffers, and fallback texture were initialized successfully.
         bool AreUiQuadResourcesInitialized;

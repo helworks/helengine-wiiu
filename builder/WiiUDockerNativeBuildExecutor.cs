@@ -16,7 +16,7 @@ public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
     /// <param name="diagnosticReporter">Diagnostic reporter for streamed build failures.</param>
     /// <param name="cancellationToken">Cancellation token that can stop the build cooperatively.</param>
     /// <returns>Absolute paths to the produced RPX and WUHB artifacts.</returns>
-    public async Task<WiiUNativeBuildResult> BuildAsync(
+    public WiiUNativeBuildResult Build(
         PlatformBuildRequest request,
         IPlatformBuildDiagnosticReporter diagnosticReporter,
         CancellationToken cancellationToken) {
@@ -32,22 +32,14 @@ public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
         EnsureCleanNativeBuildOutput(repositoryRootPath);
         ProcessStartInfo startInfo = CreateStartInfo(repositoryRootPath, generatedCoreRootPath, packageSourceRootPath);
 
-        using Process process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start the Wii U Docker build process.");
-        Task<string> standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        Task<string> standardErrorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        while (!process.HasExited) {
-            cancellationToken.ThrowIfCancellationRequested();
-            process.WaitForExit(100);
-        }
-
-        await Task.WhenAll(standardOutputTask, standardErrorTask);
-        if (process.ExitCode != 0) {
+        NativeProcessRunResult result = new NativeProcessRunner().Run(startInfo, cancellationToken);
+        if (result.ExitCode != 0) {
             throw new InvalidOperationException(
                 "Wii U native RPX build failed."
                 + Environment.NewLine
-                + standardOutputTask.Result
+                + result.StandardOutput
                 + Environment.NewLine
-                + standardErrorTask.Result);
+                + result.StandardError);
         }
 
         string builtRpxPath = WiiUBuilderPaths.ResolveBuiltRpxPath(request);

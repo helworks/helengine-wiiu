@@ -70,6 +70,8 @@ namespace helengine::wiiu {
             ApplyButtonState(status, VPAD_BUTTON_PLUS, gamepadState, InputGamepadButton::Start);
             ApplyButtonState(status, VPAD_BUTTON_MINUS, gamepadState, InputGamepadButton::Select);
             ApplyButtonState(status, VPAD_BUTTON_HOME, gamepadState, InputGamepadButton::Home);
+            gamepadState.set_LeftStickX(static_cast<int16_t>(status.leftStick.x * 32767.0f));
+            gamepadState.set_LeftStickY(static_cast<int16_t>(-status.leftStick.y * 32767.0f));
         }
 
         ActiveSnapshotIndex = (ActiveSnapshotIndex + 1U) % SnapshotBufferCount;

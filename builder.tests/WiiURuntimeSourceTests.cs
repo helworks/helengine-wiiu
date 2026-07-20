@@ -44,10 +44,34 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures the packaged bootstrap fallback points at the authored textured_cube_grid scene and the README documents the final verification flow.
+    /// Ensures the Wii U host attaches a generated-core runtime diagnostics provider so managed update-stage callbacks are written into the persistent runtime trace during crash repros.
     /// </summary>
     [Fact]
-    public void PackagedBootstrap_UsesTexturedCubeGridAsTheAuthoredStartupScene() {
+    public void RuntimeSeam_AttachesRuntimeDiagnosticsProviderToCoreInitialization() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string providerHeaderPath = Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURuntimeDiagnosticsProvider.hpp");
+        string providerSourcePath = Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURuntimeDiagnosticsProvider.cpp");
+        string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.True(File.Exists(providerHeaderPath), "Expected WiiURuntimeDiagnosticsProvider.hpp to exist.");
+        Assert.True(File.Exists(providerSourcePath), "Expected WiiURuntimeDiagnosticsProvider.cpp to exist.");
+
+        string providerHeaderSource = File.ReadAllText(providerHeaderPath);
+        string providerSource = File.ReadAllText(providerSourcePath);
+        Assert.Contains("class WiiURuntimeDiagnosticsProvider final : public IRuntimeDiagnosticsProvider, public IRuntimeUpdateStageDiagnosticsProvider", providerHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("WiiURuntimeDiagnosticsProvider* EngineRuntimeDiagnosticsProvider;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"platform/wiiu/WiiURuntimeDiagnosticsProvider.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("EngineRuntimeDiagnosticsProvider = new WiiURuntimeDiagnosticsProvider();", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("initializationOptions->RuntimeDiagnosticsProvider = EngineRuntimeDiagnosticsProvider;", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("Managed update stage:", providerSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the packaged bootstrap fallback keeps the authored textured_cube_grid seam and the README documents the verification flow.
+    /// </summary>
+    [Fact]
+    public void PackagedBootstrap_KeepsTexturedCubeGridFallbackMetadataVisible() {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string bootstrapSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUSceneBootstrap.cpp"));
         string readmeSource = File.ReadAllText(Path.Combine(repositoryRootPath, "README.md"));
@@ -424,6 +448,8 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("Array<InputGamepadState>* gamepadStates = GamepadStateSnapshots[ActiveSnapshotIndex];", inputSource, StringComparison.Ordinal);
         Assert.Contains("frameState.set_Gamepads(gamepadStates);", inputSource, StringComparison.Ordinal);
         Assert.Contains("(*gamepadStates)[0] = gamepadState;", inputSource, StringComparison.Ordinal);
+        Assert.Contains("gamepadState.set_LeftStickX(static_cast<int16_t>(status.leftStick.x * 32767.0f));", inputSource, StringComparison.Ordinal);
+        Assert.Contains("gamepadState.set_LeftStickY(static_cast<int16_t>(-status.leftStick.y * 32767.0f));", inputSource, StringComparison.Ordinal);
         Assert.DoesNotContain("FrameState.set_Gamepads(GamepadStates);", inputSource, StringComparison.Ordinal);
         Assert.DoesNotContain("(*GamepadStates)[0] = gamepadState;", inputSource, StringComparison.Ordinal);
     }
@@ -502,6 +528,7 @@ public sealed class WiiURuntimeSourceTests {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
         string presenterHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp"));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
         string renderManagerHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.hpp"));
         string renderFrameHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx23DRenderFrame.hpp"));
 
@@ -510,8 +537,11 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("void Draw() override;", renderManagerHeaderSource, StringComparison.Ordinal);
         Assert.Contains("class WiiUGx23DRenderFrame {", renderFrameHeaderSource, StringComparison.Ordinal);
         Assert.Contains("Gx2Presenter->RenderFrame(EngineRenderManager3D->GetCurrentFrame(), EngineRenderManager2D->GetCurrentFrame());", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("void ConfigureSceneCubeMesh(const WiiURuntimeModel& runtimeModel);", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("void RenderSceneCubeFrame();", presenterHeaderSource, StringComparison.Ordinal);
         Assert.DoesNotContain("Gx2Presenter->RenderSceneCubeFrame();", applicationSource, StringComparison.Ordinal);
         Assert.DoesNotContain("Gx2Presenter->ConfigureSceneCubeMesh(", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("scene_cube_flat_color_shader_bin.h", presenterSource, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -537,15 +567,15 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures the generated-core Wii U startup scene stays pinned to textured_cube_grid while the first visible textured-cube scene becomes the packaged boot target.
+    /// Ensures the generated-core Wii U startup scene comes from the generated runtime manifest instead of one hardcoded bootstrap scene id.
     /// </summary>
     [Fact]
-    public void PackagedBootstrap_UsesTexturedCubeGridAsGeneratedCoreStartupSceneForCubeBringUp() {
+    public void PackagedBootstrap_UsesGeneratedRuntimeManifestStartupSceneId() {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string bootstrapSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUSceneBootstrap.cpp"));
 
-        Assert.Contains("return \"textured_cube_grid\";", bootstrapSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("return he_get_runtime_wiiu_startup_scene_id();", bootstrapSource, StringComparison.Ordinal);
+        Assert.Contains("return he_get_runtime_wiiu_startup_scene_id();", bootstrapSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("return \"textured_cube_grid\";", bootstrapSource, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -586,6 +616,7 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("tools/wiiu-shaders", makefileSource, StringComparison.Ordinal);
         Assert.Contains("scene_opaque_lit_shader.bin", makefileSource, StringComparison.Ordinal);
         Assert.Contains("diagnostic_square_shader.bin", makefileSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("scene_cube_flat_color_shader.bin", makefileSource, StringComparison.Ordinal);
         Assert.True(File.Exists(diagnosticSquareVertexShaderPath), "Expected diagnostic_square.vs to exist.");
         Assert.True(File.Exists(diagnosticSquarePixelShaderPath), "Expected diagnostic_square.ps to exist.");
         Assert.True(File.Exists(sceneOpaqueLitVertexShaderPath), "Expected scene_opaque_lit.vs to exist.");
@@ -717,10 +748,10 @@ public sealed class WiiURuntimeSourceTests {
         string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
 
         int functionStart = presenterSource.IndexOf("void WiiUGx2Presenter::UploadSceneOpaqueMeshClipSpace(", StringComparison.Ordinal);
-        int nextFunctionStart = presenterSource.IndexOf("void WiiUGx2Presenter::UploadSceneCubeMesh(", StringComparison.Ordinal);
+        int nextFunctionStart = presenterSource.IndexOf("void WiiUGx2Presenter::RenderQuadCommandToColorBuffer(", StringComparison.Ordinal);
 
         Assert.True(functionStart >= 0, "Expected the clip-space opaque upload function to exist.");
-        Assert.True(nextFunctionStart > functionStart, "Expected the next scene cube upload function to appear after the clip-space opaque upload function.");
+        Assert.True(nextFunctionStart > functionStart, "Expected the next presenter helper to appear after the clip-space opaque upload function.");
 
         string clipSpaceUploadSource = presenterSource.Substring(functionStart, nextFunctionStart - functionStart);
         Assert.Contains("if (SceneOpaquePositionBuffer.buffer != nullptr) {", clipSpaceUploadSource, StringComparison.Ordinal);
