@@ -1,0 +1,1 @@
+STANDARD_SHADER_VARIANTS := ForwardStandard ForwardStandardShadowed ShadowDepth

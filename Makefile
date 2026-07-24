@@ -16,7 +16,8 @@ SOURCES := src src/platform/wiiu src/platform/wiiu/audio
 DATA := data
 SHADER_SOURCES := tools/wiiu-shaders
 SHADER_COMPILER := tools/cafeglsl/glslcompiler.elf
-REQUIRED_SHADER_BINFILES := diagnostic_square_shader.bin diagnostic_triangle_shader.bin scene_opaque_lit_shader.bin ui_quad_shader.bin
+include $(SHADER_SOURCES)/standard_shader_variants.mk
+REQUIRED_SHADER_BINFILES := diagnostic_square_shader.bin diagnostic_triangle_shader.bin scene_opaque_lit_shader.bin ui_quad_shader.bin $(addsuffix _shader.bin,$(STANDARD_SHADER_VARIANTS))
 INCLUDES := src
 CONTENT :=
 APP_CONTENT := $(CONTENT)
