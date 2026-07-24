@@ -5,11 +5,16 @@ This repository contains the Wii U platform host and builder integration for Hel
 ## Build
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File ..\helengine\artifacts\build-platform.ps1 `
+dotnet run --project ..\helengine\tools\build-waiter\helengine.buildwaiter.csproj -- `
+  --output ..\helprojs\city\wiiu-build `
+  --require helengine_wiiu.wuhb `
+  -- powershell -NoProfile -ExecutionPolicy Bypass -File ..\helengine\scripts\build-platform.ps1 `
   -Project ..\helprojs\city\project.heproj `
   -Platform wiiu `
   -Output ..\helprojs\city\wiiu-build
 ```
+
+The Build Waiter returns successfully only after `helengine_wiiu.wuhb` is fresh and non-empty.
 
 ## Run In Emulator
 
