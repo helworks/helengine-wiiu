@@ -5,6 +5,24 @@ namespace helengine.wiiu.builder.tests;
 /// </summary>
 public sealed class WiiURuntimeSourceTests {
     /// <summary>
+    /// Ensures the Wii U runtime exposes the frame-owned shadow state and explicit two-pass presenter boundary required by the shared StandardShader directional-shadow path.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_DeclaresDirectionalShadowFrameAndPresenterContracts() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string renderFrameHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx23DRenderFrame.hpp"));
+        string presenterHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp"));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        Assert.Contains("WiiUGx23DDirectionalShadowState", renderFrameHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("LightViewProjection", renderFrameHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("ShadowCasterCommands", renderFrameHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("RenderDirectionalShadowDepthPass", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("RenderShadowed3DDrawCommandToColorBuffer", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("ForwardStandardShadowedShaderGroup", presenterSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures the boot host delegates into a dedicated Wii U application boundary and the new source is visible in the build contract.
     /// </summary>
     [Fact]

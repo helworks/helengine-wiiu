@@ -10,7 +10,7 @@ namespace helengine.wiiu.builder;
 /// <summary>
 /// Implements the Wii U platform asset builder contract consumed by the shared editor build graph.
 /// </summary>
-public sealed class WiiUPlatformAssetBuilder : IPlatformAssetBuilder {
+public sealed class WiiUPlatformAssetBuilder : IPlatformAssetBuilder, IPlatformShaderArtifactBuilder {
     /// <summary>
     /// Native build executor used by the first Wii U editor-build slice.
     /// </summary>
@@ -20,6 +20,11 @@ public sealed class WiiUPlatformAssetBuilder : IPlatformAssetBuilder {
     /// Material cooker that translates authored Wii U material schemas into platform-owned cooked payloads.
     /// </summary>
     readonly WiiUMaterialCooker MaterialCooker;
+
+    /// <summary>
+    /// Compiles shared shader sources into Wii U GLSL artifacts.
+    /// </summary>
+    readonly WiiUShaderArtifactCooker ShaderArtifactCooker;
 
     /// <summary>
     /// Initializes one Wii U builder instance with the current platform metadata.
@@ -35,6 +40,7 @@ public sealed class WiiUPlatformAssetBuilder : IPlatformAssetBuilder {
     public WiiUPlatformAssetBuilder(IWiiUNativeBuildExecutor nativeBuildExecutor) {
         NativeBuildExecutor = nativeBuildExecutor ?? throw new ArgumentNullException(nameof(nativeBuildExecutor));
         MaterialCooker = new WiiUMaterialCooker();
+        ShaderArtifactCooker = new WiiUShaderArtifactCooker();
         Descriptor = new PlatformBuilderDescriptor(
             "helengine.wiiu.builder",
             "1.0.0",
@@ -67,6 +73,19 @@ public sealed class WiiUPlatformAssetBuilder : IPlatformAssetBuilder {
         }
 
         return MaterialCooker.Cook(request);
+    }
+
+    /// <summary>
+    /// Compiles the shader source supplied by the editor into Wii U GLSL artifacts.
+    /// </summary>
+    /// <param name="request">Cook-root, dependency, and authored-source data.</param>
+    /// <returns>Declarations for the generated GLSL artifacts.</returns>
+    public PlatformShaderArtifactCookResult CookShaderArtifacts(PlatformShaderArtifactCookRequest request) {
+        if (request == null) {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        return ShaderArtifactCooker.Cook(request);
     }
 
     /// <summary>

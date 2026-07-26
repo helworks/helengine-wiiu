@@ -418,6 +418,25 @@ namespace helengine::wiiu {
 
             CaptureDrawCommand(submission);
         }
+
+        if (!CurrentFrame.GetHasDirectionalLight()) {
+            return;
+        }
+
+        WiiUGx23DDirectionalShadowState directionalShadowState {};
+        directionalShadowState.LightViewProjection = CreateDirectionalShadowViewProjection(camera, CurrentFrame.GetDirectionalLight());
+        directionalShadowState.Strength = CurrentFrame.GetDirectionalLight().ShadowStrength;
+        List<RenderFrameShadowCasterSubmission*>* shadowCasterSubmissions = frame->get_ShadowCasterSubmissions();
+        if (shadowCasterSubmissions != nullptr) {
+            for (int32_t index = 0; index < shadowCasterSubmissions->get_Count(); index++) {
+                RenderFrameShadowCasterSubmission* submission = (*shadowCasterSubmissions).get_Item(index);
+                if (submission != nullptr && submission->get_Drawable() != nullptr) {
+                    CaptureShadowCasterCommand(submission, directionalShadowState);
+                }
+            }
+        }
+
+        CurrentFrame.SetDirectionalShadow(directionalShadowState);
     }
 
     /// Captures the current scene ambient and directional light state into the Wii U frame contract.
@@ -487,6 +506,32 @@ namespace helengine::wiiu {
         CurrentFrame.AddDrawCommand(drawCommand);
     }
 
+    /// Captures one shared shadow-caster submission into the current directional-shadow draw list.
+    void WiiURenderManager3D::CaptureShadowCasterCommand(RenderFrameShadowCasterSubmission* submission, WiiUGx23DDirectionalShadowState& directionalShadowState) {
+        if (submission == nullptr) {
+            throw new ArgumentNullException("submission");
+        } else if (submission->get_Drawable() == nullptr) {
+            throw new InvalidOperationException("Wii U directional-shadow capture requires every caster submission to own one drawable.");
+        }
+
+        IDrawable3D* drawable = submission->get_Drawable();
+        WiiURuntimeModel* runtimeModel = he_cpp_try_cast<WiiURuntimeModel>(drawable->get_Model());
+        WiiURuntimeMaterial* runtimeMaterial = he_cpp_try_cast<WiiURuntimeMaterial>(submission->get_Material());
+        if (runtimeModel == nullptr) {
+            throw new InvalidOperationException("Wii U directional-shadow capture requires every caster model to be one WiiURuntimeModel.");
+        } else if (runtimeMaterial == nullptr) {
+            throw new InvalidOperationException("Wii U directional-shadow capture requires every caster material to be one WiiURuntimeMaterial.");
+        } else if (drawable->get_Parent() == nullptr) {
+            throw new InvalidOperationException("Wii U directional-shadow capture requires every caster drawable to have one parent entity.");
+        }
+
+        WiiUGx23DDrawCommand drawCommand {};
+        drawCommand.RuntimeModel = runtimeModel;
+        drawCommand.RuntimeMaterial = runtimeMaterial;
+        drawCommand.WorldMatrix = drawable->get_Parent()->get_WorldTransformMatrix();
+        directionalShadowState.ShadowCasterCommands.push_back(drawCommand);
+    }
+
     /// Resolves the primary runtime camera for the current frame.
     bool WiiURenderManager3D::TryResolvePrimaryCamera(CameraComponent*& camera) const {
         camera = nullptr;
@@ -554,6 +599,11 @@ namespace helengine::wiiu {
         }
 
         WiiUGx23DCameraState cameraState {};
+        if (camera->get_Parent() == nullptr) {
+            throw new InvalidOperationException("Wii U camera-state capture requires the camera to be attached to one entity.");
+        }
+
+        cameraState.CameraPosition = camera->get_Parent()->get_Position();
         cameraState.ViewMatrix = CreateViewMatrix(camera);
         cameraState.Viewport = camera->get_Viewport();
         cameraState.NearPlaneDistance = camera->get_NearPlaneDistance();
@@ -586,7 +636,7 @@ namespace helengine::wiiu {
     }
 
     /// Builds one directional-light capture record from one scene directional light.
-    WiiUGx23DDirectionalLightState WiiURenderManager3D::CreateDirectionalLightState(::LightComponent* light) {
+    WiiUGx23DDirectionalLightState WiiURenderManager3D::CreateDirectionalLightState(::DirectionalLightComponent* light) {
         if (light == nullptr) {
             throw new ArgumentNullException("light");
         } else if (light->get_Parent() == nullptr) {
@@ -597,7 +647,35 @@ namespace helengine::wiiu {
         WiiUGx23DDirectionalLightState directionalLightState {};
         directionalLightState.Color = CreateLightColor(light);
         directionalLightState.Direction = float4(direction.X, direction.Y, direction.Z, 0.0f);
+        directionalLightState.ShadowDistance = light->get_ShadowDistance();
+        directionalLightState.ShadowStrength = light->get_ShadowStrength();
         return directionalLightState;
+    }
+
+    /// Builds the camera-fitted directional light view-projection matrix used for the shadow depth pass.
+    float4x4 WiiURenderManager3D::CreateDirectionalShadowViewProjection(CameraComponent* camera, const WiiUGx23DDirectionalLightState& directionalLightState) {
+        if (camera == nullptr) {
+            throw new ArgumentNullException("camera");
+        } else if (camera->get_Parent() == nullptr) {
+            throw new InvalidOperationException("Wii U directional-shadow projection requires the camera to be attached to one entity.");
+        }
+
+        const float shadowDistance = directionalLightState.ShadowDistance < 1.0f ? 1.0f : directionalLightState.ShadowDistance;
+        float3 cameraPosition = camera->get_Parent()->get_Position();
+        float3 cameraForward = float4::RotateVector(float3(0.0f, 0.0f, -1.0f), camera->get_Parent()->get_Orientation());
+        float3 lightDirection(-directionalLightState.Direction.X, -directionalLightState.Direction.Y, -directionalLightState.Direction.Z);
+        float3 target = cameraPosition + (cameraForward * (shadowDistance * 0.5f));
+        float3 lightPosition = target + (lightDirection * shadowDistance);
+        const float dotUp = (lightDirection.X * 0.0f) + (lightDirection.Y * 1.0f) + (lightDirection.Z * 0.0f);
+        float3 up = std::fabs(dotUp) > 0.99f ? float3(0.0f, 0.0f, 1.0f) : float3::get_UnitY();
+        float4x4 viewMatrix;
+        float4x4::CreateLookAt__ref0_ref1_ref2_out3(lightPosition, target, up, viewMatrix);
+        const float halfDistance = shadowDistance * 0.5f;
+        float4x4 projectionMatrix;
+        float4x4::CreateOrthographicOffCenter__out6(-halfDistance, halfDistance, -halfDistance, halfDistance, 0.1f, shadowDistance * 2.0f, projectionMatrix);
+        float4x4 lightViewProjection;
+        float4x4::Multiply__ref0_ref1_out2(viewMatrix, projectionMatrix, lightViewProjection);
+        return lightViewProjection;
     }
 
     /// Creates one concrete Wii U runtime material from the supplied material fields.

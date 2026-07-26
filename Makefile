@@ -15,8 +15,9 @@ SOURCES := src src/platform/wiiu src/platform/wiiu/audio
 # WiiUApplication.cpp, WiiUInputBackend.cpp, WiiUSceneBootstrap.cpp, and future runtime seam sources remain under src/platform/wiiu and are discovered through wildcard source enumeration.
 DATA := data
 SHADER_SOURCES := tools/wiiu-shaders
+WIIU_STANDARD_SHADER_SOURCES ?= $(SHADER_SOURCES)
 SHADER_COMPILER := tools/cafeglsl/glslcompiler.elf
-include $(SHADER_SOURCES)/standard_shader_variants.mk
+include $(TOPDIR)/$(SHADER_SOURCES)/standard_shader_variants.mk
 REQUIRED_SHADER_BINFILES := diagnostic_square_shader.bin diagnostic_triangle_shader.bin scene_opaque_lit_shader.bin ui_quad_shader.bin $(addsuffix _shader.bin,$(STANDARD_SHADER_VARIANTS))
 INCLUDES := src
 CONTENT :=
@@ -119,6 +120,10 @@ $(OFILES_SRC): $(HFILES)
 %_shader.bin: $(TOPDIR)/$(SHADER_SOURCES)/%.vs $(TOPDIR)/$(SHADER_SOURCES)/%.ps
 	@echo $(notdir $@)
 	@$(TOPDIR)/$(SHADER_COMPILER) -ps $(TOPDIR)/$(SHADER_SOURCES)/$*.ps -vs $(TOPDIR)/$(SHADER_SOURCES)/$*.vs -o $@
+
+$(addsuffix _shader.bin,$(STANDARD_SHADER_VARIANTS)): %_shader.bin: $(WIIU_STANDARD_SHADER_SOURCES)/%.vs $(WIIU_STANDARD_SHADER_SOURCES)/%.ps
+	@echo $(notdir $@)
+	@$(TOPDIR)/$(SHADER_COMPILER) -ps $(WIIU_STANDARD_SHADER_SOURCES)/$*.ps -vs $(WIIU_STANDARD_SHADER_SOURCES)/$*.vs -o $@
 
 %_bin.h %.bin.o: %.bin
 	@echo $(notdir $<)

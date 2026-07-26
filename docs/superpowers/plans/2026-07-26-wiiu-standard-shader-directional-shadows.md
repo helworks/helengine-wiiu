@@ -4,7 +4,7 @@
 
 **Goal:** Compile the shared StandardShader for Wii U and render demodisc's Directional Shadow scene with canonical `ShadowDepth` and `ForwardStandardShadowed` variants.
 
-**Architecture:** The shared editor compiler emits the standard variants for a new Wii U GLSL target. The Wii U builder stages those generated source pairs; the native Makefile compiles them into GX2 binaries. The GX2 presenter creates a directional-shadow depth target, draws casters with `ShadowDepth`, then uses `ForwardStandardShadowed` for receiving draws.
+**Architecture:** The shared editor compiler uses its existing HLSL-to-SPIR-V Shaderc path, then SPIRV-Cross, to emit StandardShader GLSL variants for the new Wii U target. The Wii U builder stages those generated source pairs; the native Makefile compiles them into GX2 binaries. The GX2 presenter creates a directional-shadow depth target, draws casters with `ShadowDepth`, then uses `ForwardStandardShadowed` for receiving draws.
 
 **Tech Stack:** C#/.NET shader compilation and platform builders, HLSL-derived custom StandardShader source, generated GLSL, CafeGLSL, WUT/GX2, C++, Cemu.
 
@@ -17,6 +17,7 @@
 - Modify: `C:\dev\helworks\helengine\engine\helengine.shader\shaders\compilation\ShaderTargetNames.cs`
 - Modify: `C:\dev\helworks\helengine\engine\helengine.shader\shaders\compilation\ShaderPlatformDefines.cs`
 - Create: `C:\dev\helworks\helengine\engine\helengine.shader\shaders\compilation\WiiUGlslShaderBackend.cs`
+- Modify: `C:\dev\helworks\helengine\engine\helengine.shader\helengine.shader.csproj`
 - Test: `C:\dev\helworks\helengine\engine\helengine.editor.tests\shaders\WiiUStandardShaderCompilationTests.cs`
 
 - [ ] **Step 1: Write a failing compiler contract test.**
@@ -56,7 +57,7 @@ case ShaderCompileTarget.WiiU:
     return "HEL_API_WIIU";
 ```
 
-Implement `WiiUGlslShaderBackend : IShaderBackend` beside the shared compile types. It must reject non-Wii-U requests, accept vertex and pixel stages, preserve `ShaderCompileRequest.EntryPoint`, `Variant`, defines, and the default binding policy, and produce CafeGLSL-compatible GLSL source bytes. Its `ShaderProgramDefinition` must retain the parsed shared binding metadata so packaging and the native renderer use the same names as other targets.
+Add the supported SPIRV-Cross managed/native package to `helengine.shader.csproj`. Implement `WiiUGlslShaderBackend : IShaderBackend` beside the shared compile types. It must reject non-Wii-U requests, accept vertex and pixel stages, preserve `ShaderCompileRequest.EntryPoint`, `Variant`, defines, and the default binding policy, compile HLSL to SPIR-V with the existing Shaderc configuration, and cross-compile to desktop GLSL. Its `ShaderProgramDefinition` must retain the parsed shared binding metadata so packaging and the native renderer use the same names as other targets. Configure SPIRV-Cross with explicit version, entry point, stage, and interface naming so vertex outputs and fragment inputs remain linkable by CafeGLSL.
 
 - [ ] **Step 4: Run the compiler test and the existing standard-variant tests.**
 

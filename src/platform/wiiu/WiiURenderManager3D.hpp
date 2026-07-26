@@ -10,11 +10,13 @@
 #include "platform/wiiu/WiiUGx2TextureHandle.hpp"
 
 class CameraComponent;
+class DirectionalLightComponent;
 class IDrawable3D;
 class IContentStreamSource;
 class LightComponent;
 class RenderFrame;
 class RenderFrameDrawableSubmission;
+class RenderFrameShadowCasterSubmission;
 class TextureAsset;
 
 namespace helengine::wiiu {
@@ -79,6 +81,9 @@ namespace helengine::wiiu {
         /// Captures one extracted drawable submission into the current frame when its runtime model and runtime material are Wii U-owned.
         void CaptureDrawCommand(RenderFrameDrawableSubmission* submission);
 
+        /// Captures one shared shadow-caster submission into the current Wii U directional-shadow frame state.
+        void CaptureShadowCasterCommand(RenderFrameShadowCasterSubmission* submission, WiiUGx23DDirectionalShadowState& directionalShadowState);
+
         /// Resolves the primary runtime camera for the current frame.
         bool TryResolvePrimaryCamera(CameraComponent*& camera) const;
 
@@ -101,7 +106,10 @@ namespace helengine::wiiu {
         static float4 CreateLightColor(::LightComponent* light);
 
         /// Builds one directional-light capture record from one scene directional light.
-        static WiiUGx23DDirectionalLightState CreateDirectionalLightState(::LightComponent* light);
+        static WiiUGx23DDirectionalLightState CreateDirectionalLightState(::DirectionalLightComponent* light);
+
+        /// Builds the camera-fitted directional shadow transform used by the shared StandardShader.
+        static float4x4 CreateDirectionalShadowViewProjection(CameraComponent* camera, const WiiUGx23DDirectionalLightState& directionalLightState);
 
         /// Creates one concrete Wii U runtime material from the supplied material fields.
         WiiURuntimeMaterial* CreateRuntimeMaterial(std::string runtimeMaterialId, float4 baseColor, bool isLit, bool isDoubleSided);

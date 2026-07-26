@@ -104,7 +104,7 @@ public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
         startInfo.ArgumentList.Add(WiiUBuilderPaths.DockerImageName);
         startInfo.ArgumentList.Add("sh");
         startInfo.ArgumentList.Add("-lc");
-        startInfo.ArgumentList.Add(hasPackagedContent ? "make CONTENT=/workspace/content APP_CONTENT=/workspace/content" : "make");
+        startInfo.ArgumentList.Add(hasPackagedContent ? "make CONTENT=/workspace/content APP_CONTENT=/workspace/content WIIU_STANDARD_SHADER_SOURCES=/workspace/content/cooked/shaders" : "make");
         return startInfo;
     }
 

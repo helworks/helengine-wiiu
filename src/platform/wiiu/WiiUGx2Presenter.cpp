@@ -2,6 +2,9 @@
 
 #include "diagnostic_triangle_shader_bin.h"
 #include "diagnostic_square_shader_bin.h"
+#include "ForwardStandard_shader_bin.h"
+#include "ForwardStandardShadowed_shader_bin.h"
+#include "ShadowDepth_shader_bin.h"
 #include "scene_opaque_lit_shader_bin.h"
 #include "ui_quad_shader_bin.h"
 
@@ -96,6 +99,7 @@ namespace helengine::wiiu {
         constexpr std::uint32_t SceneOpaqueLightSizeInBytes = 12U * sizeof(float);
         constexpr double SceneDrivenFieldOfViewRadians = 1.0;
         constexpr std::uint32_t UiQuadVertexCount = 6U;
+        constexpr std::uint32_t DirectionalShadowMapSize = 1024U;
         constexpr std::uint32_t UiQuadPositionElementSize = 2U * sizeof(float);
         constexpr std::uint32_t UiQuadTexCoordElementSize = 2U * sizeof(float);
         constexpr std::uint32_t UiQuadColorElementSize = 4U * sizeof(float);
@@ -178,6 +182,22 @@ namespace helengine::wiiu {
         , DiagnosticTriangleTransformBuffer()
         , AreSceneOpaqueResourcesInitialized(false)
         , SceneOpaqueShaderGroup()
+        , AreStandardShaderResourcesInitialized(false)
+        , ForwardStandardShaderGroup()
+        , ForwardStandardShadowedShaderGroup()
+        , ShadowDepthShaderGroup()
+        , StandardShaderTransformBuffer()
+        , StandardShaderForwardLightBuffer()
+        , StandardShaderShadowBuffer()
+        , StandardShaderBaseColorBuffer()
+        , StandardShaderRoughnessBuffer()
+        , StandardShaderMetallicBuffer()
+        , StandardShaderSpecularBuffer()
+        , StandardShaderEmissiveBuffer()
+        , AreDirectionalShadowResourcesInitialized(false)
+        , DirectionalShadowDepthBuffer()
+        , DirectionalShadowTexture()
+        , DirectionalShadowSampler()
         , SceneOpaquePositionBuffer()
         , SceneOpaqueNormalBuffer()
         , SceneOpaqueTexCoordBuffer()
@@ -206,6 +226,20 @@ namespace helengine::wiiu {
         std::memset(&DiagnosticTriangleColorBuffer, 0, sizeof(DiagnosticTriangleColorBuffer));
         std::memset(&DiagnosticTriangleTransformBuffer, 0, sizeof(DiagnosticTriangleTransformBuffer));
         std::memset(&SceneOpaqueShaderGroup, 0, sizeof(SceneOpaqueShaderGroup));
+        std::memset(&ForwardStandardShaderGroup, 0, sizeof(ForwardStandardShaderGroup));
+        std::memset(&ForwardStandardShadowedShaderGroup, 0, sizeof(ForwardStandardShadowedShaderGroup));
+        std::memset(&ShadowDepthShaderGroup, 0, sizeof(ShadowDepthShaderGroup));
+        std::memset(&StandardShaderTransformBuffer, 0, sizeof(StandardShaderTransformBuffer));
+        std::memset(&StandardShaderForwardLightBuffer, 0, sizeof(StandardShaderForwardLightBuffer));
+        std::memset(&StandardShaderShadowBuffer, 0, sizeof(StandardShaderShadowBuffer));
+        std::memset(&StandardShaderBaseColorBuffer, 0, sizeof(StandardShaderBaseColorBuffer));
+        std::memset(&StandardShaderRoughnessBuffer, 0, sizeof(StandardShaderRoughnessBuffer));
+        std::memset(&StandardShaderMetallicBuffer, 0, sizeof(StandardShaderMetallicBuffer));
+        std::memset(&StandardShaderSpecularBuffer, 0, sizeof(StandardShaderSpecularBuffer));
+        std::memset(&StandardShaderEmissiveBuffer, 0, sizeof(StandardShaderEmissiveBuffer));
+        std::memset(&DirectionalShadowDepthBuffer, 0, sizeof(DirectionalShadowDepthBuffer));
+        std::memset(&DirectionalShadowTexture, 0, sizeof(DirectionalShadowTexture));
+        std::memset(&DirectionalShadowSampler, 0, sizeof(DirectionalShadowSampler));
         std::memset(&SceneOpaquePositionBuffer, 0, sizeof(SceneOpaquePositionBuffer));
         std::memset(&SceneOpaqueNormalBuffer, 0, sizeof(SceneOpaqueNormalBuffer));
         std::memset(&SceneOpaqueTexCoordBuffer, 0, sizeof(SceneOpaqueTexCoordBuffer));
@@ -304,6 +338,10 @@ namespace helengine::wiiu {
         AppendInitializationTrace("[WiiUFile] GX2 initialize: scene opaque resources begin.\n");
         InitializeSceneOpaqueResources();
         AppendInitializationTrace("[WiiUFile] GX2 initialize: scene opaque resources completed.\n");
+        AppendInitializationTrace("[WiiUFile] GX2 initialize: shared StandardShader resources begin.\n");
+        InitializeStandardShaderResources();
+        AppendInitializationTrace("[WiiUFile] GX2 initialize: shared StandardShader resources completed.\n");
+        InitializeDirectionalShadowResources();
         AppendInitializationTrace("[WiiUFile] GX2 initialize: UI quad resources begin.\n");
         InitializeUiQuadResources();
         AppendInitializationTrace("[WiiUFile] GX2 initialize: UI quad resources completed.\n");
@@ -356,8 +394,15 @@ namespace helengine::wiiu {
             throw std::runtime_error("Wii U GX2 presenter must be initialized before RenderFrame.");
         } else if (!AreSceneOpaqueResourcesInitialized) {
             throw std::runtime_error("Wii U GX2 presenter must initialize opaque scene resources before 3D frame rendering.");
+        } else if (!AreStandardShaderResourcesInitialized || !AreDirectionalShadowResourcesInitialized) {
+            throw std::runtime_error("Wii U GX2 presenter must initialize StandardShader directional-shadow resources before 3D frame rendering.");
         } else if (!AreUiQuadResourcesInitialized) {
             throw std::runtime_error("Wii U GX2 presenter must initialize UI quad resources before 2D frame rendering.");
+        }
+
+        if (frame3D.GetHasDirectionalShadow()) {
+            RenderDirectionalShadowDepthPass(TvContextState, frame3D);
+            GX2DrawDone();
         }
 
         Render3DFrameToColorBuffer(TvContextState, &TvColorBuffer, &TvDepthBuffer, frame3D, TvSurfaceWidth, TvSurfaceHeight);
@@ -406,6 +451,8 @@ namespace helengine::wiiu {
     /// Releases all allocated GX2 resources and returns the presenter to the uninitialized state.
     void WiiUGx2Presenter::Shutdown() {
         DestroyUiQuadResources();
+        DestroyDirectionalShadowResources();
+        DestroyStandardShaderResources();
         DestroySceneOpaqueResources();
         DestroyDiagnosticTriangleResources();
         DestroyDiagnosticSquareResources();
@@ -760,6 +807,176 @@ namespace helengine::wiiu {
 
         SceneOpaqueVertexCount = 0U;
         AreSceneOpaqueResourcesInitialized = false;
+    }
+
+    /// Initializes the generated StandardShader variants and validates their stable vertex-input contract.
+    void WiiUGx2Presenter::InitializeStandardShaderResources() {
+        if (AreStandardShaderResourcesInitialized) {
+            return;
+        }
+
+        try {
+            if (!WHBGfxLoadGFDShaderGroup(&ForwardStandardShaderGroup, 0, ForwardStandard_shader_bin)) {
+                throw std::runtime_error("Wii U GX2 presenter could not load the generated ForwardStandard shader group.");
+            }
+
+            if (!WHBGfxLoadGFDShaderGroup(&ForwardStandardShadowedShaderGroup, 0, ForwardStandardShadowed_shader_bin)) {
+                throw std::runtime_error("Wii U GX2 presenter could not load the generated ForwardStandardShadowed shader group.");
+            }
+
+            if (!WHBGfxLoadGFDShaderGroup(&ShadowDepthShaderGroup, 0, ShadowDepth_shader_bin)) {
+                throw std::runtime_error("Wii U GX2 presenter could not load the generated ShadowDepth shader group.");
+            }
+
+            WHBGfxShaderGroup* shaderGroups[] = {
+                &ForwardStandardShaderGroup,
+                &ForwardStandardShadowedShaderGroup,
+                &ShadowDepthShaderGroup
+            };
+            for (WHBGfxShaderGroup* shaderGroup : shaderGroups) {
+                if (!WHBGfxInitShaderAttribute(shaderGroup, "Position", 0, 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32)) {
+                    throw std::runtime_error("Wii U GX2 presenter could not bind the generated StandardShader Position attribute.");
+                }
+
+                if (!WHBGfxInitShaderAttribute(shaderGroup, "Normal", 1, 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32)) {
+                    throw std::runtime_error("Wii U GX2 presenter could not bind the generated StandardShader Normal attribute.");
+                }
+
+                if (!WHBGfxInitShaderAttribute(shaderGroup, "TexCoord", 2, 0, GX2_ATTRIB_FORMAT_FLOAT_32_32)) {
+                    throw std::runtime_error("Wii U GX2 presenter could not bind the generated StandardShader TexCoord attribute.");
+                }
+
+                if (!WHBGfxInitFetchShader(shaderGroup)) {
+                    throw std::runtime_error("Wii U GX2 presenter could not initialize one generated StandardShader fetch shader.");
+                }
+
+                GX2Invalidate(GX2_INVALIDATE_MODE_CPU_SHADER, shaderGroup->vertexShader->program, shaderGroup->vertexShader->size);
+                GX2Invalidate(GX2_INVALIDATE_MODE_CPU_SHADER, shaderGroup->pixelShader->program, shaderGroup->pixelShader->size);
+                GX2Invalidate(GX2_INVALIDATE_MODE_CPU_SHADER, shaderGroup->fetchShader.program, shaderGroup->fetchShader.size);
+            }
+
+            GX2UniformBlock* transformBlock = GX2GetVertexUniformBlock(ForwardStandardShaderGroup.vertexShader, "TransformBuffer");
+            GX2UniformBlock* forwardLightBlock = GX2GetPixelUniformBlock(ForwardStandardShaderGroup.pixelShader, "ForwardLightBuffer");
+            GX2UniformBlock* shadowBlock = GX2GetPixelUniformBlock(ForwardStandardShaderGroup.pixelShader, "ShadowBuffer");
+            GX2UniformBlock* baseColorBlock = GX2GetPixelUniformBlock(ForwardStandardShaderGroup.pixelShader, "BaseColorBuffer");
+            GX2UniformBlock* roughnessBlock = GX2GetPixelUniformBlock(ForwardStandardShaderGroup.pixelShader, "RoughnessBuffer");
+            GX2UniformBlock* metallicBlock = GX2GetPixelUniformBlock(ForwardStandardShaderGroup.pixelShader, "MetallicBuffer");
+            GX2UniformBlock* specularBlock = GX2GetPixelUniformBlock(ForwardStandardShaderGroup.pixelShader, "SpecularBuffer");
+            GX2UniformBlock* emissiveBlock = GX2GetPixelUniformBlock(ForwardStandardShaderGroup.pixelShader, "EmissiveBuffer");
+            InitializeStandardShaderUniformBuffer(&StandardShaderTransformBuffer, transformBlock, "TransformBuffer");
+            InitializeStandardShaderUniformBuffer(&StandardShaderForwardLightBuffer, forwardLightBlock, "ForwardLightBuffer");
+            InitializeStandardShaderUniformBuffer(&StandardShaderShadowBuffer, shadowBlock, "ShadowBuffer");
+            InitializeStandardShaderUniformBuffer(&StandardShaderBaseColorBuffer, baseColorBlock, "BaseColorBuffer");
+            InitializeStandardShaderUniformBuffer(&StandardShaderRoughnessBuffer, roughnessBlock, "RoughnessBuffer");
+            InitializeStandardShaderUniformBuffer(&StandardShaderMetallicBuffer, metallicBlock, "MetallicBuffer");
+            InitializeStandardShaderUniformBuffer(&StandardShaderSpecularBuffer, specularBlock, "SpecularBuffer");
+            InitializeStandardShaderUniformBuffer(&StandardShaderEmissiveBuffer, emissiveBlock, "EmissiveBuffer");
+
+            AreStandardShaderResourcesInitialized = true;
+        } catch (...) {
+            DestroyStandardShaderResources();
+            throw;
+        }
+    }
+
+    /// Releases all generated StandardShader variants after the GPU has finished using them.
+    void WiiUGx2Presenter::DestroyStandardShaderResources() {
+        DestroyStandardShaderUniformBuffer(&StandardShaderEmissiveBuffer);
+        DestroyStandardShaderUniformBuffer(&StandardShaderSpecularBuffer);
+        DestroyStandardShaderUniformBuffer(&StandardShaderMetallicBuffer);
+        DestroyStandardShaderUniformBuffer(&StandardShaderRoughnessBuffer);
+        DestroyStandardShaderUniformBuffer(&StandardShaderBaseColorBuffer);
+        DestroyStandardShaderUniformBuffer(&StandardShaderShadowBuffer);
+        DestroyStandardShaderUniformBuffer(&StandardShaderForwardLightBuffer);
+        DestroyStandardShaderUniformBuffer(&StandardShaderTransformBuffer);
+        WHBGfxShaderGroup* shaderGroups[] = {
+            &ShadowDepthShaderGroup,
+            &ForwardStandardShadowedShaderGroup,
+            &ForwardStandardShaderGroup
+        };
+        for (WHBGfxShaderGroup* shaderGroup : shaderGroups) {
+            if (shaderGroup->vertexShader != nullptr || shaderGroup->pixelShader != nullptr || shaderGroup->fetchShaderProgram != nullptr) {
+                WHBGfxFreeShaderGroup(shaderGroup);
+                std::memset(shaderGroup, 0, sizeof(WHBGfxShaderGroup));
+            }
+        }
+
+        AreStandardShaderResourcesInitialized = false;
+    }
+
+    /// Initializes one uniform buffer with the exact size required by a reflected StandardShader block.
+    void WiiUGx2Presenter::InitializeStandardShaderUniformBuffer(GX2RBuffer* buffer, GX2UniformBlock* uniformBlock, const char* blockName) {
+        if (buffer == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires a StandardShader uniform-buffer destination.");
+        } else if (uniformBlock == nullptr || uniformBlock->size == 0U) {
+            throw std::runtime_error(std::string("Wii U GX2 presenter requires the generated StandardShader ") + blockName + " uniform block.");
+        }
+
+        buffer->flags = DiagnosticUniformBufferFlags;
+        buffer->elemSize = uniformBlock->size;
+        buffer->elemCount = 1U;
+        if (!GX2RCreateBuffer(buffer)) {
+            throw std::runtime_error(std::string("Wii U GX2 presenter could not allocate the generated StandardShader ") + blockName + " uniform buffer.");
+        }
+    }
+
+    /// Releases one allocated StandardShader uniform buffer.
+    void WiiUGx2Presenter::DestroyStandardShaderUniformBuffer(GX2RBuffer* buffer) {
+        if (buffer != nullptr && buffer->buffer != nullptr) {
+            GX2RDestroyBufferEx(buffer, NoGx2rResourceFlags);
+            std::memset(buffer, 0, sizeof(GX2RBuffer));
+        }
+    }
+
+    /// Initializes the texture-backed depth surface used by the directional shadow pass.
+    void WiiUGx2Presenter::InitializeDirectionalShadowResources() {
+        if (AreDirectionalShadowResourcesInitialized) {
+            return;
+        }
+
+        std::memset(&DirectionalShadowDepthBuffer, 0, sizeof(DirectionalShadowDepthBuffer));
+        DirectionalShadowDepthBuffer.surface.use = GX2_SURFACE_USE_DEPTH_BUFFER;
+        DirectionalShadowDepthBuffer.surface.dim = GX2_SURFACE_DIM_TEXTURE_2D;
+        DirectionalShadowDepthBuffer.surface.width = DirectionalShadowMapSize;
+        DirectionalShadowDepthBuffer.surface.height = DirectionalShadowMapSize;
+        DirectionalShadowDepthBuffer.surface.depth = 1U;
+        DirectionalShadowDepthBuffer.surface.mipLevels = 1U;
+        DirectionalShadowDepthBuffer.surface.format = DepthSurfaceFormat;
+        DirectionalShadowDepthBuffer.surface.aa = GX2_AA_MODE1X;
+        DirectionalShadowDepthBuffer.surface.tileMode = GX2_TILE_MODE_DEFAULT;
+        DirectionalShadowDepthBuffer.viewNumSlices = 1U;
+        DirectionalShadowDepthBuffer.depthClear = 1.0f;
+        DirectionalShadowDepthBuffer.stencilClear = 0U;
+        GX2CalcSurfaceSizeAndAlignment(&DirectionalShadowDepthBuffer.surface);
+        const GX2RResourceFlags shadowSurfaceFlags = static_cast<GX2RResourceFlags>(
+            GX2R_RESOURCE_BIND_DEPTH_BUFFER | GX2R_RESOURCE_BIND_TEXTURE | GX2R_RESOURCE_USAGE_GPU_READ | GX2R_RESOURCE_USAGE_GPU_WRITE);
+        if (!GX2RCreateSurface(&DirectionalShadowDepthBuffer.surface, shadowSurfaceFlags)) {
+            throw std::runtime_error("Wii U GX2 presenter could not allocate the directional shadow depth surface.");
+        }
+
+        GX2InitDepthBufferRegs(&DirectionalShadowDepthBuffer);
+        std::memset(&DirectionalShadowTexture, 0, sizeof(DirectionalShadowTexture));
+        DirectionalShadowTexture.surface = DirectionalShadowDepthBuffer.surface;
+        DirectionalShadowTexture.viewFirstMip = 0U;
+        DirectionalShadowTexture.viewNumMips = 1U;
+        DirectionalShadowTexture.viewFirstSlice = 0U;
+        DirectionalShadowTexture.viewNumSlices = 1U;
+        DirectionalShadowTexture.compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_R, GX2_SQ_SEL_R, GX2_SQ_SEL_A);
+        GX2InitTextureRegs(&DirectionalShadowTexture);
+        GX2InitSampler(&DirectionalShadowSampler, GX2_TEX_CLAMP_MODE_CLAMP, GX2_TEX_XY_FILTER_MODE_POINT);
+        AreDirectionalShadowResourcesInitialized = true;
+    }
+
+    /// Releases the texture-backed directional shadow depth surface.
+    void WiiUGx2Presenter::DestroyDirectionalShadowResources() {
+        if (DirectionalShadowDepthBuffer.surface.image != nullptr) {
+            GX2RDestroySurfaceEx(&DirectionalShadowDepthBuffer.surface, NoGx2rResourceFlags);
+        }
+
+        std::memset(&DirectionalShadowDepthBuffer, 0, sizeof(DirectionalShadowDepthBuffer));
+        std::memset(&DirectionalShadowTexture, 0, sizeof(DirectionalShadowTexture));
+        std::memset(&DirectionalShadowSampler, 0, sizeof(DirectionalShadowSampler));
+        AreDirectionalShadowResourcesInitialized = false;
     }
 
     /// Initializes one presenter-owned opaque-scene vertex buffer from immutable float vertex data.
@@ -1213,7 +1430,11 @@ namespace helengine::wiiu {
         const WiiUGx23DCameraState& cameraState = frame.GetCamera();
         const std::vector<WiiUGx23DDrawCommand>& drawCommands = frame.GetDrawCommands();
         for (std::size_t commandIndex = 0; commandIndex < drawCommands.size(); commandIndex++) {
-            Render3DDrawCommandToColorBuffer(drawCommands[commandIndex], frame, cameraState, targetWidth, targetHeight);
+            if (frame.GetHasDirectionalShadow()) {
+                RenderShadowed3DDrawCommandToColorBuffer(drawCommands[commandIndex], frame, cameraState, targetWidth, targetHeight);
+            } else {
+                Render3DDrawCommandToColorBuffer(drawCommands[commandIndex], frame, cameraState, targetWidth, targetHeight);
+            }
         }
     }
 
@@ -1324,6 +1545,183 @@ namespace helengine::wiiu {
         for (std::size_t commandIndex = 0; commandIndex < quadCommands.size(); commandIndex++) {
             RenderQuadCommandToColorBuffer(quadCommands[commandIndex], static_cast<std::uint32_t>(commandIndex), LogicalFrameWidth, LogicalFrameHeight, targetWidth, targetHeight);
         }
+    }
+
+    /// Renders the captured directional-shadow casters into the presenter-owned depth surface.
+    void WiiUGx2Presenter::RenderDirectionalShadowDepthPass(GX2ContextState* contextState, const WiiUGx23DRenderFrame& frame) {
+        if (contextState == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires one context state for a directional shadow pass.");
+        } else if (!frame.GetHasDirectionalShadow()) {
+            return;
+        }
+
+        const WiiUGx23DDirectionalShadowState& directionalShadowState = frame.GetDirectionalShadow();
+        GX2SetContextState(contextState);
+        GX2SetDepthBuffer(&DirectionalShadowDepthBuffer);
+        GX2SetViewport(0.0f, 0.0f, static_cast<float>(DirectionalShadowMapSize), static_cast<float>(DirectionalShadowMapSize), 0.0f, 1.0f);
+        GX2SetScissor(0, 0, DirectionalShadowMapSize, DirectionalShadowMapSize);
+        GX2ClearDepthStencilEx(&DirectionalShadowDepthBuffer, 1.0f, 0U, GX2_CLEAR_FLAGS_DEPTH);
+        GX2SetFetchShader(&ShadowDepthShaderGroup.fetchShader);
+        GX2SetVertexShader(ShadowDepthShaderGroup.vertexShader);
+        GX2SetPixelShader(ShadowDepthShaderGroup.pixelShader);
+        GX2SetShaderMode(GX2_SHADER_MODE_UNIFORM_BLOCK);
+        GX2SetDepthOnlyControl(TRUE, TRUE, GX2_COMPARE_FUNC_LEQUAL);
+        GX2SetTargetChannelMasks(
+            static_cast<GX2ChannelMask>(0), static_cast<GX2ChannelMask>(0), static_cast<GX2ChannelMask>(0), static_cast<GX2ChannelMask>(0),
+            static_cast<GX2ChannelMask>(0), static_cast<GX2ChannelMask>(0), static_cast<GX2ChannelMask>(0), static_cast<GX2ChannelMask>(0));
+
+        GX2UniformBlock* transformBlock = GX2GetVertexUniformBlock(ShadowDepthShaderGroup.vertexShader, "TransformBuffer");
+        if (transformBlock == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires ShadowDepth TransformBuffer reflection.");
+        }
+
+        const std::vector<WiiUGx23DDrawCommand>& casterCommands = directionalShadowState.ShadowCasterCommands;
+        for (std::size_t commandIndex = 0; commandIndex < casterCommands.size(); commandIndex++) {
+            const WiiUGx23DDrawCommand& drawCommand = casterCommands[commandIndex];
+            if (drawCommand.RuntimeModel == nullptr) {
+                throw std::runtime_error("Wii U GX2 presenter requires one runtime model for every directional shadow caster.");
+            }
+
+            float4x4 worldMatrix = drawCommand.WorldMatrix;
+            float4x4 lightViewProjectionMatrix = directionalShadowState.LightViewProjection;
+            float4x4 lightWorldViewProjection;
+            float4x4::Multiply__ref0_ref1_out2(worldMatrix, lightViewProjectionMatrix, lightWorldViewProjection);
+            const float transformData[] = {
+                drawCommand.WorldMatrix.M11, drawCommand.WorldMatrix.M12, drawCommand.WorldMatrix.M13, drawCommand.WorldMatrix.M14,
+                drawCommand.WorldMatrix.M21, drawCommand.WorldMatrix.M22, drawCommand.WorldMatrix.M23, drawCommand.WorldMatrix.M24,
+                drawCommand.WorldMatrix.M31, drawCommand.WorldMatrix.M32, drawCommand.WorldMatrix.M33, drawCommand.WorldMatrix.M34,
+                drawCommand.WorldMatrix.M41, drawCommand.WorldMatrix.M42, drawCommand.WorldMatrix.M43, drawCommand.WorldMatrix.M44,
+                lightWorldViewProjection.M11, lightWorldViewProjection.M12, lightWorldViewProjection.M13, lightWorldViewProjection.M14,
+                lightWorldViewProjection.M21, lightWorldViewProjection.M22, lightWorldViewProjection.M23, lightWorldViewProjection.M24,
+                lightWorldViewProjection.M31, lightWorldViewProjection.M32, lightWorldViewProjection.M33, lightWorldViewProjection.M34,
+                lightWorldViewProjection.M41, lightWorldViewProjection.M42, lightWorldViewProjection.M43, lightWorldViewProjection.M44,
+                drawCommand.WorldMatrix.M11, drawCommand.WorldMatrix.M12, drawCommand.WorldMatrix.M13, drawCommand.WorldMatrix.M14,
+                drawCommand.WorldMatrix.M21, drawCommand.WorldMatrix.M22, drawCommand.WorldMatrix.M23, drawCommand.WorldMatrix.M24,
+                drawCommand.WorldMatrix.M31, drawCommand.WorldMatrix.M32, drawCommand.WorldMatrix.M33, drawCommand.WorldMatrix.M34,
+                drawCommand.WorldMatrix.M41, drawCommand.WorldMatrix.M42, drawCommand.WorldMatrix.M43, drawCommand.WorldMatrix.M44,
+                0.0f, 0.0f, 0.0f, 1.0f,
+                1.0f, 0.0f, 0.0f, 0.0f
+            };
+            void* transformUploadBuffer = GX2RLockBufferEx(&StandardShaderTransformBuffer, NoGx2rResourceFlags);
+            if (transformUploadBuffer == nullptr) {
+                throw std::runtime_error("Wii U GX2 presenter could not lock the StandardShader transform buffer for a shadow caster.");
+            }
+
+            StoreFloatArrayAsLittleEndian(transformUploadBuffer, transformData, sizeof(transformData) / sizeof(transformData[0]));
+            GX2RUnlockBufferEx(&StandardShaderTransformBuffer, NoGx2rResourceFlags);
+            GX2RInvalidateBuffer(&StandardShaderTransformBuffer, GX2R_RESOURCE_USAGE_CPU_WRITE);
+            GX2Invalidate(static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_CPU | GX2_INVALIDATE_MODE_UNIFORM_BLOCK), StandardShaderTransformBuffer.buffer, StandardShaderTransformBuffer.elemSize);
+            UploadSceneOpaqueMesh(*drawCommand.RuntimeModel);
+            GX2SetVertexUniformBlock(transformBlock->offset, transformBlock->size, StandardShaderTransformBuffer.buffer);
+            GX2RSetAttributeBuffer(&SceneOpaquePositionBuffer, 0, SceneOpaquePositionBuffer.elemSize, 0);
+            GX2RSetAttributeBuffer(&SceneOpaqueNormalBuffer, 1, SceneOpaqueNormalBuffer.elemSize, 0);
+            GX2RSetAttributeBuffer(&SceneOpaqueTexCoordBuffer, 2, SceneOpaqueTexCoordBuffer.elemSize, 0);
+            GX2SetCullOnlyControl(GX2_FRONT_FACE_CCW, FALSE, FALSE);
+            GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, SceneOpaqueVertexCount, 0, 1);
+        }
+
+        GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, DirectionalShadowDepthBuffer.surface.image, DirectionalShadowDepthBuffer.surface.imageSize);
+    }
+
+    /// Renders one receiver command through the generated shadowed StandardShader program.
+    void WiiUGx2Presenter::RenderShadowed3DDrawCommandToColorBuffer(const WiiUGx23DDrawCommand& drawCommand, const WiiUGx23DRenderFrame& frame, const WiiUGx23DCameraState& cameraState, std::uint32_t targetWidth, std::uint32_t targetHeight) {
+        if (drawCommand.RuntimeModel == nullptr || drawCommand.RuntimeMaterial == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires one runtime model and material for shadowed StandardShader rendering.");
+        } else if (targetWidth == 0U || targetHeight == 0U) {
+            return;
+        }
+
+        float4x4 projectionMatrix;
+        float4x4::CreatePerspectiveFieldOfView__out4(static_cast<float>(SceneDrivenFieldOfViewRadians), static_cast<float>(static_cast<double>(targetWidth) / static_cast<double>(targetHeight)), cameraState.NearPlaneDistance, cameraState.FarPlaneDistance, projectionMatrix);
+        float4x4 worldMatrix = drawCommand.WorldMatrix;
+        float4x4 viewMatrix = cameraState.ViewMatrix;
+        float4x4 worldViewMatrix;
+        float4x4 worldViewProjectionMatrix;
+        float4x4::Multiply__ref0_ref1_out2(worldMatrix, viewMatrix, worldViewMatrix);
+        float4x4::Multiply__ref0_ref1_out2(worldViewMatrix, projectionMatrix, worldViewProjectionMatrix);
+        const WiiURuntimeMaterial& runtimeMaterial = *drawCommand.RuntimeMaterial;
+        const WiiUGx2TextureHandle* baseColorTextureHandle = runtimeMaterial.GetBaseColorTextureHandle();
+        if (baseColorTextureHandle == nullptr) {
+            baseColorTextureHandle = &UiSolidWhiteTextureHandle;
+        }
+
+        GX2DrawDone();
+        const float transformData[] = {
+            drawCommand.WorldMatrix.M11, drawCommand.WorldMatrix.M12, drawCommand.WorldMatrix.M13, drawCommand.WorldMatrix.M14, drawCommand.WorldMatrix.M21, drawCommand.WorldMatrix.M22, drawCommand.WorldMatrix.M23, drawCommand.WorldMatrix.M24, drawCommand.WorldMatrix.M31, drawCommand.WorldMatrix.M32, drawCommand.WorldMatrix.M33, drawCommand.WorldMatrix.M34, drawCommand.WorldMatrix.M41, drawCommand.WorldMatrix.M42, drawCommand.WorldMatrix.M43, drawCommand.WorldMatrix.M44,
+            worldViewProjectionMatrix.M11, worldViewProjectionMatrix.M12, worldViewProjectionMatrix.M13, worldViewProjectionMatrix.M14, worldViewProjectionMatrix.M21, worldViewProjectionMatrix.M22, worldViewProjectionMatrix.M23, worldViewProjectionMatrix.M24, worldViewProjectionMatrix.M31, worldViewProjectionMatrix.M32, worldViewProjectionMatrix.M33, worldViewProjectionMatrix.M34, worldViewProjectionMatrix.M41, worldViewProjectionMatrix.M42, worldViewProjectionMatrix.M43, worldViewProjectionMatrix.M44,
+            drawCommand.WorldMatrix.M11, drawCommand.WorldMatrix.M12, drawCommand.WorldMatrix.M13, drawCommand.WorldMatrix.M14, drawCommand.WorldMatrix.M21, drawCommand.WorldMatrix.M22, drawCommand.WorldMatrix.M23, drawCommand.WorldMatrix.M24, drawCommand.WorldMatrix.M31, drawCommand.WorldMatrix.M32, drawCommand.WorldMatrix.M33, drawCommand.WorldMatrix.M34, drawCommand.WorldMatrix.M41, drawCommand.WorldMatrix.M42, drawCommand.WorldMatrix.M43, drawCommand.WorldMatrix.M44,
+            cameraState.CameraPosition.X, cameraState.CameraPosition.Y, cameraState.CameraPosition.Z, 1.0f,
+            runtimeMaterial.GetIsLit() ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f
+        };
+        const float4 ambient = frame.GetAmbientLightColor();
+        const float4 directionalColor = frame.GetDirectionalLight().Color;
+        const float4 directionalDirection = frame.GetDirectionalLight().Direction;
+        const float lightData[] = { ambient.X, ambient.Y, ambient.Z, ambient.W, 1.0f, 0.0f, 0.0f, 0.0f, directionalColor.X, directionalColor.Y, directionalColor.Z, 0.0f, directionalDirection.X, directionalDirection.Y, directionalDirection.Z, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+        const float4x4 shadowMatrix = frame.GetDirectionalShadow().LightViewProjection;
+        const float shadowData[] = { 1.0f, static_cast<float>(DirectionalShadowMapSize), static_cast<float>(DirectionalShadowMapSize), 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, frame.GetDirectionalShadow().Strength, 1.0f, 0.0f,
+            shadowMatrix.M11, shadowMatrix.M12, shadowMatrix.M13, shadowMatrix.M14, shadowMatrix.M21, shadowMatrix.M22, shadowMatrix.M23, shadowMatrix.M24, shadowMatrix.M31, shadowMatrix.M32, shadowMatrix.M33, shadowMatrix.M34, shadowMatrix.M41, shadowMatrix.M42, shadowMatrix.M43, shadowMatrix.M44,
+            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+        const float baseColorData[] = { runtimeMaterial.GetBaseColor().X, runtimeMaterial.GetBaseColor().Y, runtimeMaterial.GetBaseColor().Z, runtimeMaterial.GetBaseColor().W };
+        const float roughnessData[] = { 1.0f, 0.0f, 0.0f, 0.0f };
+        const float metallicData[] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        const float specularData[] = { 0.5f, 0.0f, 0.0f, 0.0f };
+        const float emissiveData[] = { runtimeMaterial.GetEmissiveColor().X, runtimeMaterial.GetEmissiveColor().Y, runtimeMaterial.GetEmissiveColor().Z, runtimeMaterial.GetEmissiveColor().W };
+        GX2RBuffer* buffers[] = { &StandardShaderTransformBuffer, &StandardShaderForwardLightBuffer, &StandardShaderShadowBuffer, &StandardShaderBaseColorBuffer, &StandardShaderRoughnessBuffer, &StandardShaderMetallicBuffer, &StandardShaderSpecularBuffer, &StandardShaderEmissiveBuffer };
+        const float* payloads[] = { transformData, lightData, shadowData, baseColorData, roughnessData, metallicData, specularData, emissiveData };
+        const std::size_t payloadSizes[] = { sizeof(transformData), sizeof(lightData), sizeof(shadowData), sizeof(baseColorData), sizeof(roughnessData), sizeof(metallicData), sizeof(specularData), sizeof(emissiveData) };
+        for (std::size_t index = 0; index < sizeof(buffers) / sizeof(buffers[0]); index++) {
+            void* uploadBuffer = GX2RLockBufferEx(buffers[index], NoGx2rResourceFlags);
+            if (uploadBuffer == nullptr || payloadSizes[index] != buffers[index]->elemSize) {
+                throw std::runtime_error("Wii U GX2 presenter could not upload one reflected StandardShader uniform block.");
+            }
+            StoreFloatArrayAsLittleEndian(uploadBuffer, payloads[index], payloadSizes[index] / sizeof(float));
+            GX2RUnlockBufferEx(buffers[index], NoGx2rResourceFlags);
+            GX2RInvalidateBuffer(buffers[index], GX2R_RESOURCE_USAGE_CPU_WRITE);
+            GX2Invalidate(static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_CPU | GX2_INVALIDATE_MODE_UNIFORM_BLOCK), buffers[index]->buffer, buffers[index]->elemSize);
+        }
+
+        UploadSceneOpaqueMesh(*drawCommand.RuntimeModel);
+        GX2SetFetchShader(&ForwardStandardShadowedShaderGroup.fetchShader);
+        GX2SetVertexShader(ForwardStandardShadowedShaderGroup.vertexShader);
+        GX2SetPixelShader(ForwardStandardShadowedShaderGroup.pixelShader);
+        GX2SetShaderMode(GX2_SHADER_MODE_UNIFORM_BLOCK);
+        GX2UniformBlock* vertexTransformBlock = GX2GetVertexUniformBlock(ForwardStandardShadowedShaderGroup.vertexShader, "TransformBuffer");
+        GX2UniformBlock* pixelTransformBlock = GX2GetPixelUniformBlock(ForwardStandardShadowedShaderGroup.pixelShader, "TransformBuffer");
+        GX2UniformBlock* forwardLightBlock = GX2GetPixelUniformBlock(ForwardStandardShadowedShaderGroup.pixelShader, "ForwardLightBuffer");
+        GX2UniformBlock* shadowBlock = GX2GetPixelUniformBlock(ForwardStandardShadowedShaderGroup.pixelShader, "ShadowBuffer");
+        GX2UniformBlock* baseColorBlock = GX2GetPixelUniformBlock(ForwardStandardShadowedShaderGroup.pixelShader, "BaseColorBuffer");
+        GX2UniformBlock* roughnessBlock = GX2GetPixelUniformBlock(ForwardStandardShadowedShaderGroup.pixelShader, "RoughnessBuffer");
+        GX2UniformBlock* metallicBlock = GX2GetPixelUniformBlock(ForwardStandardShadowedShaderGroup.pixelShader, "MetallicBuffer");
+        GX2UniformBlock* specularBlock = GX2GetPixelUniformBlock(ForwardStandardShadowedShaderGroup.pixelShader, "SpecularBuffer");
+        GX2UniformBlock* emissiveBlock = GX2GetPixelUniformBlock(ForwardStandardShadowedShaderGroup.pixelShader, "EmissiveBuffer");
+        if (vertexTransformBlock == nullptr || pixelTransformBlock == nullptr || forwardLightBlock == nullptr || shadowBlock == nullptr || baseColorBlock == nullptr || roughnessBlock == nullptr || metallicBlock == nullptr || specularBlock == nullptr || emissiveBlock == nullptr || ForwardStandardShadowedShaderGroup.pixelShader->samplerVarCount < 4U) {
+            throw std::runtime_error("Wii U GX2 presenter requires all reflected StandardShader shadowed bindings.");
+        }
+        GX2SetVertexUniformBlock(vertexTransformBlock->offset, vertexTransformBlock->size, StandardShaderTransformBuffer.buffer);
+        GX2SetPixelUniformBlock(pixelTransformBlock->offset, pixelTransformBlock->size, StandardShaderTransformBuffer.buffer);
+        GX2SetPixelUniformBlock(forwardLightBlock->offset, forwardLightBlock->size, StandardShaderForwardLightBuffer.buffer);
+        GX2SetPixelUniformBlock(shadowBlock->offset, shadowBlock->size, StandardShaderShadowBuffer.buffer);
+        GX2SetPixelUniformBlock(baseColorBlock->offset, baseColorBlock->size, StandardShaderBaseColorBuffer.buffer);
+        GX2SetPixelUniformBlock(roughnessBlock->offset, roughnessBlock->size, StandardShaderRoughnessBuffer.buffer);
+        GX2SetPixelUniformBlock(metallicBlock->offset, metallicBlock->size, StandardShaderMetallicBuffer.buffer);
+        GX2SetPixelUniformBlock(specularBlock->offset, specularBlock->size, StandardShaderSpecularBuffer.buffer);
+        GX2SetPixelUniformBlock(emissiveBlock->offset, emissiveBlock->size, StandardShaderEmissiveBuffer.buffer);
+        GX2SetPixelTexture(&baseColorTextureHandle->Texture, ForwardStandardShadowedShaderGroup.pixelShader->samplerVars[0].location);
+        GX2SetPixelSampler(&baseColorTextureHandle->Sampler, ForwardStandardShadowedShaderGroup.pixelShader->samplerVars[0].location);
+        GX2SetPixelTexture(&UiSolidWhiteTextureHandle.Texture, ForwardStandardShadowedShaderGroup.pixelShader->samplerVars[1].location);
+        GX2SetPixelSampler(&UiSolidWhiteTextureHandle.Sampler, ForwardStandardShadowedShaderGroup.pixelShader->samplerVars[1].location);
+        GX2SetPixelTexture(&UiSolidWhiteTextureHandle.Texture, ForwardStandardShadowedShaderGroup.pixelShader->samplerVars[2].location);
+        GX2SetPixelSampler(&UiSolidWhiteTextureHandle.Sampler, ForwardStandardShadowedShaderGroup.pixelShader->samplerVars[2].location);
+        GX2SetPixelTexture(&DirectionalShadowTexture, ForwardStandardShadowedShaderGroup.pixelShader->samplerVars[3].location);
+        GX2SetPixelSampler(&DirectionalShadowSampler, ForwardStandardShadowedShaderGroup.pixelShader->samplerVars[3].location);
+        GX2SetDepthOnlyControl(TRUE, TRUE, GX2_COMPARE_FUNC_LEQUAL);
+        GX2SetColorControl(GX2_LOGIC_OP_COPY, 0x1, FALSE, TRUE);
+        GX2SetTargetChannelMasks(GX2_CHANNEL_MASK_RGBA, GX2_CHANNEL_MASK_RGBA, GX2_CHANNEL_MASK_RGBA, GX2_CHANNEL_MASK_RGBA, GX2_CHANNEL_MASK_RGBA, GX2_CHANNEL_MASK_RGBA, GX2_CHANNEL_MASK_RGBA, GX2_CHANNEL_MASK_RGBA);
+        GX2RSetAttributeBuffer(&SceneOpaquePositionBuffer, 0, SceneOpaquePositionBuffer.elemSize, 0);
+        GX2RSetAttributeBuffer(&SceneOpaqueNormalBuffer, 1, SceneOpaqueNormalBuffer.elemSize, 0);
+        GX2RSetAttributeBuffer(&SceneOpaqueTexCoordBuffer, 2, SceneOpaqueTexCoordBuffer.elemSize, 0);
+        GX2SetCullOnlyControl(GX2_FRONT_FACE_CCW, FALSE, FALSE);
+        GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, SceneOpaqueVertexCount, 0, 1);
     }
 
     /// Renders one captured 3D draw command into the currently bound color buffer.

@@ -10,6 +10,25 @@ namespace helengine.wiiu.builder;
 /// </summary>
 public sealed class WiiUMaterialCooker {
     /// <summary>
+    /// Shared StandardShader asset identity used by Wii U standard materials.
+    /// </summary>
+    const string StandardShaderAssetId = "ForwardStandardShader";
+
+    /// <summary>
+    /// Shared StandardShader vertex program selected by Wii U standard materials.
+    /// </summary>
+    const string StandardVertexProgramName = "ForwardStandardShader.vs";
+
+    /// <summary>
+    /// Shared StandardShader pixel program selected by Wii U standard materials.
+    /// </summary>
+    const string StandardPixelProgramName = "ForwardStandardShader.ps";
+
+    /// <summary>
+    /// Shared StandardShader default variant selected by ordinary Wii U materials.
+    /// </summary>
+    const string StandardVariantName = "ForwardStandard";
+    /// <summary>
     /// Cooks one Wii U material request into a serialized platform-owned material payload.
     /// </summary>
     /// <param name="request">Builder-owned material translation request.</param>
@@ -45,9 +64,14 @@ public sealed class WiiUMaterialCooker {
             BaseColorA = baseColorAlpha
         };
 
-        return new PlatformMaterialCookResult(
+        PlatformShaderDependency dependency = new(
+            StandardShaderAssetId,
+            StandardVertexProgramName,
+            StandardPixelProgramName,
+            StandardVariantName);
+        return PlatformMaterialCookResult.CreateWithDependencies(
             global::helengine.files.AssetSerializer.SerializeToBytes(cookedAsset),
-            []);
+            [dependency]);
     }
 
     /// <summary>

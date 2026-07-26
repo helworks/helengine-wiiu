@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include "float3.hpp"
 #include "float4.hpp"
 #include "float4x4.hpp"
 #include "platform/wiiu/WiiUGx2RenderFrame.hpp"
@@ -12,6 +13,9 @@ namespace helengine::wiiu {
 
     /// Stores one captured Wii U camera state consumed by the GX2 presenter.
     struct WiiUGx23DCameraState {
+        /// The world-space camera position used by forward lighting and directional-shadow fitting.
+        float3 CameraPosition;
+
         /// The world-to-view transform resolved from the active scene camera.
         float4x4 ViewMatrix;
 
@@ -32,6 +36,12 @@ namespace helengine::wiiu {
 
         /// The world-space light direction captured for the current frame.
         float4 Direction;
+
+        /// The authored maximum directional-shadow distance in world units.
+        float ShadowDistance;
+
+        /// The authored directional-shadow visibility strength.
+        float ShadowStrength;
     };
 
     /// Stores one captured Wii U 3D draw command consumed by the GX2 presenter.
@@ -46,6 +56,18 @@ namespace helengine::wiiu {
         float4x4 WorldMatrix;
     };
 
+    /// Stores the directional shadow state and caster commands captured for one Wii U frame.
+    struct WiiUGx23DDirectionalShadowState {
+        /// The world-to-directional-shadow clip transform used by the depth and receiver passes.
+        float4x4 LightViewProjection;
+
+        /// The authored visibility strength applied by the shared StandardShader.
+        float Strength;
+
+        /// The caster draw commands selected by the shared render-frame extractor.
+        std::vector<WiiUGx23DDrawCommand> ShadowCasterCommands;
+    };
+
     /// Stores one full Wii U 3D frame captured from the generated-core scene state.
     class WiiUGx23DRenderFrame {
     public:
@@ -57,6 +79,8 @@ namespace helengine::wiiu {
             , AmbientLightColor(0.0f, 0.0f, 0.0f, 0.0f)
             , HasDirectionalLightState(false)
             , DirectionalLightState()
+            , HasDirectionalShadowState(false)
+            , DirectionalShadowState()
             , DrawCommands() {
         }
 
@@ -68,6 +92,8 @@ namespace helengine::wiiu {
             AmbientLightColor = float4(0.0f, 0.0f, 0.0f, 0.0f);
             HasDirectionalLightState = false;
             DirectionalLightState = WiiUGx23DDirectionalLightState();
+            HasDirectionalShadowState = false;
+            DirectionalShadowState = WiiUGx23DDirectionalShadowState();
             DrawCommands.clear();
         }
 
@@ -123,6 +149,22 @@ namespace helengine::wiiu {
             return DirectionalLightState;
         }
 
+        /// Stores the directional shadow data selected for the current frame.
+        void SetDirectionalShadow(const WiiUGx23DDirectionalShadowState& directionalShadowState) {
+            DirectionalShadowState = directionalShadowState;
+            HasDirectionalShadowState = true;
+        }
+
+        /// Returns whether directional shadow data was captured for the current frame.
+        bool GetHasDirectionalShadow() const {
+            return HasDirectionalShadowState;
+        }
+
+        /// Returns the captured directional shadow state for the current frame.
+        const WiiUGx23DDirectionalShadowState& GetDirectionalShadow() const {
+            return DirectionalShadowState;
+        }
+
         /// Appends one draw command in render order.
         void AddDrawCommand(const WiiUGx23DDrawCommand& drawCommand) {
             DrawCommands.push_back(drawCommand);
@@ -151,6 +193,12 @@ namespace helengine::wiiu {
 
         /// Stores the first directional light captured for the current frame.
         WiiUGx23DDirectionalLightState DirectionalLightState;
+
+        /// Tracks whether one directional shadow record was captured.
+        bool HasDirectionalShadowState;
+
+        /// Stores the directional shadow transform and caster commands for the current frame.
+        WiiUGx23DDirectionalShadowState DirectionalShadowState;
 
         /// Stores captured 3D draw commands in render order.
         std::vector<WiiUGx23DDrawCommand> DrawCommands;

@@ -6,10 +6,15 @@
     <Nullable>disable</Nullable>
     <IsPackable>false</IsPackable>
     <UseAppHost>false</UseAppHost>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <HelEngineRoot Condition="'$(HelEngineRoot)' == ''">..\..\helengine</HelEngineRoot>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Silk.NET.Shaderc" Version="2.21.0" />
+    <PackageReference Include="Silk.NET.Shaderc.Native" Version="2.21.0" />
+    <PackageReference Include="Silk.NET.SPIRV.Cross" Version="2.21.0" />
+    <PackageReference Include="Silk.NET.SPIRV.Cross.Native" Version="2.21.0" />
     <ProjectReference Include="$(HelEngineRoot)\engine\helengine.baseplatform\helengine.baseplatform.csproj" />
     <ProjectReference Include="$(HelEngineRoot)\engine\helengine.core\helengine.core.csproj" />
     <ProjectReference Include="$(HelEngineRoot)\engine\helengine.files\helengine.files.csproj" />

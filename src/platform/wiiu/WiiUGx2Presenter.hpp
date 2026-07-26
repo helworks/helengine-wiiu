@@ -88,6 +88,24 @@ namespace helengine::wiiu {
         /// Releases the presenter-owned shader resources used by the generic opaque Wii U scene path.
         void DestroySceneOpaqueResources();
 
+        /// Initializes the shared StandardShader GFD variants used by the Wii U directional-shadow render path.
+        void InitializeStandardShaderResources();
+
+        /// Releases the shared StandardShader GFD variants used by the Wii U directional-shadow render path.
+        void DestroyStandardShaderResources();
+
+        /// Initializes one GX2 uniform buffer that mirrors one reflected shared StandardShader block.
+        void InitializeStandardShaderUniformBuffer(GX2RBuffer* buffer, GX2UniformBlock* uniformBlock, const char* blockName);
+
+        /// Releases one GX2 uniform buffer that mirrors one reflected shared StandardShader block.
+        void DestroyStandardShaderUniformBuffer(GX2RBuffer* buffer);
+
+        /// Initializes the depth texture and sampler consumed by the directional-shadow receiver pass.
+        void InitializeDirectionalShadowResources();
+
+        /// Releases the depth texture and sampler consumed by the directional-shadow receiver pass.
+        void DestroyDirectionalShadowResources();
+
         /// Initializes one presenter-owned opaque-scene vertex buffer from immutable float vertex data.
         void InitializeSceneOpaqueVertexBuffer(GX2RBuffer* buffer, const float* sourceData, std::uint32_t floatCount, std::uint32_t elementSize, std::uint32_t elementStride);
 
@@ -129,6 +147,12 @@ namespace helengine::wiiu {
 
         /// Renders one captured 3D draw command into the currently bound color buffer.
         void Render3DDrawCommandToColorBuffer(const WiiUGx23DDrawCommand& drawCommand, const WiiUGx23DRenderFrame& frame, const WiiUGx23DCameraState& cameraState, std::uint32_t targetWidth, std::uint32_t targetHeight);
+
+        /// Renders all captured directional shadow casters into the presenter-owned depth texture.
+        void RenderDirectionalShadowDepthPass(GX2ContextState* contextState, const WiiUGx23DRenderFrame& frame);
+
+        /// Renders one captured receiver command through the generated shadowed StandardShader variant.
+        void RenderShadowed3DDrawCommandToColorBuffer(const WiiUGx23DDrawCommand& drawCommand, const WiiUGx23DRenderFrame& frame, const WiiUGx23DCameraState& cameraState, std::uint32_t targetWidth, std::uint32_t targetHeight);
 
         /// Renders the captured 2D quad commands into the currently bound color buffer without clearing it first.
         void RenderQuadCommandsToColorBuffer(const WiiUGx2RenderFrame& frame, std::uint32_t targetWidth, std::uint32_t targetHeight);
@@ -240,6 +264,54 @@ namespace helengine::wiiu {
 
         /// Stores the number of expanded vertices currently uploaded for the generic opaque-scene path.
         std::uint32_t SceneOpaqueVertexCount;
+
+        /// Tracks whether all generated StandardShader variants were loaded and reflected successfully.
+        bool AreStandardShaderResourcesInitialized;
+
+        /// Stores the generated unshadowed forward StandardShader variant.
+        WHBGfxShaderGroup ForwardStandardShaderGroup;
+
+        /// Stores the generated directional-shadowed forward StandardShader variant.
+        WHBGfxShaderGroup ForwardStandardShadowedShaderGroup;
+
+        /// Stores the generated depth-only StandardShader variant used by the directional shadow pass.
+        WHBGfxShaderGroup ShadowDepthShaderGroup;
+
+        /// Stores the shared StandardShader transform buffer at HLSL binding b0.
+        GX2RBuffer StandardShaderTransformBuffer;
+
+        /// Stores the shared StandardShader forward-light buffer at HLSL binding b1.
+        GX2RBuffer StandardShaderForwardLightBuffer;
+
+        /// Stores the shared StandardShader directional-shadow buffer at HLSL binding b2.
+        GX2RBuffer StandardShaderShadowBuffer;
+
+        /// Stores the shared StandardShader base-color buffer at HLSL binding b3.
+        GX2RBuffer StandardShaderBaseColorBuffer;
+
+        /// Stores the shared StandardShader roughness buffer at HLSL binding b4.
+        GX2RBuffer StandardShaderRoughnessBuffer;
+
+        /// Stores the shared StandardShader metallic buffer at HLSL binding b5.
+        GX2RBuffer StandardShaderMetallicBuffer;
+
+        /// Stores the shared StandardShader specular buffer at HLSL binding b6.
+        GX2RBuffer StandardShaderSpecularBuffer;
+
+        /// Stores the shared StandardShader emissive-color buffer at HLSL binding b7.
+        GX2RBuffer StandardShaderEmissiveBuffer;
+
+        /// Tracks whether the directional-shadow depth texture and sampler were initialized successfully.
+        bool AreDirectionalShadowResourcesInitialized;
+
+        /// Stores the depth surface rendered by the directional shadow pass.
+        GX2DepthBuffer DirectionalShadowDepthBuffer;
+
+        /// Stores a texture view over the directional shadow depth surface for the forward receiver pass.
+        GX2Texture DirectionalShadowTexture;
+
+        /// Stores the directional shadow sampler used by the generated StandardShader.
+        GX2Sampler DirectionalShadowSampler;
 
         /// Tracks whether the pure GX2 UI shader, buffers, and fallback texture were initialized successfully.
         bool AreUiQuadResourcesInitialized;

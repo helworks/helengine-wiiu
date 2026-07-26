@@ -10,14 +10,15 @@ This slice supports exactly the StandardShader inputs exercised by the Direction
 
 ## Authoritative Shader Source
 
-The shared custom-language StandardShader remains the only shader source of truth. The Wii U target must join the same compilation model used by the editor, DirectX 11, Vulkan, and PS Vita:
+The shared HLSL StandardShader remains the only shader source of truth. The Wii U target must join the same compilation model used by the editor, DirectX 11, Vulkan, and PS Vita:
 
 1. The editor shader pipeline compiles `ForwardStandardShader` for the Wii U target.
 2. The shared variant definition produces `ForwardStandard`, `ForwardStandardShadowed`, and `ShadowDepth` with their existing canonical entry points and defines.
-3. The Wii U target emits GLSL source for each variant into the platform build staging area.
-4. The native Wii U Makefile invokes CafeGLSL on those generated sources to create GX2 binaries.
+3. The shared Wii U backend compiles the HLSL request to SPIR-V with the existing Shaderc integration, then cross-compiles that SPIR-V to desktop GLSL with SPIRV-Cross.
+4. The backend emits GLSL source for each variant into the platform build staging area.
+5. The native Wii U Makefile invokes CafeGLSL on those generated sources to create GX2 binaries.
 
-The existing `tools/wiiu-shaders/*.vs` and `*.ps` files are transitional artifacts and must not remain an alternate implementation of StandardShader after this work. Wii U-only diagnostic and UI shaders may continue to use native GLSL where they are not StandardShader variants.
+SPIRV-Cross is the shared compiler component responsible for source translation; it must be packaged with the editor build tooling and invoked without platform-specific shader rewrites. The existing `tools/wiiu-shaders/*.vs` and `*.ps` files are transitional artifacts and must not remain an alternate implementation of StandardShader after this work. Wii U-only diagnostic and UI shaders may continue to use native GLSL where they are not StandardShader variants.
 
 ## Build and Packaging Contract
 

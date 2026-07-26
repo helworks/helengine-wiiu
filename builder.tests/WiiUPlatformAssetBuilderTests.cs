@@ -74,7 +74,7 @@ public sealed class WiiUPlatformAssetBuilderTests {
 
         Assert.NotNull(result);
         Assert.NotEmpty(result.CookedMaterialBytes);
-        Assert.Empty(result.ReferencedShaderAssetIds);
+        Assert.Equal("ForwardStandardShader", Assert.Single(result.ReferencedShaderAssetIds));
     }
 
     /// <summary>

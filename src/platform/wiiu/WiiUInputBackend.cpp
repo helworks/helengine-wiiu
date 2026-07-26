@@ -6,12 +6,9 @@
 
 #include <vpad/input.h>
 
-#include "ButtonState.hpp"
 #include "InputFrameState.hpp"
 #include "InputGamepadButton.hpp"
 #include "InputGamepadState.hpp"
-#include "KeyboardState.hpp"
-#include "MouseState.hpp"
 #include "runtime/array.hpp"
 
 namespace helengine::wiiu {
@@ -81,8 +78,6 @@ namespace helengine::wiiu {
         InputFrameState frameState {};
         frameState.set_Gamepads(gamepadStates);
         frameState.set_GamepadCount(1);
-        frameState.set_Keyboard(KeyboardState());
-        frameState.set_Mouse(MouseState());
         return frameState;
     }
 }
