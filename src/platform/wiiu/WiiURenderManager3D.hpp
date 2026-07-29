@@ -20,6 +20,7 @@ class RenderFrameShadowCasterSubmission;
 class TextureAsset;
 
 namespace helengine::wiiu {
+    struct WiiUStandardShaderMaterial;
     class WiiURuntimeMaterial;
     class WiiURuntimeModel;
 
@@ -102,6 +103,9 @@ namespace helengine::wiiu {
         /// Builds one normalized float color from one cooked 8-bit base-color payload.
         static float4 CreateBaseColor(::PlatformMaterialAsset* materialAsset);
 
+        /// Builds one parameter-complete runtime material from the platform-owned StandardShader payload.
+        WiiURuntimeMaterial* BuildStandardShaderRuntimeMaterial(const WiiUStandardShaderMaterial& material);
+
         /// Converts one linear light color plus intensity into one packed float4 radiance color.
         static float4 CreateLightColor(::LightComponent* light);
 
@@ -112,7 +116,7 @@ namespace helengine::wiiu {
         static float4x4 CreateDirectionalShadowViewProjection(CameraComponent* camera, const WiiUGx23DDirectionalLightState& directionalLightState);
 
         /// Creates one concrete Wii U runtime material from the supplied material fields.
-        WiiURuntimeMaterial* CreateRuntimeMaterial(std::string runtimeMaterialId, float4 baseColor, bool isLit, bool isDoubleSided);
+        WiiURuntimeMaterial* CreateRuntimeMaterial(std::string runtimeMaterialId, float4 baseColor, float roughness, float metallic, float specular, float4 emissiveColor, bool isLit, bool isDoubleSided);
 
         /// Builds one GX2 texture handle from a cooked runtime texture payload path.
         static WiiUGx2TextureHandle BuildTextureHandleFromCooked(std::string cookedAssetPath);

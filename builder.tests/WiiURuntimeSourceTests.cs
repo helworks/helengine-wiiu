@@ -1045,6 +1045,32 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
+    /// Verifies that the native Wii U renderer recognizes the versioned StandardShader material payload before reopening legacy cooked assets for generated-core deserialization.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_ReadsVersionedStandardShaderMaterialBeforeLegacyFallback() {
+        string repositoryRootPath = WiiUTestSourcePaths.ResolveRepositoryRootPath();
+        string readerHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUStandardShaderMaterialReader.hpp"));
+        string readerSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUStandardShaderMaterialReader.cpp"));
+        string renderManagerSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.cpp"));
+        int pathReaderCallStart = renderManagerSource.IndexOf("WiiUStandardShaderMaterialReader::TryRead(cookedAssetPath", StringComparison.Ordinal);
+        int pathLegacyFallbackStart = renderManagerSource.IndexOf("Asset* asset = AssetSerializer::Deserialize(stream);", pathReaderCallStart, StringComparison.Ordinal);
+        int streamReaderCallStart = renderManagerSource.IndexOf("WiiUStandardShaderMaterialReader::TryRead(probeStream", StringComparison.Ordinal);
+        int streamLegacyFallbackStart = renderManagerSource.IndexOf("Asset* asset = AssetSerializer::Deserialize(stream);", streamReaderCallStart, StringComparison.Ordinal);
+
+        Assert.Contains("struct WiiUStandardShaderMaterial final", readerHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("static bool TryRead(::Stream* stream, WiiUStandardShaderMaterial& material);", readerHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("{ 'W', 'U', 'M', 'T' }", readerSource, StringComparison.Ordinal);
+        Assert.Contains("MaterialPayloadVersion = 1U", readerSource, StringComparison.Ordinal);
+        Assert.Contains("TryReadFloat", readerSource, StringComparison.Ordinal);
+        Assert.Contains("WiiUStandardShaderMaterialReader::TryRead", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("BuildStandardShaderRuntimeMaterial", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("AssetSerializer::Deserialize", renderManagerSource, StringComparison.Ordinal);
+        Assert.True(pathReaderCallStart >= 0 && pathLegacyFallbackStart > pathReaderCallStart, "Expected the path-based StandardShader probe before legacy deserialization.");
+        Assert.True(streamReaderCallStart >= 0 && streamLegacyFallbackStart > streamReaderCallStart, "Expected the content-stream StandardShader probe before reopening the legacy payload.");
+    }
+
+    /// <summary>
     /// Verifies that frames without directional shadows use the generated unshadowed StandardShader without binding the directional depth texture.
     /// </summary>
     [Fact]

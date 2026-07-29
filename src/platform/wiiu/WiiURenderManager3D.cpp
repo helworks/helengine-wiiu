@@ -52,6 +52,7 @@
 #include "float4x4.hpp"
 #include "platform/wiiu/WiiURuntimeMaterial.hpp"
 #include "platform/wiiu/WiiURuntimeModel.hpp"
+#include "platform/wiiu/WiiUStandardShaderMaterialReader.hpp"
 #include <coreinit/debug.h>
 
 namespace helengine::wiiu {
@@ -187,7 +188,15 @@ namespace helengine::wiiu {
             throw new ArgumentNullException("materialAsset");
         }
 
-        WiiURuntimeMaterial* runtimeMaterial = CreateRuntimeMaterial("wiiu:material", CreateBaseColor(materialAsset), materialAsset->Lit, materialAsset->DoubleSided);
+        WiiURuntimeMaterial* runtimeMaterial = CreateRuntimeMaterial(
+            "wiiu:material",
+            CreateBaseColor(materialAsset),
+            0.4f,
+            0.0f,
+            0.5f,
+            float4(1.0f, 1.0f, 1.0f, 0.0f),
+            materialAsset->Lit,
+            materialAsset->DoubleSided);
         if (!String::IsNullOrWhiteSpace(materialAsset->TextureRelativePath)) {
             WiiUGx2TextureHandle textureHandle = BuildTextureHandleFromCooked(materialAsset->TextureRelativePath);
             runtimeMaterial->SetBaseColorTextureHandle(textureHandle);
@@ -200,6 +209,17 @@ namespace helengine::wiiu {
     ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromCooked(std::string cookedAssetPath) {
         if (String::IsNullOrWhiteSpace(cookedAssetPath)) {
             throw new ArgumentException("Cooked material asset path must be provided.", "cookedAssetPath");
+        }
+
+        WiiUStandardShaderMaterial standardShaderMaterial;
+        if (WiiUStandardShaderMaterialReader::TryRead(cookedAssetPath, standardShaderMaterial)) {
+            WiiURuntimeMaterial* runtimeMaterial = BuildStandardShaderRuntimeMaterial(standardShaderMaterial);
+            if (!String::IsNullOrWhiteSpace(standardShaderMaterial.DiffuseTextureAssetId)) {
+                WiiUGx2TextureHandle textureHandle = BuildTextureHandleFromCooked(standardShaderMaterial.DiffuseTextureAssetId);
+                runtimeMaterial->SetBaseColorTextureHandle(textureHandle);
+            }
+
+            return runtimeMaterial;
         }
 
         FileStream* stream = File::OpenRead(cookedAssetPath.c_str());
@@ -220,7 +240,15 @@ namespace helengine::wiiu {
         auto materialAssetGuard = he_cpp_make_scope_exit([&]() {
             delete materialAsset;
         });
-        WiiURuntimeMaterial* runtimeMaterial = CreateRuntimeMaterial(cookedAssetPath, CreateBaseColor(materialAsset), materialAsset->Lit, materialAsset->DoubleSided);
+        WiiURuntimeMaterial* runtimeMaterial = CreateRuntimeMaterial(
+            cookedAssetPath,
+            CreateBaseColor(materialAsset),
+            0.4f,
+            0.0f,
+            0.5f,
+            float4(1.0f, 1.0f, 1.0f, 0.0f),
+            materialAsset->Lit,
+            materialAsset->DoubleSided);
         if (!String::IsNullOrWhiteSpace(materialAsset->TextureRelativePath)) {
             WiiUGx2TextureHandle textureHandle = BuildTextureHandleFromCooked(materialAsset->TextureRelativePath);
             runtimeMaterial->SetBaseColorTextureHandle(textureHandle);
@@ -233,6 +261,29 @@ namespace helengine::wiiu {
     ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {
         if (contentStreamSource == nullptr) {
             throw new ArgumentNullException("contentStreamSource");
+        }
+
+        WiiUStandardShaderMaterial standardShaderMaterial;
+        bool isStandardShaderMaterial;
+        {
+            ::Stream* probeStream = contentStreamSource->OpenRead(cookedAssetPath);
+            auto probeStreamGuard = he_cpp_make_scope_exit([&]() {
+                if (probeStream != nullptr) {
+                    probeStream->Dispose();
+                    delete probeStream;
+                }
+            });
+            isStandardShaderMaterial = WiiUStandardShaderMaterialReader::TryRead(probeStream, standardShaderMaterial);
+        }
+
+        if (isStandardShaderMaterial) {
+            WiiURuntimeMaterial* runtimeMaterial = BuildStandardShaderRuntimeMaterial(standardShaderMaterial);
+            if (!String::IsNullOrWhiteSpace(standardShaderMaterial.DiffuseTextureAssetId)) {
+                WiiUGx2TextureHandle textureHandle = BuildTextureHandleFromCooked(standardShaderMaterial.DiffuseTextureAssetId, contentStreamSource);
+                runtimeMaterial->SetBaseColorTextureHandle(textureHandle);
+            }
+
+            return runtimeMaterial;
         }
 
         ::Stream* stream = contentStreamSource->OpenRead(cookedAssetPath);
@@ -253,7 +304,15 @@ namespace helengine::wiiu {
         auto materialAssetGuard = he_cpp_make_scope_exit([&]() {
             delete materialAsset;
         });
-        WiiURuntimeMaterial* runtimeMaterial = CreateRuntimeMaterial(cookedAssetPath, CreateBaseColor(materialAsset), materialAsset->Lit, materialAsset->DoubleSided);
+        WiiURuntimeMaterial* runtimeMaterial = CreateRuntimeMaterial(
+            cookedAssetPath,
+            CreateBaseColor(materialAsset),
+            0.4f,
+            0.0f,
+            0.5f,
+            float4(1.0f, 1.0f, 1.0f, 0.0f),
+            materialAsset->Lit,
+            materialAsset->DoubleSided);
         if (!String::IsNullOrWhiteSpace(materialAsset->TextureRelativePath)) {
             WiiUGx2TextureHandle textureHandle = BuildTextureHandleFromCooked(materialAsset->TextureRelativePath, contentStreamSource);
             runtimeMaterial->SetBaseColorTextureHandle(textureHandle);
@@ -285,7 +344,15 @@ namespace helengine::wiiu {
             throw new ArgumentException("Material asset path must be provided.", "materialAssetPath");
         }
 
-        return CreateRuntimeMaterial(materialAssetPath, float4(1.0f, 1.0f, 1.0f, 1.0f), true, false);
+        return CreateRuntimeMaterial(
+            materialAssetPath,
+            float4(1.0f, 1.0f, 1.0f, 1.0f),
+            0.4f,
+            0.0f,
+            0.5f,
+            float4(1.0f, 1.0f, 1.0f, 0.0f),
+            true,
+            false);
     }
 
     /// Builds one runtime model from a cooked Wii U model asset path by copying the authored mesh payload into a Wii U-owned geometry container.
@@ -640,6 +707,27 @@ namespace helengine::wiiu {
             static_cast<float>(materialAsset->BaseColorA) / 255.0f);
     }
 
+    /// Builds one parameter-complete runtime material from the platform-owned StandardShader payload.
+    WiiURuntimeMaterial* WiiURenderManager3D::BuildStandardShaderRuntimeMaterial(const WiiUStandardShaderMaterial& material) {
+        return CreateRuntimeMaterial(
+            material.MaterialAssetId,
+            float4(
+                static_cast<float>(material.BaseColorR) / 255.0f,
+                static_cast<float>(material.BaseColorG) / 255.0f,
+                static_cast<float>(material.BaseColorB) / 255.0f,
+                static_cast<float>(material.BaseColorA) / 255.0f),
+            material.Roughness,
+            material.Metallic,
+            material.Specular,
+            float4(
+                static_cast<float>(material.EmissiveColorR) / 255.0f,
+                static_cast<float>(material.EmissiveColorG) / 255.0f,
+                static_cast<float>(material.EmissiveColorB) / 255.0f,
+                static_cast<float>(material.EmissiveColorA) / 255.0f),
+            material.Lit,
+            material.DoubleSided);
+    }
+
     /// Converts one linear light color plus intensity into one packed float4 radiance color.
     float4 WiiURenderManager3D::CreateLightColor(::LightComponent* light) {
         if (light == nullptr) {
@@ -696,11 +784,22 @@ namespace helengine::wiiu {
     }
 
     /// Creates one concrete Wii U runtime material from the supplied material fields.
-    WiiURuntimeMaterial* WiiURenderManager3D::CreateRuntimeMaterial(std::string runtimeMaterialId, float4 baseColor, bool isLit, bool isDoubleSided) {
+    WiiURuntimeMaterial* WiiURenderManager3D::CreateRuntimeMaterial(
+        std::string runtimeMaterialId,
+        float4 baseColor,
+        float roughness,
+        float metallic,
+        float specular,
+        float4 emissiveColor,
+        bool isLit,
+        bool isDoubleSided) {
         WiiURuntimeMaterial* runtimeMaterial = new WiiURuntimeMaterial();
         runtimeMaterial->set_Id(runtimeMaterialId);
         runtimeMaterial->SetBaseColor(baseColor);
-        runtimeMaterial->SetEmissiveColor(float4(0.0f, 0.0f, 0.0f, 0.0f));
+        runtimeMaterial->SetRoughness(roughness);
+        runtimeMaterial->SetMetallic(metallic);
+        runtimeMaterial->SetSpecular(specular);
+        runtimeMaterial->SetEmissiveColor(emissiveColor);
         runtimeMaterial->SetLit(isLit);
         runtimeMaterial->SetDoubleSided(isDoubleSided);
         return runtimeMaterial;

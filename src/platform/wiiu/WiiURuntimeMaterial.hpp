@@ -10,11 +10,14 @@ namespace helengine::wiiu {
     /// Represents one concrete Wii U runtime material consumed by the opaque scene renderer.
     class WiiURuntimeMaterial final : public ::RuntimeMaterial {
     public:
-        /// Creates one Wii U runtime material with white base color, zero emissive color, and opaque single-sided lit defaults.
+        /// Creates one Wii U runtime material with the StandardShader's white colors, normalized surface defaults, and opaque single-sided lit state.
         WiiURuntimeMaterial()
             : RuntimeMaterial()
             , BaseColor(1.0f, 1.0f, 1.0f, 1.0f)
-            , EmissiveColor(0.0f, 0.0f, 0.0f, 0.0f)
+            , Roughness(0.4f)
+            , Metallic(0.0f)
+            , Specular(0.5f)
+            , EmissiveColor(1.0f, 1.0f, 1.0f, 0.0f)
             , Lit(true)
             , DoubleSided(false)
             , HasBaseColorTexture(false)
@@ -29,6 +32,36 @@ namespace helengine::wiiu {
         /// Returns the material tint consumed by the opaque Wii U shader path.
         const float4& GetBaseColor() const {
             return BaseColor;
+        }
+
+        /// Stores the normalized roughness consumed by the StandardShader lighting model.
+        void SetRoughness(float roughness) {
+            Roughness = roughness;
+        }
+
+        /// Returns the normalized roughness consumed by the StandardShader lighting model.
+        float GetRoughness() const {
+            return Roughness;
+        }
+
+        /// Stores the normalized metallic response consumed by the StandardShader lighting model.
+        void SetMetallic(float metallic) {
+            Metallic = metallic;
+        }
+
+        /// Returns the normalized metallic response consumed by the StandardShader lighting model.
+        float GetMetallic() const {
+            return Metallic;
+        }
+
+        /// Stores the normalized specular response consumed by the StandardShader lighting model.
+        void SetSpecular(float specular) {
+            Specular = specular;
+        }
+
+        /// Returns the normalized specular response consumed by the StandardShader lighting model.
+        float GetSpecular() const {
+            return Specular;
         }
 
         /// Stores the emissive-ready material contribution consumed by the opaque Wii U shader path.
@@ -82,6 +115,15 @@ namespace helengine::wiiu {
     private:
         /// Stores the material tint consumed by the opaque Wii U shader path.
         float4 BaseColor;
+
+        /// Stores the normalized roughness consumed by the StandardShader lighting model.
+        float Roughness;
+
+        /// Stores the normalized metallic response consumed by the StandardShader lighting model.
+        float Metallic;
+
+        /// Stores the normalized specular response consumed by the StandardShader lighting model.
+        float Specular;
 
         /// Stores the emissive-ready material contribution consumed by the opaque Wii U shader path.
         float4 EmissiveColor;
