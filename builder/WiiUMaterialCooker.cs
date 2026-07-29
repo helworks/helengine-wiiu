@@ -28,11 +28,12 @@ public sealed class WiiUMaterialCooker {
     /// Shared StandardShader default variant selected by ordinary Wii U materials.
     /// </summary>
     const string StandardVariantName = "ForwardStandard";
+
     /// <summary>
     /// Cooks one Wii U material request into a serialized platform-owned material payload.
     /// </summary>
     /// <param name="request">Builder-owned material translation request.</param>
-    /// <returns>Serialized platform-owned material asset with no shader-package dependencies.</returns>
+    /// <returns>Serialized material bytes and the fixed StandardShader dependency required by the Wii U runtime.</returns>
     public PlatformMaterialCookResult Cook(PlatformMaterialCookRequest request) {
         if (request == null) {
             throw new ArgumentNullException(nameof(request));
@@ -42,6 +43,87 @@ public sealed class WiiUMaterialCooker {
             throw new InvalidOperationException($"Wii U does not support material schema '{request.SchemaId}'.");
         }
 
+        PlatformShaderDependency dependency = new(
+            StandardShaderAssetId,
+            StandardVertexProgramName,
+            StandardPixelProgramName,
+            StandardVariantName);
+        if (string.Equals(request.SchemaId, WiiUMaterialSchemaIds.StandardShaderSchemaId, StringComparison.OrdinalIgnoreCase)) {
+            return PlatformMaterialCookResult.CreateWithDependencies(
+                new WiiUStandardShaderMaterialBinarySerializer().Serialize(CreateStandardShaderMaterialAsset(request)),
+                [dependency]);
+        }
+
+        return PlatformMaterialCookResult.CreateWithDependencies(
+            global::helengine.files.AssetSerializer.SerializeToBytes(CreateLegacyMaterialAsset(request)),
+            [dependency]);
+    }
+
+    /// <summary>
+    /// Creates the versioned Wii U payload used for authored materials from the shared StandardShader schema.
+    /// </summary>
+    /// <param name="request">Validated material request containing authored StandardShader field values.</param>
+    /// <returns>A fully initialized Wii U StandardShader material asset ready for binary serialization.</returns>
+    static WiiUStandardShaderMaterialAsset CreateStandardShaderMaterialAsset(PlatformMaterialCookRequest request) {
+        if (request == null) {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        ResolveBaseColor(
+            request.FieldValues,
+            out byte baseColorRed,
+            out byte baseColorGreen,
+            out byte baseColorBlue,
+            out byte baseColorAlpha);
+        ResolveEmissiveColor(
+            request.FieldValues,
+            out byte emissiveColorRed,
+            out byte emissiveColorGreen,
+            out byte emissiveColorBlue,
+            out byte emissiveColorAlpha);
+
+        return new WiiUStandardShaderMaterialAsset {
+            MaterialAssetId = request.MaterialAssetId,
+            ShaderAssetId = StandardShaderAssetId,
+            VertexProgramName = StandardVertexProgramName,
+            PixelProgramName = StandardPixelProgramName,
+            VariantName = StandardVariantName,
+            DiffuseTextureAssetId = ResolveTextureRelativePath(request.FieldValues),
+            BaseColorR = baseColorRed,
+            BaseColorG = baseColorGreen,
+            BaseColorB = baseColorBlue,
+            BaseColorA = baseColorAlpha,
+            Roughness = ResolveScalar(
+                request.FieldValues,
+                WiiUMaterialSchemaIds.RoughnessFieldId,
+                StandardMaterialRoughnessDefaults.DefaultRoughness),
+            Metallic = ResolveScalar(
+                request.FieldValues,
+                WiiUMaterialSchemaIds.MetallicFieldId,
+                StandardMaterialMetallicDefaults.DefaultMetallic),
+            Specular = ResolveScalar(
+                request.FieldValues,
+                WiiUMaterialSchemaIds.SpecularFieldId,
+                StandardMaterialSpecularDefaults.DefaultSpecular),
+            EmissiveColorR = emissiveColorRed,
+            EmissiveColorG = emissiveColorGreen,
+            EmissiveColorB = emissiveColorBlue,
+            EmissiveColorA = emissiveColorAlpha,
+            Lit = ResolveLightingMode(request.FieldValues),
+            DoubleSided = ResolveBoolean(request.FieldValues, WiiUMaterialSchemaIds.DoubleSidedFieldId, false)
+        };
+    }
+
+    /// <summary>
+    /// Creates the shared platform material asset retained by the legacy Wii U material schema.
+    /// </summary>
+    /// <param name="request">Validated material request containing legacy Wii U schema values.</param>
+    /// <returns>The legacy platform material asset with its existing renderer and field semantics.</returns>
+    static PlatformMaterialAsset CreateLegacyMaterialAsset(PlatformMaterialCookRequest request) {
+        if (request == null) {
+            throw new ArgumentNullException(nameof(request));
+        }
+
         ResolveBaseColor(
             request.FieldValues,
             out byte baseColorRed,
@@ -49,7 +131,7 @@ public sealed class WiiUMaterialCooker {
             out byte baseColorBlue,
             out byte baseColorAlpha);
 
-        PlatformMaterialAsset cookedAsset = new() {
+        return new PlatformMaterialAsset {
             Id = request.MaterialAssetId,
             RendererFamilyId = string.IsNullOrWhiteSpace(request.SelectedGraphicsProfileId)
                 ? throw new InvalidOperationException("Wii U material cooking requires a graphics profile id.")
@@ -63,15 +145,6 @@ public sealed class WiiUMaterialCooker {
             BaseColorB = baseColorBlue,
             BaseColorA = baseColorAlpha
         };
-
-        PlatformShaderDependency dependency = new(
-            StandardShaderAssetId,
-            StandardVertexProgramName,
-            StandardPixelProgramName,
-            StandardVariantName);
-        return PlatformMaterialCookResult.CreateWithDependencies(
-            global::helengine.files.AssetSerializer.SerializeToBytes(cookedAsset),
-            [dependency]);
     }
 
     /// <summary>
@@ -146,6 +219,33 @@ public sealed class WiiUMaterialCooker {
     }
 
     /// <summary>
+    /// Resolves one optional normalized StandardShader scalar using invariant floating-point syntax.
+    /// </summary>
+    /// <param name="fieldValues">Authored material field values.</param>
+    /// <param name="fieldId">Scalar field identifier to resolve.</param>
+    /// <param name="defaultValue">Shared material default used when the field is absent.</param>
+    /// <returns>The authored finite value clamped to the inclusive zero-to-one range, or the supplied default.</returns>
+    static float ResolveScalar(
+        IReadOnlyDictionary<string, string> fieldValues,
+        string fieldId,
+        float defaultValue) {
+        string value;
+        double parsedValue;
+        if (fieldValues == null) {
+            throw new ArgumentNullException(nameof(fieldValues));
+        } else if (string.IsNullOrWhiteSpace(fieldId)) {
+            throw new ArgumentException("Field id must be provided.", nameof(fieldId));
+        } else if (!fieldValues.TryGetValue(fieldId, out value) || string.IsNullOrWhiteSpace(value)) {
+            return defaultValue;
+        } else if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out parsedValue)
+            || !double.IsFinite(parsedValue)) {
+            throw new InvalidOperationException($"Wii U StandardShader field '{fieldId}' must be a finite floating-point value.");
+        }
+
+        return (float)Math.Clamp(parsedValue, 0.0, 1.0);
+    }
+
+    /// <summary>
     /// Resolves one authored base color into cooked byte channels.
     /// </summary>
     /// <param name="fieldValues">Authored material field values.</param>
@@ -175,6 +275,35 @@ public sealed class WiiUMaterialCooker {
     }
 
     /// <summary>
+    /// Resolves the optional authored emissive color while retaining the Windows-compatible white color with zero strength default.
+    /// </summary>
+    /// <param name="fieldValues">Authored material field values.</param>
+    /// <param name="red">Resolved emissive red byte.</param>
+    /// <param name="green">Resolved emissive green byte.</param>
+    /// <param name="blue">Resolved emissive blue byte.</param>
+    /// <param name="alpha">Resolved emissive alpha or strength byte.</param>
+    static void ResolveEmissiveColor(
+        IReadOnlyDictionary<string, string> fieldValues,
+        out byte red,
+        out byte green,
+        out byte blue,
+        out byte alpha) {
+        string value;
+        if (fieldValues == null) {
+            throw new ArgumentNullException(nameof(fieldValues));
+        } else if (!fieldValues.TryGetValue(WiiUMaterialSchemaIds.EmissiveColorFieldId, out value)
+            || string.IsNullOrWhiteSpace(value)) {
+            red = 255;
+            green = 255;
+            blue = 255;
+            alpha = 0;
+            return;
+        }
+
+        ParseColor(value, out red, out green, out blue, out alpha);
+    }
+
+    /// <summary>
     /// Parses one authored color string into cooked byte channels.
     /// </summary>
     /// <param name="value">Authored color value in <c>#RRGGBB</c> or <c>#RRGGBBAA</c> form.</param>
@@ -184,7 +313,7 @@ public sealed class WiiUMaterialCooker {
     /// <param name="alpha">Resolved alpha byte.</param>
     static void ParseColor(string value, out byte red, out byte green, out byte blue, out byte alpha) {
         if (string.IsNullOrWhiteSpace(value)) {
-            throw new InvalidOperationException("Wii U base color must be provided.");
+            throw new InvalidOperationException("Wii U color must be provided.");
         }
 
         string normalizedValue = value.Trim();
@@ -198,10 +327,12 @@ public sealed class WiiUMaterialCooker {
             throw new InvalidOperationException($"Wii U color '{value}' must use #RRGGBB or #RRGGBBAA format.");
         }
 
-        red = byte.Parse(normalizedValue.AsSpan(0, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-        green = byte.Parse(normalizedValue.AsSpan(2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-        blue = byte.Parse(normalizedValue.AsSpan(4, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-        alpha = byte.Parse(normalizedValue.AsSpan(6, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        if (!byte.TryParse(normalizedValue.AsSpan(0, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out red)
+            || !byte.TryParse(normalizedValue.AsSpan(2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out green)
+            || !byte.TryParse(normalizedValue.AsSpan(4, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out blue)
+            || !byte.TryParse(normalizedValue.AsSpan(6, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out alpha)) {
+            throw new InvalidOperationException($"Wii U color '{value}' must use #RRGGBB or #RRGGBBAA format.");
+        }
     }
 
     /// <summary>

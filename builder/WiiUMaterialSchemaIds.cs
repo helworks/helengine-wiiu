@@ -40,6 +40,26 @@ public static class WiiUMaterialSchemaIds {
     public const string BaseColorFieldId = "base-color";
 
     /// <summary>
+    /// Identifies the authored normalized roughness value consumed by the StandardShader cooker.
+    /// </summary>
+    public const string RoughnessFieldId = "roughness";
+
+    /// <summary>
+    /// Identifies the authored normalized metallic value consumed by the StandardShader cooker.
+    /// </summary>
+    public const string MetallicFieldId = "metallic";
+
+    /// <summary>
+    /// Identifies the authored normalized specular value consumed by the StandardShader cooker.
+    /// </summary>
+    public const string SpecularFieldId = "specular";
+
+    /// <summary>
+    /// Identifies the authored emissive color and strength consumed by the StandardShader cooker.
+    /// </summary>
+    public const string EmissiveColorFieldId = "emissive-color";
+
+    /// <summary>
     /// Lighting-mode field id.
     /// </summary>
     public const string LightingModeFieldId = "lighting-mode";

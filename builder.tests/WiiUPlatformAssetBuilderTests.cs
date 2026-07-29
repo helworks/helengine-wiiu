@@ -50,10 +50,10 @@ public sealed class WiiUPlatformAssetBuilderTests {
     }
 
     /// <summary>
-    /// Ensures the Wii U builder cooks the shared standard-shader schema into one platform-owned material payload.
+    /// Ensures the Wii U builder cooks the shared standard-shader schema into the versioned Wii U StandardShader payload.
     /// </summary>
     [Fact]
-    public void CookMaterial_WithStandardShaderSchema_ProducesCookedPlatformMaterialAsset() {
+    public void CookMaterial_WithStandardShaderSchema_ProducesCookedStandardShaderMaterialAsset() {
         WiiUPlatformAssetBuilder builder = new();
         PlatformMaterialCookRequest request = new(
             "wiiu-material-01",
@@ -71,9 +71,17 @@ public sealed class WiiUPlatformAssetBuilderTests {
             });
 
         PlatformMaterialCookResult result = builder.CookMaterial(request);
+        WiiUStandardShaderMaterialAsset asset = new WiiUStandardShaderMaterialBinarySerializer().Deserialize(result.CookedMaterialBytes);
 
         Assert.NotNull(result);
         Assert.NotEmpty(result.CookedMaterialBytes);
+        Assert.Equal("cooked/textures/test.hasset", asset.DiffuseTextureAssetId);
+        Assert.Equal((byte)128, asset.BaseColorR);
+        Assert.Equal((byte)64, asset.BaseColorG);
+        Assert.Equal((byte)32, asset.BaseColorB);
+        Assert.Equal((byte)255, asset.BaseColorA);
+        Assert.False(asset.Lit);
+        Assert.True(asset.DoubleSided);
         Assert.Equal("ForwardStandardShader", Assert.Single(result.ReferencedShaderAssetIds));
     }
 
