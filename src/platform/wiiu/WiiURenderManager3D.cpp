@@ -177,7 +177,8 @@ namespace helengine::wiiu {
             return;
         }
 
-        CaptureFrame((*extractionResult->get_Frames()).get_Item(0), primaryCamera);
+        RenderFrame* extractedFrame = (*extractionResult->get_Frames()).get_Item(0);
+        CaptureFrame(extractedFrame, primaryCamera);
     }
 
     /// Builds one concrete Wii U runtime material from a cooked platform material asset record.
@@ -401,7 +402,7 @@ namespace helengine::wiiu {
         }
 
         CurrentFrame.SetCamera(CreateCameraState(camera));
-        CaptureSceneLighting();
+        CaptureSceneLighting(frame);
 
         List<RenderFrameDrawableSubmission*>* drawableSubmissions = frame->get_DrawableSubmissions();
         if (drawableSubmissions == nullptr) {
@@ -421,62 +422,77 @@ namespace helengine::wiiu {
 
         if (!CurrentFrame.GetHasDirectionalLight()) {
             return;
+        } else if (!CurrentFrame.GetDirectionalLight().ShadowsEnabled) {
+            return;
         }
 
         WiiUGx23DDirectionalShadowState directionalShadowState {};
         directionalShadowState.LightViewProjection = CreateDirectionalShadowViewProjection(camera, CurrentFrame.GetDirectionalLight());
         directionalShadowState.Strength = CurrentFrame.GetDirectionalLight().ShadowStrength;
         List<RenderFrameShadowCasterSubmission*>* shadowCasterSubmissions = frame->get_ShadowCasterSubmissions();
-        if (shadowCasterSubmissions != nullptr) {
-            for (int32_t index = 0; index < shadowCasterSubmissions->get_Count(); index++) {
-                RenderFrameShadowCasterSubmission* submission = (*shadowCasterSubmissions).get_Item(index);
-                if (submission != nullptr && submission->get_Drawable() != nullptr) {
-                    CaptureShadowCasterCommand(submission, directionalShadowState);
-                }
+        if (directionalShadowState.Strength <= 0.0f
+            || shadowCasterSubmissions == nullptr || shadowCasterSubmissions->get_Count() == 0) {
+            return;
+        }
+
+        for (int32_t index = 0; index < shadowCasterSubmissions->get_Count(); index++) {
+            RenderFrameShadowCasterSubmission* submission = (*shadowCasterSubmissions).get_Item(index);
+            if (submission != nullptr && submission->get_Drawable() != nullptr) {
+                CaptureShadowCasterCommand(submission, directionalShadowState);
             }
+        }
+
+        if (directionalShadowState.ShadowCasterCommands.empty()) {
+            return;
         }
 
         CurrentFrame.SetDirectionalShadow(directionalShadowState);
     }
 
-    /// Captures the current scene ambient and directional light state into the Wii U frame contract.
-    void WiiURenderManager3D::CaptureSceneLighting() {
-        Core* core = Core::get_Instance();
-        if (core == nullptr || core->get_ObjectManager() == nullptr) {
-            throw new InvalidOperationException("Wii U scene lighting capture requires one initialized Core object manager.");
+    /// Captures extracted frame lighting into the Wii U frame contract.
+    void WiiURenderManager3D::CaptureSceneLighting(RenderFrame* frame) {
+        if (frame == nullptr) {
+            throw new ArgumentNullException("frame");
         }
 
-        ObjectManager* objectManager = core->get_ObjectManager();
         float4 ambientLightColor(0.0f, 0.0f, 0.0f, 0.0f);
-        if (objectManager->get_AmbientLights() != nullptr) {
-            for (int32_t ambientLightIndex = 0; ambientLightIndex < objectManager->get_AmbientLights()->get_Count(); ambientLightIndex++) {
-                AmbientLightComponent* ambientLight = (*objectManager->get_AmbientLights()).get_Item(ambientLightIndex);
-                if (ambientLight == nullptr) {
+        DirectionalLightComponent* directionalLight = nullptr;
+        int32_t directionalLightImportance = 0;
+        bool hasDirectionalLight = false;
+        List<RenderFrameLightSubmission*>* lightSubmissions = frame->get_LightSubmissions();
+        if (lightSubmissions != nullptr) {
+            for (int32_t lightIndex = 0; lightIndex < lightSubmissions->get_Count(); lightIndex++) {
+                RenderFrameLightSubmission* lightSubmission = (*lightSubmissions).get_Item(lightIndex);
+                if (lightSubmission == nullptr || lightSubmission->get_Light() == nullptr) {
                     continue;
                 }
 
-                const float4 lightColor = CreateLightColor(ambientLight);
-                ambientLightColor = float4(
-                    ambientLightColor.X + lightColor.X,
-                    ambientLightColor.Y + lightColor.Y,
-                    ambientLightColor.Z + lightColor.Z,
-                    0.0f);
+                AmbientLightComponent* ambientLight = he_cpp_try_cast<AmbientLightComponent>(lightSubmission->get_Light());
+                if (ambientLight != nullptr) {
+                    const float4 lightColor = CreateLightColor(ambientLight);
+                    ambientLightColor = float4(
+                        ambientLightColor.X + lightColor.X,
+                        ambientLightColor.Y + lightColor.Y,
+                        ambientLightColor.Z + lightColor.Z,
+                        0.0f);
+                    continue;
+                }
+
+                DirectionalLightComponent* candidate = he_cpp_try_cast<DirectionalLightComponent>(lightSubmission->get_Light());
+                if (candidate == nullptr
+                    || (hasDirectionalLight && lightSubmission->get_Importance() < directionalLightImportance)) {
+                    continue;
+                }
+
+                directionalLight = candidate;
+                directionalLightImportance = lightSubmission->get_Importance();
+                hasDirectionalLight = true;
             }
         }
+
         CurrentFrame.SetAmbientLightColor(ambientLightColor);
-
-        if (objectManager->get_DirectionalLights() == nullptr) {
-            return;
-        }
-
-        for (int32_t directionalLightIndex = 0; directionalLightIndex < objectManager->get_DirectionalLights()->get_Count(); directionalLightIndex++) {
-            DirectionalLightComponent* directionalLight = (*objectManager->get_DirectionalLights()).get_Item(directionalLightIndex);
-            if (directionalLight == nullptr) {
-                continue;
-            }
-
+        if (directionalLight != nullptr) {
             CurrentFrame.SetDirectionalLight(CreateDirectionalLightState(directionalLight));
-            return;
         }
     }
 
@@ -647,6 +663,7 @@ namespace helengine::wiiu {
         WiiUGx23DDirectionalLightState directionalLightState {};
         directionalLightState.Color = CreateLightColor(light);
         directionalLightState.Direction = float4(direction.X, direction.Y, direction.Z, 0.0f);
+        directionalLightState.ShadowsEnabled = light->get_ShadowsEnabled();
         directionalLightState.ShadowDistance = light->get_ShadowDistance();
         directionalLightState.ShadowStrength = light->get_ShadowStrength();
         return directionalLightState;

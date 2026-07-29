@@ -5,7 +5,7 @@ namespace helengine.wiiu.builder.tests;
 /// </summary>
 public sealed class WiiUCemuLauncherScriptTests {
     /// <summary>
-    /// Ensures the canonical launcher requires one explicit artifact path, force-closes Cemu, prints RPX timestamp data, and uses a dedicated launcher user profile.
+    /// Ensures the canonical launcher requires one explicit artifact path, force-closes Cemu, prints artifact timestamp data, and launches through Helena's persistent Cemu profile.
     /// </summary>
     [Fact]
     public void Launcher_RequiresArtifactPath_AndKeepsDedicatedProfileContract() {
@@ -23,8 +23,9 @@ public sealed class WiiUCemuLauncherScriptTests {
         Assert.Contains("Get-Item -LiteralPath $resolvedArtifactPath", scriptSource, StringComparison.Ordinal);
         Assert.Contains("LastWriteTime", scriptSource, StringComparison.Ordinal);
         Assert.Contains("Cemu.exe", scriptSource, StringComparison.Ordinal);
-        Assert.Contains("tmp\\cemu-launcher-user", scriptSource, StringComparison.Ordinal);
-        Assert.Contains("'-g', $resolvedArtifactPath", scriptSource, StringComparison.Ordinal);
+        Assert.Contains("$cemuProfileUserRoot = 'C:\\Users\\Helena'", scriptSource, StringComparison.Ordinal);
+        Assert.Contains("$startInfo.EnvironmentVariables['APPDATA'] = $cemuAppDataRoot", scriptSource, StringComparison.Ordinal);
+        Assert.Contains("$startInfo.Arguments = ('-g \"' + $resolvedArtifactPath + '\"')", scriptSource, StringComparison.Ordinal);
         Assert.Contains("PROCESS_ID=", scriptSource, StringComparison.Ordinal);
         Assert.DoesNotContain("[string]$RpxPath", scriptSource, StringComparison.Ordinal);
     }

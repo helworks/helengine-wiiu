@@ -179,6 +179,7 @@ public sealed class WiiUGlslShaderBackend : IShaderBackend {
                 cross.CompilerSetEntryPoint(compiler, request.EntryPoint, GetExecutionModel(request.Stage));
                 NameRuntimeResources(cross, compiler, request.Stage);
                 cross.CompilerBuildCombinedImageSamplers(compiler);
+                NameCombinedImageSamplerResources(cross, compiler);
                 byte* source = null;
                 cross.CompilerCompile(compiler, &source);
                 if (source == null) {
@@ -272,6 +273,29 @@ public sealed class WiiUGlslShaderBackend : IShaderBackend {
         NameUniformBufferResources(cross, compiler, resources);
         if (stage == ShaderStage.Vertex) {
             NameVertexInputResources(cross, compiler, resources);
+            NameStageInterfaceResources(cross, compiler, resources, ResourceType.StageOutput);
+        } else {
+            NameStageInterfaceResources(cross, compiler, resources, ResourceType.StageInput);
+        }
+    }
+
+    /// <summary>
+    /// Assigns stable texture names after SPIRV-Cross combines separate HLSL textures and samplers into GLSL sampler resources.
+    /// </summary>
+    /// <param name="cross">SPIRV-Cross API used to inspect the combined GLSL resources.</param>
+    /// <param name="compiler">SPIRV-Cross compiler containing the combined program.</param>
+    unsafe void NameCombinedImageSamplerResources(Cross cross, SpirvCrossCompiler* compiler) {
+        CombinedImageSampler* combinedImageSamplers = null;
+        nuint combinedImageSamplerCount = 0;
+        cross.CompilerGetCombinedImageSamplers(compiler, &combinedImageSamplers, &combinedImageSamplerCount);
+        for (nuint samplerIndex = 0; samplerIndex < combinedImageSamplerCount; samplerIndex++) {
+            CombinedImageSampler combinedImageSampler = combinedImageSamplers[samplerIndex];
+            uint binding = cross.CompilerGetDecoration(compiler, combinedImageSampler.ImageId, Silk.NET.SPIRV.Decoration.Binding);
+            cross.CompilerSetDecoration(compiler, combinedImageSampler.CombinedId, Silk.NET.SPIRV.Decoration.Binding, binding);
+            string resourceName = GetTextureResourceName(binding);
+            if (!string.IsNullOrWhiteSpace(resourceName)) {
+                cross.CompilerSetName(compiler, combinedImageSampler.CombinedId, resourceName);
+            }
         }
     }
 
@@ -316,6 +340,27 @@ public sealed class WiiUGlslShaderBackend : IShaderBackend {
     }
 
     /// <summary>
+    /// Assigns matching names to separately compiled vertex outputs and pixel inputs so the CafeGLSL linker connects StandardShader varyings by location.
+    /// </summary>
+    /// <param name="cross">SPIRV-Cross API used to inspect the compiled program.</param>
+    /// <param name="compiler">SPIRV-Cross compiler containing the parsed program.</param>
+    /// <param name="resources">Reflected shader resources.</param>
+    /// <param name="resourceType">Vertex-output or pixel-input resource type whose names should be stabilized.</param>
+    unsafe void NameStageInterfaceResources(Cross cross, SpirvCrossCompiler* compiler, Resources* resources, ResourceType resourceType) {
+        ReflectedResource* reflectedResources = null;
+        nuint resourceCount = 0;
+        cross.ResourcesGetResourceListForType(resources, resourceType, &reflectedResources, &resourceCount);
+        for (nuint resourceIndex = 0; resourceIndex < resourceCount; resourceIndex++) {
+            ReflectedResource resource = reflectedResources[resourceIndex];
+            uint location = cross.CompilerGetDecoration(compiler, resource.Id, Silk.NET.SPIRV.Decoration.Location);
+            string resourceName = GetStageInterfaceName(location);
+            if (!string.IsNullOrWhiteSpace(resourceName)) {
+                cross.CompilerSetName(compiler, resource.Id, resourceName);
+            }
+        }
+    }
+
+    /// <summary>
     /// Resolves the runtime uniform-block name for one StandardShader HLSL binding slot.
     /// </summary>
     /// <param name="binding">HLSL constant-buffer binding slot.</param>
@@ -335,6 +380,25 @@ public sealed class WiiUGlslShaderBackend : IShaderBackend {
     }
 
     /// <summary>
+    /// Resolves the runtime texture name for one shared StandardShader texture binding slot.
+    /// </summary>
+    /// <param name="binding">HLSL texture binding slot.</param>
+    /// <returns>Stable GX2 sampler name, or an empty string for a resource outside the runtime contract.</returns>
+    string GetTextureResourceName(uint binding) {
+        return binding switch {
+            0U => "DiffuseTexture",
+            1U => "shadowAtlasTexture",
+            2U => "pointShadowTexture0",
+            3U => "pointShadowTexture1",
+            4U => "pointShadowTexture2",
+            5U => "pointShadowTexture3",
+            6U => "RoughnessTexture",
+            7U => "EmissiveTexture",
+            _ => string.Empty
+        };
+    }
+
+    /// <summary>
     /// Resolves the runtime vertex-attribute name for one StandardShader input location.
     /// </summary>
     /// <param name="location">Vertex-input location emitted by shaderc.</param>
@@ -344,6 +408,20 @@ public sealed class WiiUGlslShaderBackend : IShaderBackend {
             0U => "Position",
             1U => "Normal",
             2U => "TexCoord",
+            _ => string.Empty
+        };
+    }
+
+    /// <summary>
+    /// Resolves the stable cross-stage varying name for one StandardShader interface location.
+    /// </summary>
+    /// <param name="location">Shared vertex-output and pixel-input location emitted by shaderc.</param>
+    /// <returns>Stable varying name, or an empty string for a location outside the StandardShader interface.</returns>
+    string GetStageInterfaceName(uint location) {
+        return location switch {
+            0U => "WorldPosition",
+            1U => "WorldNormal",
+            2U => "TextureCoordinate",
             _ => string.Empty
         };
     }

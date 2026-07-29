@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 #include <coreinit/screen.h>
 
@@ -43,6 +44,9 @@ namespace helengine::wiiu {
         /// Initializes the Wii U generated core and queues the packaged startup scene.
         bool InitializeEngineCore();
 
+        /// Opens representative packaged payloads before engine startup so bundle filesystem failures identify the missing entry directly.
+        bool ProbePackagedContent();
+
         /// Initializes the Wii U GX2 presenter used for steady-state rendered output.
         bool InitializeGx2Presenter();
 
@@ -55,17 +59,23 @@ namespace helengine::wiiu {
         /// Draws one generated-core frame for the packaged Wii U runtime.
         bool DrawEngineCore();
 
-        /// Presents one frame using the current boot phase clear color on both displays.
-        void PresentFrame();
+        /// Presents one frame and records a visible failure message when renderer presentation throws.
+        bool PresentFrame();
 
         /// Presents one boot-phase frame using the current diagnostic clear color on both displays.
         void PresentBootPhaseFrame();
+
+        /// Draws the persistent boot-failure message with one Wii U screen-font call per line.
+        void DrawBootFailureMessage(OSScreenID screen) const;
 
         /// Presents one renderer-owned frame after the generated core has initialized.
         void PresentRenderedFrame();
 
         /// Appends one host-readable Wii U runtime trace line to every supported trace sink.
         void AppendRuntimeTrace(const char* format, ...);
+
+        /// Displays a terminal boot failure in Cemu with the failed stage and diagnostic message.
+        void ShowBootFailure(const char* stage, const char* message);
 
         /// Stores the active boot phase and clear color used by the present loop.
         void SetBootPhase(WiiUBootPhase phase, std::uint32_t color);
@@ -84,6 +94,12 @@ namespace helengine::wiiu {
 
         /// Stores the active clear color for frame presentation.
         std::uint32_t ClearColor;
+
+        /// Stores the persistent Cemu-visible failure text when boot cannot continue.
+        std::string BootFailureMessage;
+
+        /// Stores the most recent generated runtime failure detail for the boot-failure display.
+        std::string LastRuntimeFailureMessage;
 
         /// Stores the GX2 presenter used for steady-state software-surface presentation.
         WiiUGx2Presenter* Gx2Presenter;

@@ -75,8 +75,8 @@ namespace helengine::wiiu {
         /// Captures one extracted render frame into the Wii U frame contract.
         void CaptureFrame(RenderFrame* frame, CameraComponent* camera);
 
-        /// Captures the current scene ambient and directional light state into the Wii U frame contract.
-        void CaptureSceneLighting();
+        /// Captures extracted frame lighting into the Wii U frame contract.
+        void CaptureSceneLighting(RenderFrame* frame);
 
         /// Captures one extracted drawable submission into the current frame when its runtime model and runtime material are Wii U-owned.
         void CaptureDrawCommand(RenderFrameDrawableSubmission* submission);

@@ -99,9 +99,12 @@ public sealed class WiiUShaderArtifactCooker {
     /// <returns>Variant-specific compile definitions.</returns>
     ShaderDefine[] BuildVariantDefines(string variantName) {
         if (string.Equals(variantName, "ForwardStandard", StringComparison.Ordinal)) {
-            return [];
+            return [new ShaderDefine("HELENGINE_WIIU_DIRECTIONAL_SHADOWS_ONLY", "1")];
         } else if (string.Equals(variantName, "ForwardStandardShadowed", StringComparison.Ordinal)) {
-            return [new ShaderDefine("HELENGINE_STANDARD_SHADOWED", "1")];
+            return [
+                new ShaderDefine("HELENGINE_STANDARD_SHADOWED", "1"),
+                new ShaderDefine("HELENGINE_WIIU_DIRECTIONAL_SHADOWS_ONLY", "1")
+            ];
         } else if (string.Equals(variantName, "ShadowDepth", StringComparison.Ordinal)) {
             return [new ShaderDefine("HELENGINE_STANDARD_SHADOW_DEPTH", "1")];
         }

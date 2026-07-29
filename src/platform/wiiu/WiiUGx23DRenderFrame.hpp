@@ -37,6 +37,9 @@ namespace helengine::wiiu {
         /// The world-space light direction captured for the current frame.
         float4 Direction;
 
+        /// Whether the authored directional light currently requests shadow rendering.
+        bool ShadowsEnabled;
+
         /// The authored maximum directional-shadow distance in world units.
         float ShadowDistance;
 

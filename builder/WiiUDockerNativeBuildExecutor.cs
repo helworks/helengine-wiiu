@@ -10,6 +10,16 @@ namespace helengine.wiiu.builder;
 /// </summary>
 public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
     /// <summary>
+    /// Source-relative generated Standard material path emitted by the shared editor cook pipeline.
+    /// </summary>
+    const string GeneratedStandardMaterialRelativePath = "cooked/engine/materials/standard.hasset";
+
+    /// <summary>
+    /// Root-level Wii U package alias used while Cemu's WUHB RomFS lookup rejects the generated material's canonical nested entry.
+    /// </summary>
+    const string WiiUStandardMaterialAliasRelativePath = "wiiu_standard_material.hasset";
+
+    /// <summary>
     /// Builds the native Wii U packaged artifacts and returns the produced artifact paths.
     /// </summary>
     /// <param name="request">Resolved platform build request.</param>
@@ -30,6 +40,7 @@ public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
         string generatedCoreRootPath = WiiUBuilderPaths.ResolveGeneratedCoreRootPath(request);
         string packageSourceRootPath = WiiUBuilderPaths.ResolvePackageSourceRootPath(request);
         EnsureCleanNativeBuildOutput(repositoryRootPath);
+        PreparePackageSource(packageSourceRootPath);
         ProcessStartInfo startInfo = CreateStartInfo(repositoryRootPath, generatedCoreRootPath, packageSourceRootPath);
 
         NativeProcessRunResult result = new NativeProcessRunner().Run(startInfo, cancellationToken);
@@ -106,6 +117,26 @@ public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
         startInfo.ArgumentList.Add("-lc");
         startInfo.ArgumentList.Add(hasPackagedContent ? "make CONTENT=/workspace/content APP_CONTENT=/workspace/content WIIU_STANDARD_SHADER_SOURCES=/workspace/content/cooked/shaders" : "make");
         return startInfo;
+    }
+
+    /// <summary>
+    /// Adds Wii U-specific package aliases before the WUHB archive is constructed while preserving the editor-produced cooked source tree.
+    /// </summary>
+    /// <param name="packageSourceRootPath">Absolute package-source root consumed by the native WUHB build.</param>
+    static void PreparePackageSource(string packageSourceRootPath) {
+        if (string.IsNullOrWhiteSpace(packageSourceRootPath)) {
+            throw new ArgumentException("Wii U package source root is required.", nameof(packageSourceRootPath));
+        } else if (!Directory.Exists(packageSourceRootPath)) {
+            return;
+        }
+
+        string sourceMaterialPath = Path.Combine(packageSourceRootPath, GeneratedStandardMaterialRelativePath);
+        if (!File.Exists(sourceMaterialPath)) {
+            return;
+        }
+
+        string aliasMaterialPath = Path.Combine(packageSourceRootPath, WiiUStandardMaterialAliasRelativePath);
+        File.Copy(sourceMaterialPath, aliasMaterialPath, true);
     }
 
     /// <summary>

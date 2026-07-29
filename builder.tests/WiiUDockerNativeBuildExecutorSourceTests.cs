@@ -13,6 +13,9 @@ public sealed class WiiUDockerNativeBuildExecutorSourceTests {
         string executorSource = File.ReadAllText(Path.Combine(repositoryRootPath, "builder", "WiiUDockerNativeBuildExecutor.cs"));
 
         Assert.Contains("EnsureCleanNativeBuildOutput(repositoryRootPath);", executorSource, StringComparison.Ordinal);
+        Assert.Contains("PreparePackageSource(packageSourceRootPath);", executorSource, StringComparison.Ordinal);
+        Assert.Contains("wiiu_standard_material.hasset", executorSource, StringComparison.Ordinal);
+        Assert.Contains("File.Copy(sourceMaterialPath, aliasMaterialPath, true);", executorSource, StringComparison.Ordinal);
         Assert.Contains("Directory.Delete(buildRootPath, recursive: true);", executorSource, StringComparison.Ordinal);
         Assert.Contains("Directory.Exists(packageSourceRootPath)", executorSource, StringComparison.Ordinal);
         Assert.Contains("packageSourceRootPath + \":/workspace/content\"", executorSource, StringComparison.Ordinal);

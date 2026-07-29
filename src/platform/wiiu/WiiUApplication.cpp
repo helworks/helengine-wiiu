@@ -74,6 +74,8 @@ namespace helengine::wiiu {
         , DrcBuffer(nullptr)
         , BootPhase(WiiUBootPhase::NativeStartup)
         , ClearColor(StartupClearColor)
+        , BootFailureMessage()
+        , LastRuntimeFailureMessage()
         , Gx2Presenter(nullptr)
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
         , EngineInitialized(false)
@@ -125,73 +127,92 @@ namespace helengine::wiiu {
         AppendRuntimeTrace("[WiiUFile] InitializeVideo begin.\n");
         if (!InitializeVideo()) {
             AppendRuntimeTrace("[WiiUFile] InitializeVideo failed.\n");
+            ShowBootFailure("InitializeVideo", "Could not allocate or initialize OSScreen buffers.");
             SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
             WHBProcShutdown();
-            return 1;
+            return 101;
         }
         AppendRuntimeTrace("[WiiUFile] InitializeVideo completed.\n");
         AppendRuntimeTrace("[WiiUFile] InitializeGx2Presenter begin.\n");
         if (!InitializeGx2Presenter()) {
             AppendRuntimeTrace("[WiiUFile] InitializeGx2Presenter failed.\n");
+            ShowBootFailure("InitializeGx2Presenter", "GX2 presenter initialization returned false.");
             SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
             OSScreenShutdown();
             WHBProcShutdown();
-            return 1;
+            return 102;
         }
         AppendRuntimeTrace("[WiiUFile] InitializeGx2Presenter completed.\n");
         if (!InitializeEngineCore()) {
             AppendRuntimeTrace("[WiiUFile] InitializeEngineCore failed.\n");
+            ShowBootFailure("InitializeEngineCore", "Generated runtime initialization returned false without an exception.");
             SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
             OSScreenShutdown();
             WHBProcShutdown();
-            return 1;
+            return 103;
         }
         SetBootPhase(WiiUBootPhase::Running, StartupClearColor);
         while (WHBProcIsRunning()) {
             if (DiagnosticFrameLoopModeValue == DiagnosticFrameLoopMode::PresentOnly) {
-                PresentFrame();
+                if (!PresentFrame()) {
+                    ShowBootFailure("PresentFrame", LastRuntimeFailureMessage.c_str());
+                    return 106;
+                }
                 continue;
             }
 
             if (DiagnosticFrameLoopModeValue == DiagnosticFrameLoopMode::UpdateOnly) {
                 if (!UpdateEngineCore()) {
+                    ShowBootFailure("UpdateEngineCore", LastRuntimeFailureMessage.c_str());
                     SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
                     OSScreenShutdown();
                     WHBProcShutdown();
-                    return 1;
+                    return 104;
                 }
 
-                PresentFrame();
+                if (!PresentFrame()) {
+                    ShowBootFailure("PresentFrame", LastRuntimeFailureMessage.c_str());
+                    return 106;
+                }
                 continue;
             }
 
             if (DiagnosticFrameLoopModeValue == DiagnosticFrameLoopMode::DrawOnly) {
                 if (!DrawEngineCore()) {
+                    ShowBootFailure("DrawEngineCore", LastRuntimeFailureMessage.c_str());
                     SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
                     OSScreenShutdown();
                     WHBProcShutdown();
-                    return 1;
+                    return 105;
                 }
 
-                PresentFrame();
+                if (!PresentFrame()) {
+                    ShowBootFailure("PresentFrame", LastRuntimeFailureMessage.c_str());
+                    return 106;
+                }
                 continue;
             }
 
             if (!UpdateEngineCore()) {
+                ShowBootFailure("UpdateEngineCore", LastRuntimeFailureMessage.c_str());
                 SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
                 OSScreenShutdown();
                 WHBProcShutdown();
-                return 1;
+                return 104;
             }
 
             if (!DrawEngineCore()) {
+                ShowBootFailure("DrawEngineCore", LastRuntimeFailureMessage.c_str());
                 SetBootPhase(WiiUBootPhase::Failed, StartupClearColor);
                 OSScreenShutdown();
                 WHBProcShutdown();
-                return 1;
+                return 105;
             }
 
-            PresentFrame();
+            if (!PresentFrame()) {
+                ShowBootFailure("PresentFrame", LastRuntimeFailureMessage.c_str());
+                return 106;
+            }
             OSSleepTicks(OSMillisecondsToTicks(16));
         }
 
@@ -226,12 +247,26 @@ namespace helengine::wiiu {
             return true;
         }
 
-        OSReport("[WiiU] InitializeGx2Presenter construct presenter.\n");
-        Gx2Presenter = new WiiUGx2Presenter();
-        OSReport("[WiiU] InitializeGx2Presenter initialize presenter begin.\n");
-        bool initialized = Gx2Presenter->Initialize();
-        OSReport("[WiiU] InitializeGx2Presenter initialize presenter completed result=%d.\n", initialized ? 1 : 0);
-        return initialized;
+        try {
+            OSReport("[WiiU] InitializeGx2Presenter construct presenter.\n");
+            Gx2Presenter = new WiiUGx2Presenter();
+            OSReport("[WiiU] InitializeGx2Presenter initialize presenter begin.\n");
+            bool initialized = Gx2Presenter->Initialize();
+            OSReport("[WiiU] InitializeGx2Presenter initialize presenter completed result=%d.\n", initialized ? 1 : 0);
+            return initialized;
+        }
+        catch (const std::exception& exception) {
+            OSReport("[WiiU] InitializeGx2Presenter threw: %s\n", exception.what());
+            AppendRuntimeTrace("[WiiUFile] InitializeGx2Presenter threw: %s\n", exception.what());
+            ShowBootFailure("InitializeGx2Presenter", exception.what());
+            return false;
+        }
+        catch (...) {
+            OSReport("[WiiU] InitializeGx2Presenter threw an unknown exception.\n");
+            AppendRuntimeTrace("[WiiUFile] InitializeGx2Presenter threw an unknown exception.\n");
+            ShowBootFailure("InitializeGx2Presenter", "Unknown exception.");
+            return false;
+        }
     }
 
     /// Initializes the Wii U generated core and queues the packaged startup scene.
@@ -277,6 +312,11 @@ namespace helengine::wiiu {
             initializationOptions->RenderList3DInitialCapacity = 64;
             initializationOptions->RuntimeDiagnosticsProvider = EngineRuntimeDiagnosticsProvider;
             initializationOptions->StandardPlatformInputConfiguration = CreateStandardPlatformInputConfiguration();
+
+            initializationStage = "ProbePackagedContent";
+            if (!ProbePackagedContent()) {
+                return false;
+            }
 
             initializationStage = "ConstructCore";
             EngineCore = new Core(initializationOptions);
@@ -344,6 +384,7 @@ namespace helengine::wiiu {
             EngineInitialized = false;
             OSReport("[WiiU] Engine core initialization threw Exception* stage=%s message=%s\n", initializationStage, exception != nullptr ? exception->what() : "<null>");
             AppendRuntimeTrace("[WiiUFile] Engine core initialization threw Exception* stage=%s message=%s\n", initializationStage, exception != nullptr ? exception->what() : "<null>");
+            ShowBootFailure(initializationStage, exception != nullptr ? exception->what() : "<null generated exception>");
             delete exception;
             return false;
         }
@@ -351,14 +392,53 @@ namespace helengine::wiiu {
             EngineInitialized = false;
             OSReport("[WiiU] Engine core initialization threw std::exception stage=%s message=%s\n", initializationStage, exception.what());
             AppendRuntimeTrace("[WiiUFile] Engine core initialization threw std::exception stage=%s message=%s\n", initializationStage, exception.what());
+            ShowBootFailure(initializationStage, exception.what());
             return false;
         }
         catch (...) {
             EngineInitialized = false;
             OSReport("[WiiU] Engine core initialization threw stage=%s.\n", initializationStage);
             AppendRuntimeTrace("[WiiUFile] Engine core initialization threw stage=%s.\n", initializationStage);
+            ShowBootFailure(initializationStage, "Unknown exception.");
             return false;
         }
+#else
+        return true;
+#endif
+    }
+
+    /// Opens representative packaged payloads before engine startup so bundle filesystem failures identify the missing entry directly.
+    bool WiiUApplication::ProbePackagedContent() {
+#if HELENGINE_WIIU_HAS_GENERATED_CORE
+        if (EngineContentStreamSource == nullptr) {
+            throw std::logic_error("The packaged content stream source was not initialized.");
+        }
+
+        constexpr const char* ContentPaths[] = {
+            "cooked/scenes/helenofcodesplash.hasset",
+            "wiiu_standard_material.hasset",
+            "cooked/engine/materials/standard.hasset"
+        };
+        for (const char* contentPath : ContentPaths) {
+            try {
+                Stream* stream = EngineContentStreamSource->OpenRead(contentPath);
+                delete stream;
+                AppendRuntimeTrace("[WiiUFile] Packaged content probe opened: %s\n", contentPath);
+            }
+            catch (Exception* exception) {
+                const char* message = exception != nullptr ? exception->what() : "<null generated exception>";
+                AppendRuntimeTrace("[WiiUFile] Packaged content probe failed: %s message=%s\n", contentPath, message);
+                delete exception;
+                ShowBootFailure("ProbePackagedContent", message);
+                return false;
+            }
+            catch (const std::exception& exception) {
+                AppendRuntimeTrace("[WiiUFile] Packaged content probe failed: %s message=%s\n", contentPath, exception.what());
+                ShowBootFailure("ProbePackagedContent", exception.what());
+                return false;
+            }
+        }
+        return true;
 #else
         return true;
 #endif
@@ -395,6 +475,7 @@ namespace helengine::wiiu {
     bool WiiUApplication::UpdateEngineCore() {
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
         if (!EngineInitialized || EngineCore == nullptr || EngineRenderManager2D == nullptr || EngineRenderManager3D == nullptr) {
+            LastRuntimeFailureMessage = "Generated runtime update prerequisites were not initialized.";
             return false;
         }
 
@@ -413,6 +494,7 @@ namespace helengine::wiiu {
         }
         catch (Exception* exception) {
             EngineInitialized = false;
+            LastRuntimeFailureMessage = exception != nullptr ? exception->what() : "<null generated exception>";
             OSReport("[WiiU] Engine update threw Exception*: %s\n", exception != nullptr ? exception->what() : "<null>");
             AppendRuntimeTrace("[WiiUFile] Engine update threw Exception*: %s\n", exception != nullptr ? exception->what() : "<null>");
             delete exception;
@@ -420,12 +502,14 @@ namespace helengine::wiiu {
         }
         catch (const std::exception& exception) {
             EngineInitialized = false;
+            LastRuntimeFailureMessage = exception.what();
             OSReport("[WiiU] Engine update threw std::exception: %s\n", exception.what());
             AppendRuntimeTrace("[WiiUFile] Engine update threw std::exception: %s\n", exception.what());
             return false;
         }
         catch (...) {
             EngineInitialized = false;
+            LastRuntimeFailureMessage = "Unknown exception.";
             OSReport("[WiiU] Engine update threw.\n");
             AppendRuntimeTrace("[WiiUFile] Engine update threw.\n");
             return false;
@@ -439,6 +523,7 @@ namespace helengine::wiiu {
     bool WiiUApplication::DrawEngineCore() {
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
         if (!EngineInitialized || EngineCore == nullptr || EngineRenderManager2D == nullptr || EngineRenderManager3D == nullptr) {
+            LastRuntimeFailureMessage = "Generated runtime draw prerequisites were not initialized.";
             return false;
         }
 
@@ -459,6 +544,7 @@ namespace helengine::wiiu {
         }
         catch (Exception* exception) {
             EngineInitialized = false;
+            LastRuntimeFailureMessage = exception != nullptr ? exception->what() : "<null generated exception>";
             OSReport("[WiiU] Engine draw threw Exception*: %s\n", exception != nullptr ? exception->what() : "<null>");
             AppendRuntimeTrace("[WiiUFile] Engine draw threw Exception*: %s\n", exception != nullptr ? exception->what() : "<null>");
             delete exception;
@@ -466,12 +552,14 @@ namespace helengine::wiiu {
         }
         catch (const std::exception& exception) {
             EngineInitialized = false;
+            LastRuntimeFailureMessage = exception.what();
             OSReport("[WiiU] Engine draw threw std::exception: %s\n", exception.what());
             AppendRuntimeTrace("[WiiUFile] Engine draw threw std::exception: %s\n", exception.what());
             return false;
         }
         catch (...) {
             EngineInitialized = false;
+            LastRuntimeFailureMessage = "Unknown exception.";
             OSReport("[WiiU] Engine draw threw.\n");
             AppendRuntimeTrace("[WiiUFile] Engine draw threw.\n");
             return false;
@@ -482,25 +570,68 @@ namespace helengine::wiiu {
     }
 
     /// Presents one frame using either the diagnostic boot clear color or the renderer-owned output surfaces.
-    void WiiUApplication::PresentFrame() {
+    bool WiiUApplication::PresentFrame() {
+        try {
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
-        if (!EngineInitialized) {
-            PresentBootPhaseFrame();
-            return;
-        }
+            if (!EngineInitialized) {
+                PresentBootPhaseFrame();
+                return true;
+            }
 
-        PresentRenderedFrame();
+            PresentRenderedFrame();
 #else
-        PresentBootPhaseFrame();
+            PresentBootPhaseFrame();
 #endif
+            return true;
+        }
+        catch (Exception* exception) {
+            LastRuntimeFailureMessage = exception != nullptr ? exception->what() : "<null generated exception>";
+            delete exception;
+            return false;
+        }
+        catch (const std::exception& exception) {
+            LastRuntimeFailureMessage = exception.what();
+            return false;
+        }
+        catch (...) {
+            LastRuntimeFailureMessage = "Unknown exception.";
+            return false;
+        }
     }
 
     /// Presents one boot-phase frame using the current diagnostic clear color on both displays.
     void WiiUApplication::PresentBootPhaseFrame() {
         OSScreenClearBufferEx(SCREEN_TV, ClearColor);
         OSScreenClearBufferEx(SCREEN_DRC, ClearColor);
+        if (!BootFailureMessage.empty()) {
+            DrawBootFailureMessage(SCREEN_TV);
+            DrawBootFailureMessage(SCREEN_DRC);
+        }
         OSScreenFlipBuffersEx(SCREEN_TV);
         OSScreenFlipBuffersEx(SCREEN_DRC);
+    }
+
+    /// Draws the terminal boot failure as separate rows because OSScreen font output does not lay out embedded line breaks.
+    void WiiUApplication::DrawBootFailureMessage(OSScreenID screen) const {
+        std::size_t lineStart = 0U;
+        std::uint32_t lineY = 2U;
+        while (lineStart < BootFailureMessage.length()) {
+            std::size_t lineEnd = BootFailureMessage.find('\n', lineStart);
+            std::string line = BootFailureMessage.substr(lineStart, lineEnd - lineStart);
+            std::size_t characterStart = 0U;
+            while (characterStart < line.length()) {
+                std::string wrappedLine = line.substr(characterStart, 38U);
+                OSScreenPutFontEx(screen, 2U, lineY, wrappedLine.c_str());
+                lineY += 2U;
+                characterStart += wrappedLine.length();
+            }
+
+            if (lineEnd == std::string::npos) {
+                break;
+            }
+
+            lineStart = lineEnd + 1U;
+        }
     }
 
     /// Presents one renderer-owned frame after the generated core has initialized.
@@ -535,6 +666,22 @@ namespace helengine::wiiu {
             std::fputs(buffer, file);
             std::fflush(file);
             std::fclose(file);
+        }
+    }
+
+    /// Displays one terminal boot failure through the persistent OSScreen boot path and preserves it in the runtime trace.
+    void WiiUApplication::ShowBootFailure(const char* stage, const char* message) {
+        const char* resolvedStage = stage != nullptr ? stage : "UnknownStage";
+        const char* resolvedMessage = message != nullptr ? message : "No diagnostic message.";
+        char formattedMessage[2048];
+        std::snprintf(formattedMessage, sizeof(formattedMessage), "HelEngine Wii U boot failure\nStage: %s\n%s", resolvedStage, resolvedMessage);
+        BootFailureMessage = formattedMessage;
+        EngineInitialized = false;
+        SetBootPhase(WiiUBootPhase::Failed, 0xFF000080);
+        AppendRuntimeTrace("[WiiUFile] Cemu-visible boot failure stage=%s message=%s\n", resolvedStage, resolvedMessage);
+        while (WHBProcIsRunning()) {
+            PresentBootPhaseFrame();
+            OSSleepTicks(OSMillisecondsToTicks(16));
         }
     }
 

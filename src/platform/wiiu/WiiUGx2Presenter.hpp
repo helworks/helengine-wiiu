@@ -151,8 +151,15 @@ namespace helengine::wiiu {
         /// Renders all captured directional shadow casters into the presenter-owned depth texture.
         void RenderDirectionalShadowDepthPass(GX2ContextState* contextState, const WiiUGx23DRenderFrame& frame);
 
-        /// Renders one captured receiver command through the generated shadowed StandardShader variant.
-        void RenderShadowed3DDrawCommandToColorBuffer(const WiiUGx23DDrawCommand& drawCommand, const WiiUGx23DRenderFrame& frame, const WiiUGx23DCameraState& cameraState, std::uint32_t targetWidth, std::uint32_t targetHeight);
+        /// Renders one captured receiver command through the selected generated StandardShader variant.
+        void RenderStandard3DDrawCommandToColorBuffer(
+            const WiiUGx23DDrawCommand& drawCommand,
+            const WiiUGx23DRenderFrame& frame,
+            const WiiUGx23DCameraState& cameraState,
+            WHBGfxShaderGroup* shaderGroup,
+            bool directionalShadowsEnabled,
+            std::uint32_t targetWidth,
+            std::uint32_t targetHeight);
 
         /// Renders the captured 2D quad commands into the currently bound color buffer without clearing it first.
         void RenderQuadCommandsToColorBuffer(const WiiUGx2RenderFrame& frame, std::uint32_t targetWidth, std::uint32_t targetHeight);
@@ -279,6 +286,9 @@ namespace helengine::wiiu {
 
         /// Stores the shared StandardShader transform buffer at HLSL binding b0.
         GX2RBuffer StandardShaderTransformBuffer;
+
+        /// Stores directional-shadow transforms independently from forward receiver uniforms.
+        GX2RBuffer ShadowDepthTransformBuffer;
 
         /// Stores the shared StandardShader forward-light buffer at HLSL binding b1.
         GX2RBuffer StandardShaderForwardLightBuffer;

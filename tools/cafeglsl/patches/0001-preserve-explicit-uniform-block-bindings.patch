@@ -1,0 +1,19 @@
+diff --git a/src/compiler/glsl/gl_nir_lower_buffers.c b/src/compiler/glsl/gl_nir_lower_buffers.c
+index 3a98c9d69f9a432195af38741398ba7e5783b467..8f2481301131c5d591bc7b1ff5a0211c61ba6f47 100644
+--- a/src/compiler/glsl/gl_nir_lower_buffers.c
++++ b/src/compiler/glsl/gl_nir_lower_buffers.c
+@@ -98,11 +98,11 @@ get_block_array_index(nir_builder *b, nir_deref_instr *deref,
+    for (unsigned i = 0; i < num_blocks; i++) {
+       if (( use_bindings && binding == blocks[i]->Binding) ||
+           (!use_bindings && strcmp(block_name, blocks[i]->name.string) == 0)) {
+-         deref->var->data.driver_location = i - const_array_offset;
++         deref->var->data.driver_location = binding - const_array_offset;
+          if (nonconst_index)
+-            return nir_iadd_imm(b, nonconst_index, i);
++            return nir_iadd_imm(b, nonconst_index, binding);
+          else
+-            return nir_imm_int(b, i);
++            return nir_imm_int(b, binding);
+       }
+    }
+ 

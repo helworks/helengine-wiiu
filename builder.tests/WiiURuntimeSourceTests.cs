@@ -5,6 +5,139 @@ namespace helengine.wiiu.builder.tests;
 /// </summary>
 public sealed class WiiURuntimeSourceTests {
     /// <summary>
+    /// Ensures the native host probes both a known scene payload and the shared StandardShader material before engine startup so Wii U bundle lookup failures identify the exact packaged entry.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_ProbesPackagedContentBeforeEngineStartup() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.Contains("bool ProbePackagedContent();", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("bool WiiUApplication::ProbePackagedContent()", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("cooked/scenes/helenofcodesplash.hasset", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("cooked/engine/materials/standard.hasset", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("wiiu_standard_material.hasset", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("EngineContentStreamSource->OpenRead", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("ProbePackagedContent", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures ordinary directional lights do not route scenes with no active shadow casters through the shadowed StandardShader path.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_OnlyEnablesDirectionalShadowsForActiveShadowCasters() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string renderManagerSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.cpp"));
+
+        Assert.Contains("directionalShadowState.Strength <= 0.0f", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("shadowCasterSubmissions == nullptr || shadowCasterSubmissions->get_Count() == 0", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("CurrentFrame.SetDirectionalShadow(directionalShadowState);", renderManagerSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures a directional light whose authored shadow toggle is disabled stays on the unshadowed StandardShader route even when its strength and caster list are non-empty.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_RespectsAuthoredDirectionalShadowEnablement() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string renderFrameSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx23DRenderFrame.hpp"));
+        string renderManagerSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.cpp"));
+
+        Assert.Contains("bool ShadowsEnabled;", renderFrameSource, StringComparison.Ordinal);
+        Assert.Contains("directionalLightState.ShadowsEnabled = light->get_ShadowsEnabled();", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("if (!CurrentFrame.GetDirectionalLight().ShadowsEnabled", renderManagerSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures presentation failures are routed through the same visible runtime-failure path as update and draw failures.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_ReportsPresentationFailures() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.Contains("bool PresentFrame();", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("ShowBootFailure(\"PresentFrame\"", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the directional shadow pass uses a dedicated transform buffer instead of synchronizing shared receiver uniforms.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UsesDedicatedDirectionalShadowTransformBuffer() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        Assert.Contains("ShadowDepthTransformBuffer", presenterSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("RenderDirectionalShadowDepthPass(TvContextState, frame3D);\n            GX2DrawDone();", presenterSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures shadowed StandardShader draws establish opaque blend state instead of inheriting state from prior passes.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_SetsOpaqueBlendStateForShadowedStandardShaderDraws() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+        int shadowedDrawStart = presenterSource.IndexOf("void WiiUGx2Presenter::RenderStandard3DDrawCommandToColorBuffer", StringComparison.Ordinal);
+        int genericDrawStart = presenterSource.IndexOf("void WiiUGx2Presenter::Render3DDrawCommandToColorBuffer", StringComparison.Ordinal);
+
+        Assert.True(shadowedDrawStart >= 0 && genericDrawStart > shadowedDrawStart, "Expected the shadowed StandardShader draw implementation before the generic 3D draw implementation.");
+        string shadowedDrawSource = presenterSource.Substring(shadowedDrawStart, genericDrawStart - shadowedDrawStart);
+        Assert.Contains("GX2SetBlendControl(", shadowedDrawSource, StringComparison.Ordinal);
+        Assert.Contains("GX2_BLEND_MODE_ONE", shadowedDrawSource, StringComparison.Ordinal);
+        Assert.Contains("GX2_BLEND_MODE_ZERO", shadowedDrawSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the shadowed StandardShader binds its four 2D textures in the generated shader's stable sampler-slot order.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_BindsShadowedStandardShaderTexturesByGeneratedSamplerSlot() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+        int shadowedDrawStart = presenterSource.IndexOf("void WiiUGx2Presenter::RenderStandard3DDrawCommandToColorBuffer", StringComparison.Ordinal);
+        int genericDrawStart = presenterSource.IndexOf("void WiiUGx2Presenter::Render3DDrawCommandToColorBuffer", StringComparison.Ordinal);
+
+        Assert.True(shadowedDrawStart >= 0 && genericDrawStart > shadowedDrawStart, "Expected the shadowed StandardShader draw implementation before the generic 3D draw implementation.");
+        string shadowedDrawSource = presenterSource.Substring(shadowedDrawStart, genericDrawStart - shadowedDrawStart);
+        Assert.Contains("samplerVars[0]", shadowedDrawSource, StringComparison.Ordinal);
+        Assert.Contains("samplerVars[1]", shadowedDrawSource, StringComparison.Ordinal);
+        Assert.Contains("samplerVars[2]", shadowedDrawSource, StringComparison.Ordinal);
+        Assert.Contains("samplerVars[3]", shadowedDrawSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("samplerVarCount -", shadowedDrawSource, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// Ensures early Wii U boot failures become visible in Cemu with their failing initialization stage and exception text.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_ShowsInitializationFailureDetailsInCemu() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+
+        Assert.Contains("void ShowBootFailure(const char* stage, const char* message);", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void WiiUApplication::ShowBootFailure(const char* stage, const char* message)", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("OSScreenPutFontEx", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("while (WHBProcIsRunning())", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("InitializeEngineCore", applicationSource, StringComparison.Ordinal);
+        int initializePresenterStart = applicationSource.IndexOf("bool WiiUApplication::InitializeGx2Presenter()", StringComparison.Ordinal);
+        int initializeCoreStart = applicationSource.IndexOf("bool WiiUApplication::InitializeEngineCore()", StringComparison.Ordinal);
+        Assert.True(initializePresenterStart >= 0 && initializeCoreStart > initializePresenterStart, "Expected the GX2 presenter initialization boundary before generated-core initialization.");
+        string presenterInitializationSource = applicationSource.Substring(initializePresenterStart, initializeCoreStart - initializePresenterStart);
+        Assert.Contains("ShowBootFailure(\"InitializeGx2Presenter\"", presenterInitializationSource, StringComparison.Ordinal);
+        Assert.Contains("ShowBootFailure(\"UpdateEngineCore\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("ShowBootFailure(\"DrawEngineCore\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("void DrawBootFailureMessage(OSScreenID screen) const;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void WiiUApplication::DrawBootFailureMessage(OSScreenID screen) const", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("LastRuntimeFailureMessage", applicationSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures the Wii U runtime exposes the frame-owned shadow state and explicit two-pass presenter boundary required by the shared StandardShader directional-shadow path.
     /// </summary>
     [Fact]
@@ -18,7 +151,7 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("LightViewProjection", renderFrameHeaderSource, StringComparison.Ordinal);
         Assert.Contains("ShadowCasterCommands", renderFrameHeaderSource, StringComparison.Ordinal);
         Assert.Contains("RenderDirectionalShadowDepthPass", presenterHeaderSource, StringComparison.Ordinal);
-        Assert.Contains("RenderShadowed3DDrawCommandToColorBuffer", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("RenderStandard3DDrawCommandToColorBuffer", presenterHeaderSource, StringComparison.Ordinal);
         Assert.Contains("ForwardStandardShadowedShaderGroup", presenterSource, StringComparison.Ordinal);
     }
 
@@ -382,7 +515,7 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("if (DiagnosticFrameLoopModeValue == DiagnosticFrameLoopMode::PresentOnly) {", applicationSource, StringComparison.Ordinal);
         Assert.Contains("if (DiagnosticFrameLoopModeValue == DiagnosticFrameLoopMode::DrawOnly) {", applicationSource, StringComparison.Ordinal);
         Assert.Contains("if (!DrawEngineCore()) {", applicationSource, StringComparison.Ordinal);
-        Assert.Contains("PresentFrame();", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("if (!PresentFrame())", applicationSource, StringComparison.Ordinal);
         Assert.Contains("continue;", applicationSource, StringComparison.Ordinal);
         Assert.Contains("if (!UpdateEngineCore()) {", applicationSource, StringComparison.Ordinal);
         Assert.Contains("OSSleepTicks(OSMillisecondsToTicks(16));", applicationSource, StringComparison.Ordinal);
@@ -672,6 +805,9 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("texCoordData.push_back(texCoord.Y);", renderManagerSource, StringComparison.Ordinal);
         Assert.Contains("CurrentFrame.SetAmbientLightColor(", renderManagerSource, StringComparison.Ordinal);
         Assert.Contains("CurrentFrame.SetDirectionalLight(", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("CaptureSceneLighting(frame);", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("frame->get_LightSubmissions()", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("lightSubmission->get_Importance()", renderManagerSource, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -775,6 +911,28 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("if (SceneOpaquePositionBuffer.buffer != nullptr) {", clipSpaceUploadSource, StringComparison.Ordinal);
         Assert.Contains("GX2DrawDone();", clipSpaceUploadSource, StringComparison.Ordinal);
         Assert.Contains("GX2RDestroyBufferEx(&SceneOpaquePositionBuffer, NoGx2rResourceFlags);", clipSpaceUploadSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures StandardShader and directional-shadow draws finish using shared model-space geometry buffers before the next mesh upload destroys those buffers.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_WaitsForPriorStandardShaderDrawBeforeRecyclingSharedGeometryBuffers() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        int functionStart = presenterSource.IndexOf("void WiiUGx2Presenter::UploadSceneOpaqueMesh(", StringComparison.Ordinal);
+        int nextFunctionStart = presenterSource.IndexOf("void WiiUGx2Presenter::UploadSceneOpaqueMeshClipSpace(", StringComparison.Ordinal);
+
+        Assert.True(functionStart >= 0, "Expected the model-space opaque upload function to exist.");
+        Assert.True(nextFunctionStart > functionStart, "Expected the clip-space uploader to appear after the model-space uploader.");
+
+        string modelSpaceUploadSource = presenterSource.Substring(functionStart, nextFunctionStart - functionStart);
+        int drawFenceIndex = modelSpaceUploadSource.IndexOf("GX2DrawDone();", StringComparison.Ordinal);
+        int firstDestroyIndex = modelSpaceUploadSource.IndexOf("GX2RDestroyBufferEx(&SceneOpaquePositionBuffer, NoGx2rResourceFlags);", StringComparison.Ordinal);
+
+        Assert.True(drawFenceIndex >= 0, "Expected model-space geometry recycling to wait for prior GX2 draws.");
+        Assert.True(firstDestroyIndex > drawFenceIndex, "Expected the GX2 draw fence before the first shared geometry buffer is destroyed.");
     }
 
     /// <summary>
@@ -884,5 +1042,106 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("::RuntimeModel* WiiURenderManager3D::BuildModelFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {", renderManager3DSource, StringComparison.Ordinal);
         Assert.Contains("::Stream* stream = contentStreamSource->OpenRead(cookedAssetPath);", renderManager3DSource, StringComparison.Ordinal);
         Assert.DoesNotContain("return BuildModelFromCooked(cookedAssetPath);", renderManager3DSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Verifies that frames without directional shadows use the generated unshadowed StandardShader without binding the directional depth texture.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UsesGeneratedStandardShaderForNonShadowedFrames() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+        int dispatchStart = presenterSource.IndexOf("void WiiUGx2Presenter::Render3DFrameToColorBuffer", StringComparison.Ordinal);
+        int quadRouteStart = presenterSource.IndexOf("void WiiUGx2Presenter::RenderQuadCommandsToColorBuffer", StringComparison.Ordinal);
+        int standardDrawStart = presenterSource.IndexOf("void WiiUGx2Presenter::RenderStandard3DDrawCommandToColorBuffer", StringComparison.Ordinal);
+        int legacyDrawStart = presenterSource.IndexOf("void WiiUGx2Presenter::Render3DDrawCommandToColorBuffer", StringComparison.Ordinal);
+
+        Assert.True(dispatchStart >= 0 && quadRouteStart > dispatchStart, "Expected the 3D frame dispatcher before the 2D route.");
+        Assert.True(standardDrawStart >= 0 && legacyDrawStart > standardDrawStart, "Expected the generated StandardShader draw before the legacy diagnostic draw.");
+        string dispatchSource = presenterSource.Substring(dispatchStart, quadRouteStart - dispatchStart);
+        string standardDrawSource = presenterSource.Substring(standardDrawStart, legacyDrawStart - standardDrawStart);
+        Assert.Contains("&ForwardStandardShaderGroup", dispatchSource, StringComparison.Ordinal);
+        Assert.Contains("&ForwardStandardShadowedShaderGroup", dispatchSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Render3DDrawCommandToColorBuffer(drawCommands[commandIndex]", dispatchSource, StringComparison.Ordinal);
+        Assert.Contains("directionalShadowsEnabled ? 1.0f : 0.0f", standardDrawSource, StringComparison.Ordinal);
+        Assert.Contains("if (directionalShadowsEnabled)", standardDrawSource, StringComparison.Ordinal);
+        Assert.Contains("GX2SetPixelTexture(&DirectionalShadowTexture", standardDrawSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Verifies that the Wii U StandardShader payload follows the transposed matrix layout shared by DirectX and Vulkan renderers.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_TransposesStandardShaderMatricesAndKeepsDirectionalShadowsEnabled() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        Assert.Contains("drawCommand.WorldMatrix.M11, drawCommand.WorldMatrix.M21, drawCommand.WorldMatrix.M31, drawCommand.WorldMatrix.M41", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("worldViewProjectionMatrix.M11, worldViewProjectionMatrix.M21, worldViewProjectionMatrix.M31, worldViewProjectionMatrix.M41", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("lightWorldViewProjection.M11, lightWorldViewProjection.M21, lightWorldViewProjection.M31, lightWorldViewProjection.M41", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("shadowMatrix.M11, shadowMatrix.M21, shadowMatrix.M31, shadowMatrix.M41", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("float shadowData[100] = {};", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("const float enabledShadowData[] = { directionalShadowsEnabled ? 1.0f : 0.0f,", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("if (frame3D.GetHasDirectionalShadow())", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("WHBGfxShaderGroup* standardShaderGroup = frame.GetHasDirectionalShadow()", presenterSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("UseDirectionalShadowRendering", presenterSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Verifies that the StandardShader pixel path uploads the runtime emissive material value after fragment diagnostics are removed.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UsesRuntimeEmissiveOutputAfterFragmentDiagnosis() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        Assert.Contains("runtimeMaterial.GetEmissiveColor().X, runtimeMaterial.GetEmissiveColor().Y, runtimeMaterial.GetEmissiveColor().Z, runtimeMaterial.GetEmissiveColor().W", presenterSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("const float emissiveData[] = { 1.0f, 1.0f, 1.0f, 1.0f };", presenterSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Verifies that the directional-only StandardShader path does not retain point-shadow cube fallback resources or bindings.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_DirectionalStandardShaderDoesNotRetainPointShadowCubeFallbackResources() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp"));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        Assert.DoesNotContain("InitializeStandardShaderFallbackCubeTexture", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("StandardShaderFallbackCubeTextureHandle", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("GX2_SURFACE_DIM_TEXTURE_CUBE", presenterSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("GX2_SAMPLER_VAR_TYPE_SAMPLER_CUBE", presenterSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Verifies that the Wii U directional-shadow StandardShader variant excludes point-shadow cube sampling while preserving the shared directional atlas path.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_CompilesDirectionalStandardShaderWithoutPointShadowCubeSampling() {
+        string repositoryRootPath = WiiUTestSourcePaths.ResolveRepositoryRootPath();
+        string cookerSource = File.ReadAllText(Path.Combine(repositoryRootPath, "builder", "WiiUShaderArtifactCooker.cs"));
+        string sharedShaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "..", "helengine", "engine", "helengine.editor", "shaders", "builtin", "ForwardStandardShader.hlsl"));
+
+        Assert.Contains("new ShaderDefine(\"HELENGINE_WIIU_DIRECTIONAL_SHADOWS_ONLY\", \"1\")", cookerSource, StringComparison.Ordinal);
+        Assert.Contains("#if !defined(HELENGINE_WIIU_DIRECTIONAL_SHADOWS_ONLY)", sharedShaderSource, StringComparison.Ordinal);
+        Assert.Contains("float3 EvaluateWiiUDirectionalLight(", sharedShaderSource, StringComparison.Ordinal);
+        Assert.Contains("color += EvaluateWiiUDirectionalLight(", sharedShaderSource, StringComparison.Ordinal);
+        Assert.Contains("TextureCube pointShadowTexture0 : register(t2);", sharedShaderSource, StringComparison.Ordinal);
+        Assert.Contains("else if (shadowSlotMetadata.x > 0.5f && shadowSlotMetadata.z > 1.5f && lightType == 1)", sharedShaderSource, StringComparison.Ordinal);
+        Assert.Contains("Texture2D shadowAtlasTexture : register(t1);", sharedShaderSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Verifies that the unshadowed Wii U StandardShader reaches the shared material and directional-light calculation after temporary fragment-output controls are removed.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UnshadowedStandardShaderUsesSharedLightingOutput() {
+        string repositoryRootPath = WiiUTestSourcePaths.ResolveRepositoryRootPath();
+        string sharedShaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "..", "helengine", "engine", "helengine.editor", "shaders", "builtin", "ForwardStandardShader.hlsl"));
+
+        Assert.DoesNotContain("return float4(1.0f, sampledDiffuseTexture.r, baseColor.b, 1.0f);", sharedShaderSource, StringComparison.Ordinal);
+        Assert.Contains("color += EvaluateWiiUDirectionalLight(", sharedShaderSource, StringComparison.Ordinal);
+        Assert.Contains("return float4(saturate(color), sampledBaseColor.a);", sharedShaderSource, StringComparison.Ordinal);
     }
 }
