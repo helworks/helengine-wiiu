@@ -1105,6 +1105,11 @@ public sealed class WiiURuntimeSourceTests {
         string runtimeMaterialHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURuntimeMaterial.hpp"));
         string renderManagerSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.cpp"));
         string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+        int standardDrawStart = presenterSource.IndexOf("void WiiUGx2Presenter::RenderStandard3DDrawCommandToColorBuffer", StringComparison.Ordinal);
+        int genericDrawStart = presenterSource.IndexOf("void WiiUGx2Presenter::Render3DDrawCommandToColorBuffer", StringComparison.Ordinal);
+
+        Assert.True(standardDrawStart >= 0 && genericDrawStart > standardDrawStart, "Expected the generated StandardShader draw before the generic 3D draw implementation.");
+        string standardDrawSource = presenterSource.Substring(standardDrawStart, genericDrawStart - standardDrawStart);
 
         Assert.Contains("void SetRoughness(float roughness)", runtimeMaterialHeaderSource, StringComparison.Ordinal);
         Assert.Contains("float GetRoughness() const", runtimeMaterialHeaderSource, StringComparison.Ordinal);
@@ -1115,10 +1120,10 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("runtimeMaterial->SetRoughness(roughness);", renderManagerSource, StringComparison.Ordinal);
         Assert.Contains("runtimeMaterial->SetMetallic(metallic);", renderManagerSource, StringComparison.Ordinal);
         Assert.Contains("runtimeMaterial->SetSpecular(specular);", renderManagerSource, StringComparison.Ordinal);
-        Assert.Contains("runtimeMaterial.GetRoughness()", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("runtimeMaterial.GetMetallic()", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("runtimeMaterial.GetSpecular()", presenterSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("const float roughnessData[] = { 1.0f", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("const float roughnessData[] = { runtimeMaterial.GetRoughness(), 0.0f, 0.0f, 0.0f };", standardDrawSource, StringComparison.Ordinal);
+        Assert.Contains("const float metallicData[] = { runtimeMaterial.GetMetallic(), 0.0f, 0.0f, 0.0f };", standardDrawSource, StringComparison.Ordinal);
+        Assert.Contains("const float specularData[] = { runtimeMaterial.GetSpecular(), 0.0f, 0.0f, 0.0f };", standardDrawSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("const float roughnessData[] = { 1.0f", standardDrawSource, StringComparison.Ordinal);
     }
 
     /// <summary>
