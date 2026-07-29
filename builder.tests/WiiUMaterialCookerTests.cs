@@ -61,6 +61,46 @@ public sealed class WiiUMaterialCookerTests {
     }
 
     /// <summary>
+    /// Ensures authored StandardShader scalars below the supported range are clamped to zero in the cooked payload.
+    /// </summary>
+    [Fact]
+    public void Cook_standard_shader_clamps_below_zero_scalars_to_zero() {
+        PlatformMaterialCookResult result = new WiiUMaterialCooker().Cook(
+            CreateRequest(
+                WiiUMaterialSchemaIds.StandardShaderSchemaId,
+                new Dictionary<string, string> {
+                    [WiiUMaterialSchemaIds.RoughnessFieldId] = "-0.25",
+                    [WiiUMaterialSchemaIds.MetallicFieldId] = "-1.0",
+                    [WiiUMaterialSchemaIds.SpecularFieldId] = "-42.0"
+                }));
+        WiiUStandardShaderMaterialAsset asset = new WiiUStandardShaderMaterialBinarySerializer().Deserialize(result.CookedMaterialBytes);
+
+        Assert.Equal(0f, asset.Roughness);
+        Assert.Equal(0f, asset.Metallic);
+        Assert.Equal(0f, asset.Specular);
+    }
+
+    /// <summary>
+    /// Ensures authored StandardShader scalars above the supported range are clamped to one in the cooked payload.
+    /// </summary>
+    [Fact]
+    public void Cook_standard_shader_clamps_above_one_scalars_to_one() {
+        PlatformMaterialCookResult result = new WiiUMaterialCooker().Cook(
+            CreateRequest(
+                WiiUMaterialSchemaIds.StandardShaderSchemaId,
+                new Dictionary<string, string> {
+                    [WiiUMaterialSchemaIds.RoughnessFieldId] = "1.25",
+                    [WiiUMaterialSchemaIds.MetallicFieldId] = "2.0",
+                    [WiiUMaterialSchemaIds.SpecularFieldId] = "42.0"
+                }));
+        WiiUStandardShaderMaterialAsset asset = new WiiUStandardShaderMaterialBinarySerializer().Deserialize(result.CookedMaterialBytes);
+
+        Assert.Equal(1f, asset.Roughness);
+        Assert.Equal(1f, asset.Metallic);
+        Assert.Equal(1f, asset.Specular);
+    }
+
+    /// <summary>
     /// Ensures malformed or non-finite StandardShader parameters fail material cooking instead of entering the runtime payload.
     /// </summary>
     /// <param name="fieldId">Authored field whose invalid value should be rejected.</param>
@@ -83,11 +123,30 @@ public sealed class WiiUMaterialCookerTests {
     [Fact]
     public void Cook_legacy_wiiu_schema_keeps_platform_material_asset_payload() {
         PlatformMaterialCookResult result = new WiiUMaterialCooker().Cook(
-            CreateRequest(WiiUMaterialSchemaIds.StandardTexturedSchemaId, new Dictionary<string, string>()));
+            CreateRequest(
+                WiiUMaterialSchemaIds.StandardTexturedSchemaId,
+                new Dictionary<string, string> {
+                    [WiiUMaterialSchemaIds.TextureRelativePathFieldId] = "cooked/textures/legacy-test.hasset",
+                    [WiiUMaterialSchemaIds.DoubleSidedFieldId] = "true",
+                    [WiiUMaterialSchemaIds.VertexColorModeFieldId] = "ignore",
+                    [WiiUMaterialSchemaIds.BaseColorFieldId] = "#10203040",
+                    [WiiUMaterialSchemaIds.LightingModeFieldId] = "unlit"
+                }));
 
         Asset decoded = global::helengine.files.AssetSerializer.DeserializeFromBytes(result.CookedMaterialBytes);
+        PlatformMaterialAsset asset = Assert.IsType<PlatformMaterialAsset>(decoded);
 
-        Assert.IsType<PlatformMaterialAsset>(decoded);
+        Assert.Equal("wiiu-material-test", asset.Id);
+        Assert.Equal("wiiu-default", asset.RendererFamilyId);
+        Assert.Equal("cooked/textures/legacy-test.hasset", asset.TextureRelativePath);
+        Assert.True(asset.DoubleSided);
+        Assert.False(asset.UseVertexColor);
+        Assert.False(asset.Lit);
+        Assert.Equal((byte)16, asset.BaseColorR);
+        Assert.Equal((byte)32, asset.BaseColorG);
+        Assert.Equal((byte)48, asset.BaseColorB);
+        Assert.Equal((byte)64, asset.BaseColorA);
+        Assert.Equal("ForwardStandardShader", Assert.Single(result.ReferencedShaderAssetIds));
     }
 
     /// <summary>

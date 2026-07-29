@@ -1,7 +1,7 @@
 namespace helengine.wiiu.builder;
 
 /// <summary>
-/// Stores the schema and field identifiers used by Wii U fixed-pipeline material cooking.
+/// Stores schema and field identifiers used by legacy Wii U fixed-pipeline and generated StandardShader material cooking.
 /// </summary>
 public static class WiiUMaterialSchemaIds {
     /// <summary>
@@ -10,7 +10,7 @@ public static class WiiUMaterialSchemaIds {
     public const string StandardTexturedSchemaId = "wiiu-standard-textured";
 
     /// <summary>
-    /// Shared generic standard-shader schema id accepted for backward compatibility.
+    /// Shared StandardShader schema id used to generate the versioned Wii U material payload.
     /// </summary>
     public const string StandardShaderSchemaId = "standard-shader";
 
@@ -20,7 +20,7 @@ public static class WiiUMaterialSchemaIds {
     public const string TextureRelativePathFieldId = "texture-relative-path";
 
     /// <summary>
-    /// Shared generic texture-id field id accepted for backward compatibility.
+    /// Identifies the authored diffuse texture asset consumed by StandardShader material cooking.
     /// </summary>
     public const string TextureIdFieldId = "texture-id";
 
