@@ -47,13 +47,13 @@ namespace helengine::wiiu {
             throw std::runtime_error("A stream is required to read a Wii U StandardShader material payload.");
         }
 
-        std::uint8_t magic[sizeof(MaterialPayloadMagic)];
-        if (!TryReadExact(stream, magic, sizeof(magic))) {
-            return false;
-        }
-
-        if (std::memcmp(magic, MaterialPayloadMagic, sizeof(MaterialPayloadMagic)) != 0) {
-            return false;
+        for (std::size_t magicIndex = 0U; magicIndex < sizeof(MaterialPayloadMagic); magicIndex++) {
+            std::uint8_t magicByte;
+            if (!TryReadExact(stream, &magicByte, 1U)) {
+                throw std::runtime_error("The Wii U StandardShader material signature is truncated.");
+            } else if (magicByte != MaterialPayloadMagic[magicIndex]) {
+                return false;
+            }
         }
 
         std::uint32_t version;
@@ -100,6 +100,11 @@ namespace helengine::wiiu {
         if (!TryReadBoolean(stream, decodedMaterial.Lit)
             || !TryReadBoolean(stream, decodedMaterial.DoubleSided)) {
             throw std::runtime_error("The Wii U StandardShader material payload contains a truncated or invalid Boolean field.");
+        }
+
+        std::uint8_t trailingByte;
+        if (TryReadExact(stream, &trailingByte, 1U)) {
+            throw std::runtime_error("The Wii U StandardShader material payload contains trailing data.");
         }
 
         Validate(decodedMaterial);

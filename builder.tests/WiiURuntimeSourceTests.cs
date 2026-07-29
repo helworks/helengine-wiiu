@@ -1053,21 +1053,47 @@ public sealed class WiiURuntimeSourceTests {
         string readerHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUStandardShaderMaterialReader.hpp"));
         string readerSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUStandardShaderMaterialReader.cpp"));
         string renderManagerSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.cpp"));
-        int pathReaderCallStart = renderManagerSource.IndexOf("WiiUStandardShaderMaterialReader::TryRead(cookedAssetPath", StringComparison.Ordinal);
-        int pathLegacyFallbackStart = renderManagerSource.IndexOf("Asset* asset = AssetSerializer::Deserialize(stream);", pathReaderCallStart, StringComparison.Ordinal);
-        int streamReaderCallStart = renderManagerSource.IndexOf("WiiUStandardShaderMaterialReader::TryRead(probeStream", StringComparison.Ordinal);
-        int streamLegacyFallbackStart = renderManagerSource.IndexOf("Asset* asset = AssetSerializer::Deserialize(stream);", streamReaderCallStart, StringComparison.Ordinal);
+        int pathReaderMethodStart = readerSource.IndexOf("bool WiiUStandardShaderMaterialReader::TryRead(const std::string& path", StringComparison.Ordinal);
+        int streamReaderMethodStart = readerSource.IndexOf("bool WiiUStandardShaderMaterialReader::TryRead(::Stream* stream", StringComparison.Ordinal);
+        int readerHelperStart = readerSource.IndexOf("bool WiiUStandardShaderMaterialReader::TryReadExact", StringComparison.Ordinal);
+        int pathMaterialMethodStart = renderManagerSource.IndexOf("::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromCooked(std::string cookedAssetPath) {", StringComparison.Ordinal);
+        int streamMaterialMethodStart = renderManagerSource.IndexOf("::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {", StringComparison.Ordinal);
+        int rawMaterialMethodStart = renderManagerSource.IndexOf("::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromRawAsset", streamMaterialMethodStart, StringComparison.Ordinal);
+
+        Assert.True(pathReaderMethodStart >= 0 && streamReaderMethodStart > pathReaderMethodStart, "Expected the path reader before the stream reader.");
+        Assert.True(readerHelperStart > streamReaderMethodStart, "Expected the complete stream reader before its primitive helpers.");
+        Assert.True(pathMaterialMethodStart >= 0 && streamMaterialMethodStart > pathMaterialMethodStart, "Expected distinct path and content-stream material overloads.");
+        Assert.True(rawMaterialMethodStart > streamMaterialMethodStart, "Expected the content-stream material overload before raw material loading.");
+        string pathReaderMethodSource = readerSource.Substring(pathReaderMethodStart, streamReaderMethodStart - pathReaderMethodStart);
+        string streamReaderMethodSource = readerSource.Substring(streamReaderMethodStart, readerHelperStart - streamReaderMethodStart);
+        string pathMaterialMethodSource = renderManagerSource.Substring(pathMaterialMethodStart, streamMaterialMethodStart - pathMaterialMethodStart);
+        string streamMaterialMethodSource = renderManagerSource.Substring(streamMaterialMethodStart, rawMaterialMethodStart - streamMaterialMethodStart);
 
         Assert.Contains("struct WiiUStandardShaderMaterial final", readerHeaderSource, StringComparison.Ordinal);
         Assert.Contains("static bool TryRead(::Stream* stream, WiiUStandardShaderMaterial& material);", readerHeaderSource, StringComparison.Ordinal);
         Assert.Contains("{ 'W', 'U', 'M', 'T' }", readerSource, StringComparison.Ordinal);
         Assert.Contains("MaterialPayloadVersion = 1U", readerSource, StringComparison.Ordinal);
         Assert.Contains("TryReadFloat", readerSource, StringComparison.Ordinal);
-        Assert.Contains("WiiUStandardShaderMaterialReader::TryRead", renderManagerSource, StringComparison.Ordinal);
-        Assert.Contains("BuildStandardShaderRuntimeMaterial", renderManagerSource, StringComparison.Ordinal);
-        Assert.Contains("AssetSerializer::Deserialize", renderManagerSource, StringComparison.Ordinal);
-        Assert.True(pathReaderCallStart >= 0 && pathLegacyFallbackStart > pathReaderCallStart, "Expected the path-based StandardShader probe before legacy deserialization.");
-        Assert.True(streamReaderCallStart >= 0 && streamLegacyFallbackStart > streamReaderCallStart, "Expected the content-stream StandardShader probe before reopening the legacy payload.");
+        Assert.Contains("FileStream* stream = File::OpenRead(path.c_str());", pathReaderMethodSource, StringComparison.Ordinal);
+        Assert.Contains("for (std::size_t magicIndex = 0U; magicIndex < sizeof(MaterialPayloadMagic); magicIndex++)", streamReaderMethodSource, StringComparison.Ordinal);
+        Assert.Contains("TryReadExact(stream, &magicByte, 1U)", streamReaderMethodSource, StringComparison.Ordinal);
+        Assert.Contains("magicByte != MaterialPayloadMagic[magicIndex]", streamReaderMethodSource, StringComparison.Ordinal);
+        Assert.Contains("The Wii U StandardShader material signature is truncated.", streamReaderMethodSource, StringComparison.Ordinal);
+        Assert.Contains("if (TryReadExact(stream, &trailingByte, 1U))", streamReaderMethodSource, StringComparison.Ordinal);
+        Assert.Contains("The Wii U StandardShader material payload contains trailing data.", streamReaderMethodSource, StringComparison.Ordinal);
+        Assert.Contains("WiiUStandardShaderMaterialReader::TryRead(cookedAssetPath, standardShaderMaterial)", pathMaterialMethodSource, StringComparison.Ordinal);
+        Assert.Contains("FileStream* stream = File::OpenRead(cookedAssetPath.c_str());", pathMaterialMethodSource, StringComparison.Ordinal);
+        Assert.Contains("Asset* asset = AssetSerializer::Deserialize(stream);", pathMaterialMethodSource, StringComparison.Ordinal);
+        Assert.Contains("auto runtimeMaterialGuard = he_cpp_make_scope_exit", pathMaterialMethodSource, StringComparison.Ordinal);
+        Assert.Contains("ReleaseMaterial(runtimeMaterial);", pathMaterialMethodSource, StringComparison.Ordinal);
+        Assert.Contains("runtimeMaterial = nullptr;", pathMaterialMethodSource, StringComparison.Ordinal);
+        Assert.Contains("::Stream* probeStream = contentStreamSource->OpenRead(cookedAssetPath);", streamMaterialMethodSource, StringComparison.Ordinal);
+        Assert.Contains("WiiUStandardShaderMaterialReader::TryRead(probeStream, standardShaderMaterial)", streamMaterialMethodSource, StringComparison.Ordinal);
+        Assert.Contains("::Stream* stream = contentStreamSource->OpenRead(cookedAssetPath);", streamMaterialMethodSource, StringComparison.Ordinal);
+        Assert.Contains("Asset* asset = AssetSerializer::Deserialize(stream);", streamMaterialMethodSource, StringComparison.Ordinal);
+        Assert.Contains("auto runtimeMaterialGuard = he_cpp_make_scope_exit", streamMaterialMethodSource, StringComparison.Ordinal);
+        Assert.Contains("ReleaseMaterial(runtimeMaterial);", streamMaterialMethodSource, StringComparison.Ordinal);
+        Assert.Contains("runtimeMaterial = nullptr;", streamMaterialMethodSource, StringComparison.Ordinal);
     }
 
     /// <summary>

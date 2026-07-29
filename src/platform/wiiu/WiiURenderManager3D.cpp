@@ -214,12 +214,19 @@ namespace helengine::wiiu {
         WiiUStandardShaderMaterial standardShaderMaterial;
         if (WiiUStandardShaderMaterialReader::TryRead(cookedAssetPath, standardShaderMaterial)) {
             WiiURuntimeMaterial* runtimeMaterial = BuildStandardShaderRuntimeMaterial(standardShaderMaterial);
+            auto runtimeMaterialGuard = he_cpp_make_scope_exit([&]() {
+                if (runtimeMaterial != nullptr) {
+                    ReleaseMaterial(runtimeMaterial);
+                }
+            });
             if (!String::IsNullOrWhiteSpace(standardShaderMaterial.DiffuseTextureAssetId)) {
                 WiiUGx2TextureHandle textureHandle = BuildTextureHandleFromCooked(standardShaderMaterial.DiffuseTextureAssetId);
                 runtimeMaterial->SetBaseColorTextureHandle(textureHandle);
             }
 
-            return runtimeMaterial;
+            WiiURuntimeMaterial* completedRuntimeMaterial = runtimeMaterial;
+            runtimeMaterial = nullptr;
+            return completedRuntimeMaterial;
         }
 
         FileStream* stream = File::OpenRead(cookedAssetPath.c_str());
@@ -278,12 +285,19 @@ namespace helengine::wiiu {
 
         if (isStandardShaderMaterial) {
             WiiURuntimeMaterial* runtimeMaterial = BuildStandardShaderRuntimeMaterial(standardShaderMaterial);
+            auto runtimeMaterialGuard = he_cpp_make_scope_exit([&]() {
+                if (runtimeMaterial != nullptr) {
+                    ReleaseMaterial(runtimeMaterial);
+                }
+            });
             if (!String::IsNullOrWhiteSpace(standardShaderMaterial.DiffuseTextureAssetId)) {
                 WiiUGx2TextureHandle textureHandle = BuildTextureHandleFromCooked(standardShaderMaterial.DiffuseTextureAssetId, contentStreamSource);
                 runtimeMaterial->SetBaseColorTextureHandle(textureHandle);
             }
 
-            return runtimeMaterial;
+            WiiURuntimeMaterial* completedRuntimeMaterial = runtimeMaterial;
+            runtimeMaterial = nullptr;
+            return completedRuntimeMaterial;
         }
 
         ::Stream* stream = contentStreamSource->OpenRead(cookedAssetPath);
