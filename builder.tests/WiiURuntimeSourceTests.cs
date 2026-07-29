@@ -1097,6 +1097,31 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
+    /// Verifies that authored StandardShader surface parameters flow through the Wii U runtime material and material manager into the reflected presenter uniform blocks.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_UploadsAuthoredStandardShaderMaterialParameters() {
+        string repositoryRootPath = WiiUTestSourcePaths.ResolveRepositoryRootPath();
+        string runtimeMaterialHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURuntimeMaterial.hpp"));
+        string renderManagerSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.cpp"));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        Assert.Contains("void SetRoughness(float roughness)", runtimeMaterialHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("float GetRoughness() const", runtimeMaterialHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void SetMetallic(float metallic)", runtimeMaterialHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("float GetMetallic() const", runtimeMaterialHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void SetSpecular(float specular)", runtimeMaterialHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("float GetSpecular() const", runtimeMaterialHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("runtimeMaterial->SetRoughness(roughness);", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("runtimeMaterial->SetMetallic(metallic);", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("runtimeMaterial->SetSpecular(specular);", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("runtimeMaterial.GetRoughness()", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("runtimeMaterial.GetMetallic()", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("runtimeMaterial.GetSpecular()", presenterSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("const float roughnessData[] = { 1.0f", presenterSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Verifies that frames without directional shadows use the generated unshadowed StandardShader without binding the directional depth texture.
     /// </summary>
     [Fact]

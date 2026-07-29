@@ -1726,9 +1726,9 @@ namespace helengine::wiiu {
             std::memcpy(shadowData, enabledShadowData, sizeof(enabledShadowData));
         }
         const float baseColorData[] = { runtimeMaterial.GetBaseColor().X, runtimeMaterial.GetBaseColor().Y, runtimeMaterial.GetBaseColor().Z, runtimeMaterial.GetBaseColor().W };
-        const float roughnessData[] = { 1.0f, 0.0f, 0.0f, 0.0f };
-        const float metallicData[] = { 0.0f, 0.0f, 0.0f, 0.0f };
-        const float specularData[] = { 0.5f, 0.0f, 0.0f, 0.0f };
+        const float roughnessData[] = { runtimeMaterial.GetRoughness(), 0.0f, 0.0f, 0.0f };
+        const float metallicData[] = { runtimeMaterial.GetMetallic(), 0.0f, 0.0f, 0.0f };
+        const float specularData[] = { runtimeMaterial.GetSpecular(), 0.0f, 0.0f, 0.0f };
         const float emissiveData[] = { runtimeMaterial.GetEmissiveColor().X, runtimeMaterial.GetEmissiveColor().Y, runtimeMaterial.GetEmissiveColor().Z, runtimeMaterial.GetEmissiveColor().W };
         GX2RBuffer* buffers[] = { &StandardShaderTransformBuffer, &StandardShaderForwardLightBuffer, &StandardShaderShadowBuffer, &StandardShaderBaseColorBuffer, &StandardShaderRoughnessBuffer, &StandardShaderMetallicBuffer, &StandardShaderSpecularBuffer, &StandardShaderEmissiveBuffer };
         const char* bufferNames[] = { "TransformBuffer", "ForwardLightBuffer", "ShadowBuffer", "BaseColorBuffer", "RoughnessBuffer", "MetallicBuffer", "SpecularBuffer", "EmissiveBuffer" };
