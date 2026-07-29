@@ -91,6 +91,10 @@ public sealed class WiiUStandardShaderMaterialBinarySerializer {
                 Lit = ReadBoolean(reader),
                 DoubleSided = ReadBoolean(reader)
             };
+            if (stream.Position != stream.Length) {
+                throw new InvalidOperationException("Wii U StandardShader material payload version one does not permit trailing bytes.");
+            }
+
             ValidateAsset(asset);
             return asset;
         } catch (EndOfStreamException exception) {
@@ -118,6 +122,11 @@ public sealed class WiiUStandardShaderMaterialBinarySerializer {
         int byteCount = reader.ReadInt32();
         if (byteCount < 0) {
             throw new InvalidOperationException("Wii U StandardShader material string lengths cannot be negative.");
+        }
+
+        long remainingByteCount = reader.BaseStream.Length - reader.BaseStream.Position;
+        if (byteCount > remainingByteCount) {
+            throw new InvalidOperationException($"Wii U StandardShader material string length '{byteCount}' exceeds the remaining payload size '{remainingByteCount}'.");
         }
 
         byte[] bytes = reader.ReadBytes(byteCount);
