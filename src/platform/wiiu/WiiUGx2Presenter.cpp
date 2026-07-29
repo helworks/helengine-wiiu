@@ -159,6 +159,24 @@ namespace helengine::wiiu {
             }
         }
 
+        /// Resolves one generated pixel sampler by its stable semantic name without depending on reflection-array order.
+        const GX2SamplerVar* ResolvePixelSamplerVar(const GX2PixelShader* pixelShader, const char* samplerName) {
+            if (pixelShader == nullptr) {
+                throw std::runtime_error("Wii U GX2 sampler resolution requires one pixel shader.");
+            } else if (samplerName == nullptr || samplerName[0] == '\0') {
+                throw std::runtime_error("Wii U GX2 sampler resolution requires one semantic sampler name.");
+            }
+
+            for (std::uint32_t samplerIndex = 0U; samplerIndex < pixelShader->samplerVarCount; samplerIndex++) {
+                const GX2SamplerVar& samplerVar = pixelShader->samplerVars[samplerIndex];
+                if (samplerVar.name != nullptr && std::strcmp(samplerVar.name, samplerName) == 0) {
+                    return &samplerVar;
+                }
+            }
+
+            return nullptr;
+        }
+
     }
 
     /// Creates one uninitialized GX2 presenter.
@@ -1634,16 +1652,30 @@ namespace helengine::wiiu {
                 throw std::runtime_error("Wii U GX2 presenter requires one runtime model for every directional shadow caster.");
             }
 
+            GX2DrawDone();
             float4x4 worldMatrix = drawCommand.WorldMatrix;
             float4x4 lightViewProjectionMatrix = directionalShadowState.LightViewProjection;
             float4x4 lightWorldViewProjection;
             float4x4::Multiply__ref0_ref1_out2(worldMatrix, lightViewProjectionMatrix, lightWorldViewProjection);
-            const float transformData[] = {
+            const float transformData[56] = {
+                worldMatrix.M11, worldMatrix.M21, worldMatrix.M31, worldMatrix.M41,
+                worldMatrix.M12, worldMatrix.M22, worldMatrix.M32, worldMatrix.M42,
+                worldMatrix.M13, worldMatrix.M23, worldMatrix.M33, worldMatrix.M43,
+                worldMatrix.M14, worldMatrix.M24, worldMatrix.M34, worldMatrix.M44,
                 lightWorldViewProjection.M11, lightWorldViewProjection.M21, lightWorldViewProjection.M31, lightWorldViewProjection.M41,
                 lightWorldViewProjection.M12, lightWorldViewProjection.M22, lightWorldViewProjection.M32, lightWorldViewProjection.M42,
                 lightWorldViewProjection.M13, lightWorldViewProjection.M23, lightWorldViewProjection.M33, lightWorldViewProjection.M43,
-                lightWorldViewProjection.M14, lightWorldViewProjection.M24, lightWorldViewProjection.M34, lightWorldViewProjection.M44
+                lightWorldViewProjection.M14, lightWorldViewProjection.M24, lightWorldViewProjection.M34, lightWorldViewProjection.M44,
+                worldMatrix.M11, worldMatrix.M21, worldMatrix.M31, worldMatrix.M41,
+                worldMatrix.M12, worldMatrix.M22, worldMatrix.M32, worldMatrix.M42,
+                worldMatrix.M13, worldMatrix.M23, worldMatrix.M33, worldMatrix.M43,
+                worldMatrix.M14, worldMatrix.M24, worldMatrix.M34, worldMatrix.M44,
+                0.0f, 0.0f, 0.0f, 1.0f,
+                0.0f, 0.0f, 0.0f, 0.0f
             };
+            if (sizeof(transformData) != ShadowDepthTransformBuffer.elemSize) {
+                throw std::runtime_error("Wii U GX2 presenter requires the ShadowDepth transform payload to match the full reflected TransformBuffer.");
+            }
             void* transformUploadBuffer = GX2RLockBufferEx(&ShadowDepthTransformBuffer, NoGx2rResourceFlags);
             if (transformUploadBuffer == nullptr) {
                 throw std::runtime_error("Wii U GX2 presenter could not lock the StandardShader transform buffer for a shadow caster.");
@@ -1662,7 +1694,10 @@ namespace helengine::wiiu {
             GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, SceneOpaqueVertexCount, 0, 1);
         }
 
-        GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, DirectionalShadowDepthBuffer.surface.image, DirectionalShadowDepthBuffer.surface.imageSize);
+        GX2Invalidate(
+            static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_DEPTH_BUFFER | GX2_INVALIDATE_MODE_TEXTURE),
+            DirectionalShadowDepthBuffer.surface.image,
+            DirectionalShadowDepthBuffer.surface.imageSize);
     }
 
     /// Renders one receiver command through the selected generated StandardShader program.
@@ -1716,14 +1751,32 @@ namespace helengine::wiiu {
             directionalShadowsEnabled ? frame.GetDirectionalShadow().Strength : 0.0f
         };
         float shadowData[100] = {};
+        shadowData[0] = directionalShadowsEnabled ? 1.0f : 0.0f;
         shadowData[1] = static_cast<float>(DirectionalShadowMapSize);
         shadowData[2] = static_cast<float>(DirectionalShadowMapSize);
         if (directionalShadowsEnabled) {
             const float4x4 shadowMatrix = frame.GetDirectionalShadow().LightViewProjection;
-            const float enabledShadowData[] = { directionalShadowsEnabled ? 1.0f : 0.0f, static_cast<float>(DirectionalShadowMapSize), static_cast<float>(DirectionalShadowMapSize), 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, frame.GetDirectionalShadow().Strength, 1.0f, 0.0f,
-            shadowMatrix.M11, shadowMatrix.M21, shadowMatrix.M31, shadowMatrix.M41, shadowMatrix.M12, shadowMatrix.M22, shadowMatrix.M32, shadowMatrix.M42, shadowMatrix.M13, shadowMatrix.M23, shadowMatrix.M33, shadowMatrix.M43, shadowMatrix.M14, shadowMatrix.M24, shadowMatrix.M34, shadowMatrix.M44,
-            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
-            std::memcpy(shadowData, enabledShadowData, sizeof(enabledShadowData));
+            shadowData[6] = 1.0f;
+            shadowData[7] = 1.0f;
+            shadowData[8] = 1.0f;
+            shadowData[9] = frame.GetDirectionalShadow().Strength;
+            shadowData[10] = 1.0f;
+            shadowData[12] = shadowMatrix.M11;
+            shadowData[13] = shadowMatrix.M21;
+            shadowData[14] = shadowMatrix.M31;
+            shadowData[15] = shadowMatrix.M41;
+            shadowData[16] = shadowMatrix.M12;
+            shadowData[17] = shadowMatrix.M22;
+            shadowData[18] = shadowMatrix.M32;
+            shadowData[19] = shadowMatrix.M42;
+            shadowData[20] = shadowMatrix.M13;
+            shadowData[21] = shadowMatrix.M23;
+            shadowData[22] = shadowMatrix.M33;
+            shadowData[23] = shadowMatrix.M43;
+            shadowData[24] = shadowMatrix.M14;
+            shadowData[25] = shadowMatrix.M24;
+            shadowData[26] = shadowMatrix.M34;
+            shadowData[27] = shadowMatrix.M44;
         }
         const float baseColorData[] = { runtimeMaterial.GetBaseColor().X, runtimeMaterial.GetBaseColor().Y, runtimeMaterial.GetBaseColor().Z, runtimeMaterial.GetBaseColor().W };
         const float roughnessData[] = { runtimeMaterial.GetRoughness(), 0.0f, 0.0f, 0.0f };
@@ -1759,7 +1812,7 @@ namespace helengine::wiiu {
         GX2UniformBlock* metallicBlock = GX2GetPixelUniformBlock(shaderGroup->pixelShader, "MetallicBuffer");
         GX2UniformBlock* specularBlock = GX2GetPixelUniformBlock(shaderGroup->pixelShader, "SpecularBuffer");
         GX2UniformBlock* emissiveBlock = GX2GetPixelUniformBlock(shaderGroup->pixelShader, "EmissiveBuffer");
-        if (vertexTransformBlock == nullptr || pixelTransformBlock == nullptr || forwardLightBlock == nullptr || shadowBlock == nullptr || baseColorBlock == nullptr || roughnessBlock == nullptr || metallicBlock == nullptr || specularBlock == nullptr || emissiveBlock == nullptr || shaderGroup->pixelShader->samplerVarCount < 3U) {
+        if (vertexTransformBlock == nullptr || pixelTransformBlock == nullptr || forwardLightBlock == nullptr || shadowBlock == nullptr || baseColorBlock == nullptr || roughnessBlock == nullptr || metallicBlock == nullptr || specularBlock == nullptr || emissiveBlock == nullptr) {
             throw std::runtime_error("Wii U GX2 presenter requires all reflected generated StandardShader bindings.");
         }
         GX2SetVertexUniformBlock(vertexTransformBlock->offset, vertexTransformBlock->size, StandardShaderTransformBuffer.buffer);
@@ -1771,9 +1824,13 @@ namespace helengine::wiiu {
         GX2SetPixelUniformBlock(metallicBlock->offset, metallicBlock->size, StandardShaderMetallicBuffer.buffer);
         GX2SetPixelUniformBlock(specularBlock->offset, specularBlock->size, StandardShaderSpecularBuffer.buffer);
         GX2SetPixelUniformBlock(emissiveBlock->offset, emissiveBlock->size, StandardShaderEmissiveBuffer.buffer);
-        const GX2SamplerVar* diffuseSamplerVar = &shaderGroup->pixelShader->samplerVars[0];
-        const GX2SamplerVar* roughnessSamplerVar = &shaderGroup->pixelShader->samplerVars[1];
-        const GX2SamplerVar* emissiveSamplerVar = &shaderGroup->pixelShader->samplerVars[2];
+        const GX2SamplerVar* diffuseSamplerVar = ResolvePixelSamplerVar(shaderGroup->pixelShader, "DiffuseTexture");
+        const GX2SamplerVar* roughnessSamplerVar = ResolvePixelSamplerVar(shaderGroup->pixelShader, "RoughnessTexture");
+        const GX2SamplerVar* emissiveSamplerVar = ResolvePixelSamplerVar(shaderGroup->pixelShader, "EmissiveTexture");
+        if (diffuseSamplerVar == nullptr || roughnessSamplerVar == nullptr || emissiveSamplerVar == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires named StandardShader material samplers.");
+        }
+
         GX2SetPixelTexture(&baseColorTextureHandle->Texture, diffuseSamplerVar->location);
         GX2SetPixelSampler(&baseColorTextureHandle->Sampler, diffuseSamplerVar->location);
         GX2SetPixelTexture(&UiSolidWhiteTextureHandle.Texture, emissiveSamplerVar->location);
@@ -1781,11 +1838,11 @@ namespace helengine::wiiu {
         GX2SetPixelTexture(&UiSolidWhiteTextureHandle.Texture, roughnessSamplerVar->location);
         GX2SetPixelSampler(&UiSolidWhiteTextureHandle.Sampler, roughnessSamplerVar->location);
         if (directionalShadowsEnabled) {
-            if (shaderGroup->pixelShader->samplerVarCount < 4U) {
-                throw std::runtime_error("Wii U GX2 presenter requires one reflected directional-shadow sampler slot.");
+            const GX2SamplerVar* shadowAtlasSamplerVar = ResolvePixelSamplerVar(shaderGroup->pixelShader, "shadowAtlasTexture");
+            if (shadowAtlasSamplerVar == nullptr) {
+                throw std::runtime_error("Wii U GX2 presenter requires the named directional-shadow atlas sampler.");
             }
 
-            const GX2SamplerVar* shadowAtlasSamplerVar = &shaderGroup->pixelShader->samplerVars[3];
             GX2SetPixelTexture(&DirectionalShadowTexture, shadowAtlasSamplerVar->location);
             GX2SetPixelSampler(&DirectionalShadowSampler, shadowAtlasSamplerVar->location);
         }
