@@ -158,7 +158,7 @@ Expected: PASS with no failed tests.
 Run:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File C:\dev\helworks\helengine\artifacts\build-platform.ps1 -Project C:\dev\helprojs\demodisc\project.heproj -Platform wiiu -Output C:\dev\helprojs\demodisc\wiiu-build
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\dev\helworks\helengine\scripts\build-platform.ps1 -Project C:\dev\helprojs\demodisc\project.heproj -Platform wiiu -Output C:\dev\helprojs\demodisc\wiiu-build
 ```
 
 Expected: `Build completed for platform 'wiiu': C:\dev\helprojs\demodisc\wiiu-build` and a freshly timestamped `helengine_wiiu.wuhb`.
