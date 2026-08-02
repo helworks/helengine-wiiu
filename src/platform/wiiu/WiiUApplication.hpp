@@ -108,6 +108,9 @@ namespace helengine::wiiu {
         /// Tracks whether the generated core initialized far enough to enter the steady-state frame loop.
         bool EngineInitialized;
 
+        /// Tracks whether the first captured frame's contents were recorded for bounded hardware diagnosis.
+        bool HasTracedCapturedFrame;
+
         /// Stores the generated core instance that owns scene loading and frame updates.
         Core* EngineCore;
 

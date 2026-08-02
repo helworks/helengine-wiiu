@@ -39,6 +39,9 @@ namespace helengine::wiiu {
         /// Renders one presenter-owned pure GX2 clear-only frame for early bring-up verification.
         void RenderDiagnosticClearFrame();
 
+        /// Renders one opaque cyan full-screen quad through the textured UI pipeline with vertex offset zero.
+        void RenderDiagnosticUiSlotZeroFrame();
+
         /// Renders one presenter-owned pure GX2 clear-plus-square frame for bring-up verification.
         void RenderDiagnosticSquareFrame();
 
@@ -46,6 +49,21 @@ namespace helengine::wiiu {
         void RenderDiagnosticTriangleFrame();
 
     private:
+        /// Recreates foreground-owned GX2 resources after ProcUI returns application foreground ownership.
+        static std::uint32_t HandleForegroundAcquired(void* context);
+
+        /// Releases foreground-owned GX2 resources before ProcUI transfers foreground ownership away from the application.
+        static std::uint32_t HandleForegroundReleased(void* context);
+
+        /// Allocates and binds every GX2 resource whose backing memory belongs to the foreground or MEM1 arenas.
+        bool AcquireForegroundResources();
+
+        /// Releases every GX2 resource whose lifetime is restricted to the current foreground ownership interval.
+        void ReleaseForegroundResources();
+
+        /// Rebuilds the persistent TV and DRC context states against the newly acquired display surfaces.
+        void ConfigurePresentationContexts();
+
         /// Releases all allocated GX2 resources and returns the presenter to the uninitialized state.
         void Shutdown();
 
@@ -167,6 +185,9 @@ namespace helengine::wiiu {
         /// Renders one captured quad command into one target color buffer using the already-uploaded vertex data for the supplied quad index.
         void RenderQuadCommandToColorBuffer(const WiiUGx2QuadCommand& command, std::uint32_t quadIndex, std::uint32_t logicalWidth, std::uint32_t logicalHeight, std::uint32_t targetWidth, std::uint32_t targetHeight);
 
+        /// Renders the known slot-zero UI probe into one target color buffer using the existing UI shader and white texture.
+        void RenderDiagnosticUiSlotZeroToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer);
+
         /// Uploads one runtime model into the presenter-owned generic opaque scene buffers using model-space positions, normals, and UVs.
         void UploadSceneOpaqueMesh(const WiiURuntimeModel& runtimeModel);
 
@@ -187,6 +208,24 @@ namespace helengine::wiiu {
 
         /// Tracks whether GX2 resources were initialized successfully.
         bool IsInitialized;
+
+        /// Tracks whether GX2 itself was initialized so partial initialization failures still shut it down correctly.
+        bool IsGx2Initialized;
+
+        /// Tracks whether the MEM1 graphics heap is available for color and depth render targets.
+        bool IsMem1HeapInitialized;
+
+        /// Tracks whether the foreground graphics heap is available for TV and DRC scan buffers.
+        bool IsForegroundHeapInitialized;
+
+        /// Tracks whether GX2R is currently routed through the presenter hardware-memory allocator.
+        bool IsGx2ResourceAllocatorInstalled;
+
+        /// Tracks whether all resources tied to the current ProcUI foreground interval are allocated and bound.
+        bool AreForegroundResourcesAcquired;
+
+        /// Tracks whether this presenter has installed its lifetime-long ProcUI acquire and release callbacks.
+        bool AreProcUiCallbacksRegistered;
 
         /// Stores the TV scan buffer pointer returned by the GX2 allocation path.
         void* TvScanBuffer;

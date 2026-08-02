@@ -36,9 +36,43 @@
 #include <gx2/utils.h>
 #include <gx2r/buffer.h>
 #include <gx2r/draw.h>
+#include <gx2r/mem.h>
 #include <gx2r/resource.h>
 #include <gx2r/surface.h>
+#include <proc_ui/procui.h>
 #include <whb/gfx.h>
+
+extern "C" {
+    /// Initializes the libwhb expanded heap backed by the Wii U MEM1 arena.
+    BOOL GfxHeapInitMEM1();
+
+    /// Releases the libwhb expanded heap backed by the Wii U MEM1 arena.
+    BOOL GfxHeapDestroyMEM1();
+
+    /// Initializes the libwhb expanded heap backed by the process foreground arena.
+    BOOL GfxHeapInitForeground();
+
+    /// Releases the libwhb expanded heap backed by the process foreground arena.
+    BOOL GfxHeapDestroyForeground();
+
+    /// Allocates a graphics block from the libwhb MEM1 heap with the requested alignment.
+    void* GfxHeapAllocMEM1(std::uint32_t size, std::uint32_t alignment);
+
+    /// Releases one graphics block previously allocated from the libwhb MEM1 heap.
+    void GfxHeapFreeMEM1(void* block);
+
+    /// Allocates a scan-buffer block from the process foreground heap with the requested alignment.
+    void* GfxHeapAllocForeground(std::uint32_t size, std::uint32_t alignment);
+
+    /// Releases one scan-buffer block previously allocated from the process foreground heap.
+    void GfxHeapFreeForeground(void* block);
+
+    /// Allocates an ordinary graphics block from the default MEM2 heap with the requested alignment.
+    void* GfxHeapAllocMEM2(std::uint32_t size, std::uint32_t alignment);
+
+    /// Releases one ordinary graphics block previously allocated from the default MEM2 heap.
+    void GfxHeapFreeMEM2(void* block);
+}
 
 namespace helengine::wiiu {
     namespace {
@@ -141,6 +175,35 @@ namespace helengine::wiiu {
             0.25f, 0.20f, 0.0f, 1.0f
         };
 
+        /// Allocates one GX2R resource in the hardware memory arena required by its binding flags.
+        void* AllocateGx2Resource(GX2RResourceFlags flags, std::uint32_t size, std::uint32_t alignment) {
+            const GX2RResourceFlags mem1Bindings = static_cast<GX2RResourceFlags>(
+                GX2R_RESOURCE_BIND_COLOR_BUFFER
+                | GX2R_RESOURCE_BIND_DEPTH_BUFFER
+                | GX2R_RESOURCE_BIND_SCAN_BUFFER
+                | GX2R_RESOURCE_USAGE_FORCE_MEM1);
+            if ((flags & mem1Bindings) != 0 && (flags & GX2R_RESOURCE_USAGE_FORCE_MEM2) == 0) {
+                return GfxHeapAllocMEM1(size, alignment);
+            }
+
+            return GfxHeapAllocMEM2(size, alignment);
+        }
+
+        /// Releases one GX2R resource from the hardware memory arena selected by its binding flags.
+        void FreeGx2Resource(GX2RResourceFlags flags, void* block) {
+            const GX2RResourceFlags mem1Bindings = static_cast<GX2RResourceFlags>(
+                GX2R_RESOURCE_BIND_COLOR_BUFFER
+                | GX2R_RESOURCE_BIND_DEPTH_BUFFER
+                | GX2R_RESOURCE_BIND_SCAN_BUFFER
+                | GX2R_RESOURCE_USAGE_FORCE_MEM1);
+            if ((flags & mem1Bindings) != 0 && (flags & GX2R_RESOURCE_USAGE_FORCE_MEM2) == 0) {
+                GfxHeapFreeMEM1(block);
+                return;
+            }
+
+            GfxHeapFreeMEM2(block);
+        }
+
         void StoreFloat32LittleEndian(void* destination, float value) {
             std::uint32_t bits = 0U;
             std::memcpy(&bits, &value, sizeof(bits));
@@ -182,6 +245,12 @@ namespace helengine::wiiu {
     /// Creates one uninitialized GX2 presenter.
     WiiUGx2Presenter::WiiUGx2Presenter()
         : IsInitialized(false)
+        , IsGx2Initialized(false)
+        , IsMem1HeapInitialized(false)
+        , IsForegroundHeapInitialized(false)
+        , IsGx2ResourceAllocatorInstalled(false)
+        , AreForegroundResourcesAcquired(false)
+        , AreProcUiCallbacksRegistered(false)
         , TvScanBuffer(nullptr)
         , DrcScanBuffer(nullptr)
         , CommandBufferPool(nullptr)
@@ -302,6 +371,10 @@ namespace helengine::wiiu {
         };
         AppendInitializationTrace("[WiiUFile] GX2 initialize: call GX2Init.\n");
         GX2Init(initAttributes);
+        IsGx2Initialized = true;
+
+        GX2RSetAllocator(&AllocateGx2Resource, &FreeGx2Resource);
+        IsGx2ResourceAllocatorInstalled = true;
 
         AppendInitializationTrace("[WiiUFile] GX2 initialize: calculate scan buffer sizes.\n");
         GX2DrcRenderMode drcRenderMode = GX2GetSystemDRCMode();
@@ -309,25 +382,6 @@ namespace helengine::wiiu {
         GX2CalcTVSize(PresentationTvRenderMode, PresentationSurfaceFormat, GX2_BUFFERING_MODE_DOUBLE, &TvScanBufferSize, &unusedSize);
         GX2CalcDRCSize(drcRenderMode, PresentationSurfaceFormat, GX2_BUFFERING_MODE_DOUBLE, &DrcScanBufferSize, &unusedSize);
 
-        AppendInitializationTrace("[WiiUFile] GX2 initialize: allocate scan buffers.\n");
-        TvScanBuffer = MEMAllocFromDefaultHeapEx(TvScanBufferSize, GX2_SCAN_BUFFER_ALIGNMENT);
-        DrcScanBuffer = MEMAllocFromDefaultHeapEx(DrcScanBufferSize, GX2_SCAN_BUFFER_ALIGNMENT);
-        if (TvScanBuffer == nullptr || DrcScanBuffer == nullptr) {
-            Shutdown();
-            return false;
-        }
-
-        AppendInitializationTrace("[WiiUFile] GX2 initialize: bind scan buffers.\n");
-        GX2Invalidate(GX2_INVALIDATE_MODE_CPU, TvScanBuffer, TvScanBufferSize);
-        GX2Invalidate(GX2_INVALIDATE_MODE_CPU, DrcScanBuffer, DrcScanBufferSize);
-        GX2SetTVBuffer(TvScanBuffer, TvScanBufferSize, PresentationTvRenderMode, PresentationSurfaceFormat, GX2_BUFFERING_MODE_DOUBLE);
-        GX2SetDRCBuffer(DrcScanBuffer, DrcScanBufferSize, drcRenderMode, PresentationSurfaceFormat, GX2_BUFFERING_MODE_DOUBLE);
-
-        AppendInitializationTrace("[WiiUFile] GX2 initialize: create color and depth buffers.\n");
-        InitializeTvColorBuffer();
-        InitializeDrcColorBuffer();
-        InitializeTvDepthBuffer();
-        InitializeDrcDepthBuffer();
         TvContextState = static_cast<GX2ContextState*>(MEMAllocFromDefaultHeapEx(sizeof(GX2ContextState), GX2_CONTEXT_STATE_ALIGNMENT));
         DrcContextState = static_cast<GX2ContextState*>(MEMAllocFromDefaultHeapEx(sizeof(GX2ContextState), GX2_CONTEXT_STATE_ALIGNMENT));
         if (TvContextState == nullptr || DrcContextState == nullptr) {
@@ -335,21 +389,11 @@ namespace helengine::wiiu {
             return false;
         }
 
-        AppendInitializationTrace("[WiiUFile] GX2 initialize: setup TV context state.\n");
-        GX2SetupContextStateEx(TvContextState, TRUE);
-        GX2SetContextState(TvContextState);
-        GX2SetColorBuffer(&TvColorBuffer, GX2_RENDER_TARGET_0);
-        GX2SetDepthBuffer(&TvDepthBuffer);
-        GX2SetViewport(0.0f, 0.0f, static_cast<float>(TvColorBuffer.surface.width), static_cast<float>(TvColorBuffer.surface.height), 0.0f, 1.0f);
-        GX2SetScissor(0, 0, TvColorBuffer.surface.width, TvColorBuffer.surface.height);
+        if (!AcquireForegroundResources()) {
+            Shutdown();
+            return false;
+        }
 
-        AppendInitializationTrace("[WiiUFile] GX2 initialize: setup DRC context state.\n");
-        GX2SetupContextStateEx(DrcContextState, TRUE);
-        GX2SetContextState(DrcContextState);
-        GX2SetColorBuffer(&DrcColorBuffer, GX2_RENDER_TARGET_0);
-        GX2SetDepthBuffer(&DrcDepthBuffer);
-        GX2SetViewport(0.0f, 0.0f, static_cast<float>(DrcColorBuffer.surface.width), static_cast<float>(DrcColorBuffer.surface.height), 0.0f, 1.0f);
-        GX2SetScissor(0, 0, DrcColorBuffer.surface.width, DrcColorBuffer.surface.height);
         AppendInitializationTrace("[WiiUFile] GX2 initialize: initialize presenter resources.\n");
         AppendInitializationTrace("[WiiUFile] GX2 initialize: diagnostic square resources begin.\n");
         InitializeDiagnosticSquareResources();
@@ -363,15 +407,16 @@ namespace helengine::wiiu {
         AppendInitializationTrace("[WiiUFile] GX2 initialize: shared StandardShader resources begin.\n");
         InitializeStandardShaderResources();
         AppendInitializationTrace("[WiiUFile] GX2 initialize: shared StandardShader resources completed.\n");
-        InitializeDirectionalShadowResources();
         AppendInitializationTrace("[WiiUFile] GX2 initialize: UI quad resources begin.\n");
         InitializeUiQuadResources();
         AppendInitializationTrace("[WiiUFile] GX2 initialize: UI quad resources completed.\n");
-        AppendInitializationTrace("[WiiUFile] GX2 initialize: finalize scales and swap interval.\n");
-        GX2SetTVScale(TvSurfaceWidth, TvSurfaceHeight);
-        GX2SetDRCScale(DrcSurfaceWidth, DrcSurfaceHeight);
-        GX2SetSwapInterval(1);
         IsInitialized = true;
+        if (!AreProcUiCallbacksRegistered) {
+            ProcUIRegisterCallback(PROCUI_CALLBACK_ACQUIRE, &WiiUGx2Presenter::HandleForegroundAcquired, this, 100);
+            ProcUIRegisterCallback(PROCUI_CALLBACK_RELEASE, &WiiUGx2Presenter::HandleForegroundReleased, this, 100);
+            AreProcUiCallbacksRegistered = true;
+        }
+
         AppendInitializationTrace("[WiiUFile] GX2 initialize: completed.\n");
         return true;
     }
@@ -401,6 +446,8 @@ namespace helengine::wiiu {
     void WiiUGx2Presenter::RenderFrame(const WiiUGx2RenderFrame& frame) {
         if (!IsInitialized) {
             throw std::runtime_error("Wii U GX2 presenter must be initialized before RenderFrame.");
+        } else if (!AreForegroundResourcesAcquired) {
+            throw std::runtime_error("Wii U GX2 presenter requires foreground graphics ownership before rendering.");
         } else if (!AreUiQuadResourcesInitialized) {
             throw std::runtime_error("Wii U GX2 presenter must initialize UI quad resources before RenderFrame.");
         }
@@ -414,6 +461,8 @@ namespace helengine::wiiu {
     void WiiUGx2Presenter::RenderFrame(const WiiUGx23DRenderFrame& frame3D, const WiiUGx2RenderFrame& frame2D) {
         if (!IsInitialized) {
             throw std::runtime_error("Wii U GX2 presenter must be initialized before RenderFrame.");
+        } else if (!AreForegroundResourcesAcquired) {
+            throw std::runtime_error("Wii U GX2 presenter requires foreground graphics ownership before rendering.");
         } else if (!AreSceneOpaqueResourcesInitialized) {
             throw std::runtime_error("Wii U GX2 presenter must initialize opaque scene resources before 3D frame rendering.");
         } else if (!AreStandardShaderResourcesInitialized || !AreDirectionalShadowResourcesInitialized) {
@@ -438,6 +487,8 @@ namespace helengine::wiiu {
     void WiiUGx2Presenter::RenderDiagnosticClearFrame() {
         if (!IsInitialized) {
             throw std::runtime_error("Wii U GX2 presenter must be initialized before RenderDiagnosticClearFrame.");
+        } else if (!AreForegroundResourcesAcquired) {
+            throw std::runtime_error("Wii U GX2 presenter requires foreground graphics ownership before rendering.");
         }
 
         GX2SetContextState(TvContextState);
@@ -447,10 +498,70 @@ namespace helengine::wiiu {
         PresentScanBuffers();
     }
 
+    /// Renders one opaque cyan full-screen quad through the textured UI pipeline with vertex offset zero.
+    void WiiUGx2Presenter::RenderDiagnosticUiSlotZeroFrame() {
+        if (!IsInitialized) {
+            throw std::runtime_error("Wii U GX2 presenter must be initialized before RenderDiagnosticUiSlotZeroFrame.");
+        } else if (!AreForegroundResourcesAcquired) {
+            throw std::runtime_error("Wii U GX2 presenter requires foreground graphics ownership before rendering.");
+        } else if (!AreUiQuadResourcesInitialized) {
+            throw std::runtime_error("Wii U GX2 presenter must initialize UI quad resources before the slot-zero probe.");
+        }
+
+        const float positionData[] = {
+            -1.0f, -1.0f,
+             1.0f, -1.0f,
+             1.0f,  1.0f,
+            -1.0f, -1.0f,
+             1.0f,  1.0f,
+            -1.0f,  1.0f
+        };
+        const float texCoordData[] = {
+            0.0f, 1.0f,
+            1.0f, 1.0f,
+            1.0f, 0.0f,
+            0.0f, 1.0f,
+            1.0f, 0.0f,
+            0.0f, 0.0f
+        };
+        const float colorData[] = {
+            0.0f, 1.0f, 1.0f, 1.0f,
+            0.0f, 1.0f, 1.0f, 1.0f,
+            0.0f, 1.0f, 1.0f, 1.0f,
+            0.0f, 1.0f, 1.0f, 1.0f,
+            0.0f, 1.0f, 1.0f, 1.0f,
+            0.0f, 1.0f, 1.0f, 1.0f
+        };
+
+        EnsureUiQuadBufferCapacity(UiQuadVertexCount);
+        void* positionUploadBuffer = GX2RLockBufferEx(&UiQuadPositionBuffer, NoGx2rResourceFlags);
+        void* texCoordUploadBuffer = GX2RLockBufferEx(&UiQuadTexCoordBuffer, NoGx2rResourceFlags);
+        void* colorUploadBuffer = GX2RLockBufferEx(&UiQuadColorBuffer, NoGx2rResourceFlags);
+        if (positionUploadBuffer == nullptr || texCoordUploadBuffer == nullptr || colorUploadBuffer == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter could not lock the UI buffers for the slot-zero probe.");
+        }
+
+        std::memcpy(positionUploadBuffer, positionData, sizeof(positionData));
+        std::memcpy(texCoordUploadBuffer, texCoordData, sizeof(texCoordData));
+        std::memcpy(colorUploadBuffer, colorData, sizeof(colorData));
+        GX2RUnlockBufferEx(&UiQuadPositionBuffer, NoGx2rResourceFlags);
+        GX2RUnlockBufferEx(&UiQuadTexCoordBuffer, NoGx2rResourceFlags);
+        GX2RUnlockBufferEx(&UiQuadColorBuffer, NoGx2rResourceFlags);
+        GX2RInvalidateBuffer(&UiQuadPositionBuffer, GX2R_RESOURCE_USAGE_CPU_WRITE);
+        GX2RInvalidateBuffer(&UiQuadTexCoordBuffer, GX2R_RESOURCE_USAGE_CPU_WRITE);
+        GX2RInvalidateBuffer(&UiQuadColorBuffer, GX2R_RESOURCE_USAGE_CPU_WRITE);
+
+        RenderDiagnosticUiSlotZeroToColorBuffer(TvContextState, &TvColorBuffer);
+        RenderDiagnosticUiSlotZeroToColorBuffer(DrcContextState, &DrcColorBuffer);
+        PresentScanBuffers();
+    }
+
     /// Renders one presenter-owned pure GX2 clear-plus-square frame for bring-up verification.
     void WiiUGx2Presenter::RenderDiagnosticSquareFrame() {
         if (!IsInitialized) {
             throw std::runtime_error("Wii U GX2 presenter must be initialized before RenderDiagnosticSquareFrame.");
+        } else if (!AreForegroundResourcesAcquired) {
+            throw std::runtime_error("Wii U GX2 presenter requires foreground graphics ownership before rendering.");
         }
 
         RenderDiagnosticSquareToColorBuffer(TvContextState, &TvColorBuffer);
@@ -462,6 +573,8 @@ namespace helengine::wiiu {
     void WiiUGx2Presenter::RenderDiagnosticTriangleFrame() {
         if (!IsInitialized) {
             throw std::runtime_error("Wii U GX2 presenter must be initialized before RenderDiagnosticTriangleFrame.");
+        } else if (!AreForegroundResourcesAcquired) {
+            throw std::runtime_error("Wii U GX2 presenter requires foreground graphics ownership before rendering.");
         }
 
         RenderDiagnosticTriangleToColorBuffer(TvContextState, &TvColorBuffer);
@@ -469,34 +582,185 @@ namespace helengine::wiiu {
         PresentScanBuffers();
     }
 
-    /// Releases all allocated GX2 resources and returns the presenter to the uninitialized state.
-    void WiiUGx2Presenter::Shutdown() {
-        DestroyUiQuadResources();
+    /// Recreates foreground-owned GX2 resources after ProcUI returns application foreground ownership.
+    std::uint32_t WiiUGx2Presenter::HandleForegroundAcquired(void* context) {
+        if (context == nullptr) {
+            return static_cast<std::uint32_t>(-1);
+        }
+
+        WiiUGx2Presenter* presenter = static_cast<WiiUGx2Presenter*>(context);
+        presenter->AppendInitializationTrace("[WiiUExit] ProcUI foreground acquire callback begin.\n");
+        bool acquired = presenter->AcquireForegroundResources();
+        presenter->AppendInitializationTrace("[WiiUExit] ProcUI foreground acquire callback result=%u.\n", acquired ? 1U : 0U);
+        return acquired ? 0U : static_cast<std::uint32_t>(-1);
+    }
+
+    /// Releases foreground-owned GX2 resources before ProcUI transfers foreground ownership away from the application.
+    std::uint32_t WiiUGx2Presenter::HandleForegroundReleased(void* context) {
+        if (context == nullptr) {
+            return static_cast<std::uint32_t>(-1);
+        }
+
+        WiiUGx2Presenter* presenter = static_cast<WiiUGx2Presenter*>(context);
+        presenter->AppendInitializationTrace("[WiiUExit] ProcUI foreground release callback begin.\n");
+        presenter->ReleaseForegroundResources();
+        presenter->AppendInitializationTrace("[WiiUExit] ProcUI foreground release callback completed.\n");
+        return 0U;
+    }
+
+    /// Allocates and binds every GX2 resource whose backing memory belongs to the foreground or MEM1 arenas.
+    bool WiiUGx2Presenter::AcquireForegroundResources() {
+        if (AreForegroundResourcesAcquired) {
+            return true;
+        }
+
+        try {
+            AppendInitializationTrace("[WiiUFile] GX2 foreground acquire: initialize MEM1 graphics heap.\n");
+            if (!GfxHeapInitMEM1()) {
+                ReleaseForegroundResources();
+                return false;
+            }
+            IsMem1HeapInitialized = true;
+
+            AppendInitializationTrace("[WiiUFile] GX2 foreground acquire: initialize foreground graphics heap.\n");
+            if (!GfxHeapInitForeground()) {
+                ReleaseForegroundResources();
+                return false;
+            }
+            IsForegroundHeapInitialized = true;
+
+            AppendInitializationTrace("[WiiUFile] GX2 foreground acquire: allocate scan buffers.\n");
+            TvScanBuffer = GfxHeapAllocForeground(TvScanBufferSize, GX2_SCAN_BUFFER_ALIGNMENT);
+            DrcScanBuffer = GfxHeapAllocForeground(DrcScanBufferSize, GX2_SCAN_BUFFER_ALIGNMENT);
+            if (TvScanBuffer == nullptr || DrcScanBuffer == nullptr) {
+                ReleaseForegroundResources();
+                return false;
+            }
+
+            AppendInitializationTrace("[WiiUFile] GX2 foreground acquire: bind scan buffers.\n");
+            GX2Invalidate(GX2_INVALIDATE_MODE_CPU, TvScanBuffer, TvScanBufferSize);
+            GX2Invalidate(GX2_INVALIDATE_MODE_CPU, DrcScanBuffer, DrcScanBufferSize);
+            GX2DrcRenderMode drcRenderMode = GX2GetSystemDRCMode();
+            GX2SetTVBuffer(TvScanBuffer, TvScanBufferSize, PresentationTvRenderMode, PresentationSurfaceFormat, GX2_BUFFERING_MODE_DOUBLE);
+            GX2SetDRCBuffer(DrcScanBuffer, DrcScanBufferSize, drcRenderMode, PresentationSurfaceFormat, GX2_BUFFERING_MODE_DOUBLE);
+
+            AppendInitializationTrace("[WiiUFile] GX2 foreground acquire: create color and depth buffers.\n");
+            InitializeTvColorBuffer();
+            InitializeDrcColorBuffer();
+            InitializeTvDepthBuffer();
+            InitializeDrcDepthBuffer();
+            InitializeDirectionalShadowResources();
+            ConfigurePresentationContexts();
+            AreForegroundResourcesAcquired = true;
+            return true;
+        } catch (...) {
+            ReleaseForegroundResources();
+            return false;
+        }
+    }
+
+    /// Releases every GX2 resource whose lifetime is restricted to the current foreground ownership interval.
+    void WiiUGx2Presenter::ReleaseForegroundResources() {
+        AppendInitializationTrace("[WiiUExit] Foreground resource release begin.\n");
+        if (AreForegroundResourcesAcquired && IsGx2Initialized) {
+            GX2DrawDone();
+            AppendInitializationTrace("[WiiUExit] Foreground GX2DrawDone completed.\n");
+        } else {
+            AppendInitializationTrace("[WiiUExit] Foreground GX2DrawDone skipped because resources are not acquired.\n");
+        }
+
         DestroyDirectionalShadowResources();
-        DestroyStandardShaderResources();
-        DestroySceneOpaqueResources();
-        DestroyDiagnosticTriangleResources();
-        DestroyDiagnosticSquareResources();
+        AppendInitializationTrace("[WiiUExit] Foreground shadow resource destruction completed.\n");
 
         if (TvColorBuffer.surface.image != nullptr) {
             GX2RDestroySurfaceEx(&TvColorBuffer.surface, NoGx2rResourceFlags);
-            TvColorBuffer.surface.image = nullptr;
+            std::memset(&TvColorBuffer, 0, sizeof(TvColorBuffer));
         }
 
         if (DrcColorBuffer.surface.image != nullptr) {
             GX2RDestroySurfaceEx(&DrcColorBuffer.surface, NoGx2rResourceFlags);
-            DrcColorBuffer.surface.image = nullptr;
+            std::memset(&DrcColorBuffer, 0, sizeof(DrcColorBuffer));
         }
 
         if (TvDepthBuffer.surface.image != nullptr) {
             GX2RDestroySurfaceEx(&TvDepthBuffer.surface, NoGx2rResourceFlags);
-            TvDepthBuffer.surface.image = nullptr;
+            std::memset(&TvDepthBuffer, 0, sizeof(TvDepthBuffer));
         }
 
         if (DrcDepthBuffer.surface.image != nullptr) {
             GX2RDestroySurfaceEx(&DrcDepthBuffer.surface, NoGx2rResourceFlags);
-            DrcDepthBuffer.surface.image = nullptr;
+            std::memset(&DrcDepthBuffer, 0, sizeof(DrcDepthBuffer));
         }
+        AppendInitializationTrace("[WiiUExit] Foreground display surface destruction completed.\n");
+
+        if (TvScanBuffer != nullptr) {
+            GfxHeapFreeForeground(TvScanBuffer);
+            TvScanBuffer = nullptr;
+        }
+
+        if (DrcScanBuffer != nullptr) {
+            GfxHeapFreeForeground(DrcScanBuffer);
+            DrcScanBuffer = nullptr;
+        }
+        AppendInitializationTrace("[WiiUExit] Foreground scan buffer release completed.\n");
+
+        if (IsMem1HeapInitialized) {
+            GfxHeapDestroyMEM1();
+            IsMem1HeapInitialized = false;
+        }
+
+        if (IsForegroundHeapInitialized) {
+            GfxHeapDestroyForeground();
+            IsForegroundHeapInitialized = false;
+        }
+
+        AreForegroundResourcesAcquired = false;
+        AppendInitializationTrace("[WiiUExit] Foreground heap destruction completed.\n");
+    }
+
+    /// Rebuilds the persistent TV and DRC context states against the newly acquired display surfaces.
+    void WiiUGx2Presenter::ConfigurePresentationContexts() {
+        AppendInitializationTrace("[WiiUFile] GX2 foreground acquire: setup TV context state.\n");
+        GX2SetupContextStateEx(TvContextState, TRUE);
+        GX2SetContextState(TvContextState);
+        GX2SetColorBuffer(&TvColorBuffer, GX2_RENDER_TARGET_0);
+        GX2SetDepthBuffer(&TvDepthBuffer);
+        GX2SetViewport(0.0f, 0.0f, static_cast<float>(TvColorBuffer.surface.width), static_cast<float>(TvColorBuffer.surface.height), 0.0f, 1.0f);
+        GX2SetScissor(0, 0, TvColorBuffer.surface.width, TvColorBuffer.surface.height);
+
+        AppendInitializationTrace("[WiiUFile] GX2 foreground acquire: setup DRC context state.\n");
+        GX2SetupContextStateEx(DrcContextState, TRUE);
+        GX2SetContextState(DrcContextState);
+        GX2SetColorBuffer(&DrcColorBuffer, GX2_RENDER_TARGET_0);
+        GX2SetDepthBuffer(&DrcDepthBuffer);
+        GX2SetViewport(0.0f, 0.0f, static_cast<float>(DrcColorBuffer.surface.width), static_cast<float>(DrcColorBuffer.surface.height), 0.0f, 1.0f);
+        GX2SetScissor(0, 0, DrcColorBuffer.surface.width, DrcColorBuffer.surface.height);
+        GX2SetTVScale(TvSurfaceWidth, TvSurfaceHeight);
+        GX2SetDRCScale(DrcSurfaceWidth, DrcSurfaceHeight);
+        GX2SetSwapInterval(1);
+    }
+
+    /// Releases all allocated GX2 resources and returns the presenter to the uninitialized state.
+    void WiiUGx2Presenter::Shutdown() {
+        AppendInitializationTrace("[WiiUExit] GX2 presenter shutdown begin.\n");
+        ReleaseForegroundResources();
+        AppendInitializationTrace("[WiiUExit] GX2 presenter foreground release completed.\n");
+        DestroyUiQuadResources();
+        DestroyStandardShaderResources();
+        DestroySceneOpaqueResources();
+        DestroyDiagnosticTriangleResources();
+        DestroyDiagnosticSquareResources();
+        AppendInitializationTrace("[WiiUExit] GX2 presenter persistent resource destruction completed.\n");
+
+        if (IsGx2ResourceAllocatorInstalled) {
+            GX2RSetAllocator(nullptr, nullptr);
+        }
+        AppendInitializationTrace("[WiiUExit] GX2 presenter allocator removal completed.\n");
+
+        if (IsGx2Initialized) {
+            GX2Shutdown();
+        }
+        AppendInitializationTrace("[WiiUExit] GX2Shutdown completed.\n");
 
         if (TvContextState != nullptr) {
             MEMFreeToDefaultHeap(TvContextState);
@@ -505,24 +769,19 @@ namespace helengine::wiiu {
         if (DrcContextState != nullptr) {
             MEMFreeToDefaultHeap(DrcContextState);
         }
-
-        if (TvScanBuffer != nullptr) {
-            MEMFreeToDefaultHeap(TvScanBuffer);
-        }
-
-        if (DrcScanBuffer != nullptr) {
-            MEMFreeToDefaultHeap(DrcScanBuffer);
-        }
+        AppendInitializationTrace("[WiiUExit] GX2 presenter context release completed.\n");
 
         if (CommandBufferPool != nullptr) {
             MEMFreeToDefaultHeap(CommandBufferPool);
         }
-
-        if (IsInitialized) {
-            GX2Shutdown();
-        }
+        AppendInitializationTrace("[WiiUExit] GX2 presenter command buffer release completed.\n");
 
         IsInitialized = false;
+        IsGx2Initialized = false;
+        IsMem1HeapInitialized = false;
+        IsForegroundHeapInitialized = false;
+        IsGx2ResourceAllocatorInstalled = false;
+        AreForegroundResourcesAcquired = false;
         TvScanBuffer = nullptr;
         DrcScanBuffer = nullptr;
         CommandBufferPool = nullptr;
@@ -534,6 +793,7 @@ namespace helengine::wiiu {
         std::memset(&DrcColorBuffer, 0, sizeof(DrcColorBuffer));
         std::memset(&TvDepthBuffer, 0, sizeof(TvDepthBuffer));
         std::memset(&DrcDepthBuffer, 0, sizeof(DrcDepthBuffer));
+        AppendInitializationTrace("[WiiUExit] GX2 presenter shutdown completed.\n");
     }
 
     /// Initializes the presenter-owned shader and vertex buffers used by the diagnostic GX2 square path.
@@ -1457,6 +1717,7 @@ namespace helengine::wiiu {
             static_cast<float>(clearColor.Green) / 255.0f,
             static_cast<float>(clearColor.Blue) / 255.0f,
             static_cast<float>(clearColor.Alpha) / 255.0f);
+        GX2SetContextState(contextState);
 
         RenderQuadCommandsToColorBuffer(frame, targetWidth, targetHeight);
     }
@@ -1484,6 +1745,7 @@ namespace helengine::wiiu {
             static_cast<float>(clearColor.Blue) / 255.0f,
             static_cast<float>(clearColor.Alpha) / 255.0f);
         GX2ClearDepthStencilEx(depthBuffer, 1.0f, 0U, GX2_CLEAR_FLAGS_DEPTH);
+        GX2SetContextState(contextState);
 
         if (!frame.GetHasCamera()) {
             return;
@@ -1631,6 +1893,7 @@ namespace helengine::wiiu {
         GX2SetViewport(0.0f, 0.0f, static_cast<float>(DirectionalShadowMapSize), static_cast<float>(DirectionalShadowMapSize), 0.0f, 1.0f);
         GX2SetScissor(0, 0, DirectionalShadowMapSize, DirectionalShadowMapSize);
         GX2ClearDepthStencilEx(&DirectionalShadowDepthBuffer, 1.0f, 0U, GX2_CLEAR_FLAGS_DEPTH);
+        GX2SetContextState(contextState);
         GX2SetFetchShader(&ShadowDepthShaderGroup.fetchShader);
         GX2SetVertexShader(ShadowDepthShaderGroup.vertexShader);
         GX2SetPixelShader(ShadowDepthShaderGroup.pixelShader);
@@ -2221,11 +2484,59 @@ namespace helengine::wiiu {
 
         GX2SetScissor(scissorX, scissorY, scissorWidth, scissorHeight);
         const std::uint32_t vertexStartIndex = quadIndex * UiQuadVertexCount;
-        GX2RSetAttributeBuffer(&UiQuadPositionBuffer, 0, UiQuadPositionBuffer.elemSize, vertexStartIndex * UiQuadPositionElementSize);
-        GX2RSetAttributeBuffer(&UiQuadTexCoordBuffer, 1, UiQuadTexCoordBuffer.elemSize, vertexStartIndex * UiQuadTexCoordElementSize);
-        GX2RSetAttributeBuffer(&UiQuadColorBuffer, 2, UiQuadColorBuffer.elemSize, vertexStartIndex * UiQuadColorElementSize);
+        GX2RSetAttributeBuffer(&UiQuadPositionBuffer, 0, UiQuadPositionBuffer.elemSize, 0);
+        GX2RSetAttributeBuffer(&UiQuadTexCoordBuffer, 1, UiQuadTexCoordBuffer.elemSize, 0);
+        GX2RSetAttributeBuffer(&UiQuadColorBuffer, 2, UiQuadColorBuffer.elemSize, 0);
         GX2SetPixelTexture(&textureHandle->Texture, UiQuadShaderGroup.pixelShader->samplerVars[0].location);
         GX2SetPixelSampler(&textureHandle->Sampler, UiQuadShaderGroup.pixelShader->samplerVars[0].location);
+        GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, UiQuadVertexCount, vertexStartIndex, 1);
+    }
+
+    /// Renders the known slot-zero UI probe into one target color buffer using the existing UI shader and white texture.
+    void WiiUGx2Presenter::RenderDiagnosticUiSlotZeroToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer) {
+        if (contextState == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires a valid UI slot-zero diagnostic context state.");
+        } else if (colorBuffer == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires a valid UI slot-zero diagnostic color buffer.");
+        } else if (!AreUiQuadResourcesInitialized) {
+            throw std::runtime_error("Wii U GX2 presenter must initialize UI quad resources before drawing the slot-zero probe.");
+        }
+
+        GX2SetContextState(contextState);
+        GX2SetColorBuffer(colorBuffer, GX2_RENDER_TARGET_0);
+        GX2SetViewport(0.0f, 0.0f, static_cast<float>(colorBuffer->surface.width), static_cast<float>(colorBuffer->surface.height), 0.0f, 1.0f);
+        GX2SetScissor(0, 0, colorBuffer->surface.width, colorBuffer->surface.height);
+        GX2ClearColor(colorBuffer, DiagnosticClearRed, DiagnosticClearGreen, DiagnosticClearBlue, DiagnosticClearAlpha);
+        GX2SetContextState(contextState);
+        GX2SetFetchShader(&UiQuadShaderGroup.fetchShader);
+        GX2SetVertexShader(UiQuadShaderGroup.vertexShader);
+        GX2SetPixelShader(UiQuadShaderGroup.pixelShader);
+        GX2SetShaderMode(GX2_SHADER_MODE_UNIFORM_BLOCK);
+        GX2SetDepthOnlyControl(FALSE, FALSE, GX2_COMPARE_FUNC_ALWAYS);
+        GX2SetColorControl(GX2_LOGIC_OP_COPY, 0x0, FALSE, TRUE);
+        GX2SetBlendControl(
+            GX2_RENDER_TARGET_0,
+            GX2_BLEND_MODE_SRC_ALPHA,
+            GX2_BLEND_MODE_INV_SRC_ALPHA,
+            GX2_BLEND_COMBINE_MODE_ADD,
+            TRUE,
+            GX2_BLEND_MODE_ONE,
+            GX2_BLEND_MODE_INV_SRC_ALPHA,
+            GX2_BLEND_COMBINE_MODE_ADD);
+        GX2SetTargetChannelMasks(
+            GX2_CHANNEL_MASK_RGBA,
+            GX2_CHANNEL_MASK_RGBA,
+            GX2_CHANNEL_MASK_RGBA,
+            GX2_CHANNEL_MASK_RGBA,
+            GX2_CHANNEL_MASK_RGBA,
+            GX2_CHANNEL_MASK_RGBA,
+            GX2_CHANNEL_MASK_RGBA,
+            GX2_CHANNEL_MASK_RGBA);
+        GX2RSetAttributeBuffer(&UiQuadPositionBuffer, 0, UiQuadPositionBuffer.elemSize, 0);
+        GX2RSetAttributeBuffer(&UiQuadTexCoordBuffer, 1, UiQuadTexCoordBuffer.elemSize, 0);
+        GX2RSetAttributeBuffer(&UiQuadColorBuffer, 2, UiQuadColorBuffer.elemSize, 0);
+        GX2SetPixelTexture(&UiSolidWhiteTextureHandle.Texture, UiQuadShaderGroup.pixelShader->samplerVars[0].location);
+        GX2SetPixelSampler(&UiSolidWhiteTextureHandle.Sampler, UiQuadShaderGroup.pixelShader->samplerVars[0].location);
         GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, UiQuadVertexCount, 0, 1);
     }
 
@@ -2244,6 +2555,7 @@ namespace helengine::wiiu {
         GX2SetViewport(0.0f, 0.0f, static_cast<float>(colorBuffer->surface.width), static_cast<float>(colorBuffer->surface.height), 0.0f, 1.0f);
         GX2SetScissor(0, 0, colorBuffer->surface.width, colorBuffer->surface.height);
         GX2ClearColor(colorBuffer, DiagnosticClearRed, DiagnosticClearGreen, DiagnosticClearBlue, DiagnosticClearAlpha);
+        GX2SetContextState(contextState);
         GX2SetFetchShader(&DiagnosticSquareShaderGroup.fetchShader);
         GX2SetVertexShader(DiagnosticSquareShaderGroup.vertexShader);
         GX2SetPixelShader(DiagnosticSquareShaderGroup.pixelShader);
@@ -2267,6 +2579,7 @@ namespace helengine::wiiu {
         GX2SetViewport(0.0f, 0.0f, static_cast<float>(colorBuffer->surface.width), static_cast<float>(colorBuffer->surface.height), 0.0f, 1.0f);
         GX2SetScissor(0, 0, colorBuffer->surface.width, colorBuffer->surface.height);
         GX2ClearColor(colorBuffer, DiagnosticClearRed, DiagnosticClearGreen, DiagnosticClearBlue, DiagnosticClearAlpha);
+        GX2SetContextState(contextState);
         GX2SetFetchShader(&DiagnosticTriangleShaderGroup.fetchShader);
         GX2SetVertexShader(DiagnosticTriangleShaderGroup.vertexShader);
         GX2SetPixelShader(DiagnosticTriangleShaderGroup.pixelShader);

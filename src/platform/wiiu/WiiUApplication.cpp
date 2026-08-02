@@ -1,5 +1,6 @@
 #include "platform/wiiu/WiiUApplication.hpp"
 #include "platform/wiiu/WiiUGx2Presenter.hpp"
+#include "platform/wiiu/WiiUGx2TextureHandle.hpp"
 #include "platform/wiiu/WiiUInputBackend.hpp"
 #include "platform/wiiu/WiiURuntimeDiagnosticsProvider.hpp"
 #include "platform/wiiu/WiiUSceneBootstrap.hpp"
@@ -38,6 +39,7 @@
 #include <coreinit/debug.h>
 #include <coreinit/memdefaultheap.h>
 #include <coreinit/thread.h>
+#include <proc_ui/procui.h>
 #include <whb/proc.h>
 
 namespace helengine::wiiu {
@@ -58,7 +60,20 @@ namespace helengine::wiiu {
             DrawOnly,
             FullEngine
         };
+
+        /// Selects whether steady-state presentation submits captured engine frames or isolates the existing GX2 clear-only path.
+        enum class DiagnosticPresentationMode {
+            /// Presents only clear commands and scan-buffer copies through the initialized GX2 presenter.
+            ClearOnly,
+            /// Presents one known textured UI quad from vertex slot zero on both display targets.
+            UiSlotZeroProbe,
+            /// Presents the captured 3D frame and 2D overlay produced by the engine render managers.
+            CapturedFrame
+        };
+
         constexpr DiagnosticFrameLoopMode DiagnosticFrameLoopModeValue = DiagnosticFrameLoopMode::FullEngine;
+        /// Selects the textured slot-zero probe that isolates the real-hardware UI draw path from captured-frame batching.
+        constexpr DiagnosticPresentationMode DiagnosticPresentationModeValue = DiagnosticPresentationMode::CapturedFrame;
         constexpr bool RunDiagnosticRenderManager2DDrawInDrawOnlyMode = true;
     }
 
@@ -79,6 +94,7 @@ namespace helengine::wiiu {
         , Gx2Presenter(nullptr)
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
         , EngineInitialized(false)
+        , HasTracedCapturedFrame(false)
         , EngineCore(nullptr)
         , EngineRenderManager3D(nullptr)
         , EngineRenderManager2D(nullptr)
@@ -93,20 +109,53 @@ namespace helengine::wiiu {
 
     /// Releases generated-core bridge objects and native screen buffers after the application loop finishes.
     WiiUApplication::~WiiUApplication() {
-        delete Gx2Presenter;
-        Gx2Presenter = nullptr;
+        AppendRuntimeTrace("[WiiUExit] Application destructor begin.\n");
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
-        delete EngineRenderManager2D;
-        delete EngineRenderManager3D;
-        delete EngineInputBackend;
-        delete EngineAudioBackend;
-        delete EnginePlatformInfo;
+        AppendRuntimeTrace("[WiiUExit] generated core disposal begin.\n");
+        if (EngineCore != nullptr) {
+            EngineCore->Dispose();
+        }
+        AppendRuntimeTrace("[WiiUExit] generated core disposal completed.\n");
+        AppendRuntimeTrace("[WiiUExit] generated core destruction begin.\n");
         delete EngineCore;
+        EngineCore = nullptr;
+        AppendRuntimeTrace("[WiiUExit] generated core destruction completed.\n");
+        AppendRuntimeTrace("[WiiUExit] 2D render manager destruction begin.\n");
+        delete EngineRenderManager2D;
+        EngineRenderManager2D = nullptr;
+        AppendRuntimeTrace("[WiiUExit] 2D render manager destruction completed.\n");
+        AppendRuntimeTrace("[WiiUExit] 3D render manager destruction begin.\n");
+        delete EngineRenderManager3D;
+        EngineRenderManager3D = nullptr;
+        AppendRuntimeTrace("[WiiUExit] 3D render manager destruction completed.\n");
+        AppendRuntimeTrace("[WiiUExit] input backend destruction begin.\n");
+        delete EngineInputBackend;
+        EngineInputBackend = nullptr;
+        AppendRuntimeTrace("[WiiUExit] input backend destruction completed.\n");
+        AppendRuntimeTrace("[WiiUExit] audio backend destruction begin.\n");
+        delete EngineAudioBackend;
+        EngineAudioBackend = nullptr;
+        AppendRuntimeTrace("[WiiUExit] audio backend destruction completed.\n");
+        AppendRuntimeTrace("[WiiUExit] platform information destruction begin.\n");
+        delete EnginePlatformInfo;
+        EnginePlatformInfo = nullptr;
+        AppendRuntimeTrace("[WiiUExit] platform information destruction completed.\n");
+        AppendRuntimeTrace("[WiiUExit] diagnostics provider destruction begin.\n");
         delete EngineRuntimeDiagnosticsProvider;
+        EngineRuntimeDiagnosticsProvider = nullptr;
+        AppendRuntimeTrace("[WiiUExit] diagnostics provider destruction completed.\n");
+        AppendRuntimeTrace("[WiiUExit] content source destruction begin.\n");
         delete EngineContentStreamSource;
+        EngineContentStreamSource = nullptr;
+        AppendRuntimeTrace("[WiiUExit] content source destruction completed.\n");
 #endif
 
+        AppendRuntimeTrace("[WiiUExit] GX2 presenter destruction begin.\n");
+        delete Gx2Presenter;
+        Gx2Presenter = nullptr;
+        AppendRuntimeTrace("[WiiUExit] GX2 presenter destruction completed.\n");
+        AppendRuntimeTrace("[WiiUExit] OSScreen backing buffer release begin.\n");
         if (TvBuffer != nullptr) {
             MEMFreeToDefaultHeap(TvBuffer);
             TvBuffer = nullptr;
@@ -116,6 +165,8 @@ namespace helengine::wiiu {
             MEMFreeToDefaultHeap(DrcBuffer);
             DrcBuffer = nullptr;
         }
+        AppendRuntimeTrace("[WiiUExit] OSScreen backing buffer release completed.\n");
+        AppendRuntimeTrace("[WiiUExit] Application destructor completed.\n");
     }
 
     /// Runs the current Wii U proof-of-life application loop until the process shuts down.
@@ -216,8 +267,18 @@ namespace helengine::wiiu {
             OSSleepTicks(OSMillisecondsToTicks(16));
         }
 
-        OSScreenShutdown();
+        AppendRuntimeTrace("[WiiUExit] ProcUI application loop exited.\n");
+        if (ProcUIInForeground()) {
+            AppendRuntimeTrace("[WiiUExit] OSScreenShutdown begin.\n");
+            OSScreenShutdown();
+            AppendRuntimeTrace("[WiiUExit] OSScreenShutdown completed.\n");
+        } else {
+            AppendRuntimeTrace("[WiiUExit] OSScreenShutdown skipped because ProcUI is not in foreground.\n");
+        }
+
+        AppendRuntimeTrace("[WiiUExit] WHBProcShutdown begin.\n");
         WHBProcShutdown();
+        AppendRuntimeTrace("[WiiUExit] WHBProcShutdown completed.\n");
         return 0;
     }
 
@@ -645,8 +706,129 @@ namespace helengine::wiiu {
         }
 
         HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] PresentRenderedFrame begin.\n");
-        Gx2Presenter->RenderFrame(EngineRenderManager3D->GetCurrentFrame(), EngineRenderManager2D->GetCurrentFrame());
-        HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] PresentRenderedFrame completed.\n");
+        if (DiagnosticPresentationModeValue == DiagnosticPresentationMode::ClearOnly) {
+            Gx2Presenter->RenderDiagnosticClearFrame();
+            HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] PresentRenderedFrame clear-only completed.\n");
+            return;
+        }
+
+        if (DiagnosticPresentationModeValue == DiagnosticPresentationMode::UiSlotZeroProbe) {
+            Gx2Presenter->RenderDiagnosticUiSlotZeroFrame();
+            HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] PresentRenderedFrame UI slot-zero probe completed.\n");
+            return;
+        }
+
+        const WiiUGx23DRenderFrame& frame3D = EngineRenderManager3D->GetCurrentFrame();
+        const WiiUGx2RenderFrame& frame2D = EngineRenderManager2D->GetCurrentFrame();
+        if (!HasTracedCapturedFrame) {
+            const WiiUGx2Color& clearColor3D = frame3D.GetClearColor();
+            const WiiUGx2Color& clearColor2D = frame2D.GetClearColor();
+            const std::vector<WiiUGx2QuadCommand>& quadCommands = frame2D.GetQuadCommands();
+            std::size_t nonZeroAlphaQuads = 0U;
+            std::size_t usableClipQuads = 0U;
+            std::size_t onScreenQuads = 0U;
+            std::size_t initializedTextureQuads = 0U;
+            std::size_t fallbackTextureQuads = 0U;
+            const WiiUGx2QuadCommand* representativeQuad = nullptr;
+            for (std::size_t commandIndex = 0U; commandIndex < quadCommands.size(); commandIndex++) {
+                const WiiUGx2QuadCommand& command = quadCommands[commandIndex];
+                if (command.Color.Alpha != 0U) {
+                    nonZeroAlphaQuads++;
+                }
+
+                if (command.ClipRect.Width > 0.0f && command.ClipRect.Height > 0.0f) {
+                    usableClipQuads++;
+                }
+
+                if (
+                    command.Width > 0.0f
+                    && command.Height > 0.0f
+                    && command.X < static_cast<float>(TvSurfaceWidth)
+                    && command.Y < static_cast<float>(TvSurfaceHeight)
+                    && command.X + command.Width > 0.0f
+                    && command.Y + command.Height > 0.0f) {
+                    onScreenQuads++;
+                }
+
+                if (command.TextureHandle == nullptr) {
+                    fallbackTextureQuads++;
+                } else if (command.TextureHandle->Texture.surface.image != nullptr) {
+                    initializedTextureQuads++;
+                }
+
+                if (
+                    representativeQuad == nullptr
+                    && command.Color.Alpha != 0U
+                    && command.ClipRect.Width > 0.0f
+                    && command.ClipRect.Height > 0.0f) {
+                    representativeQuad = &command;
+                }
+            }
+
+            AppendRuntimeTrace(
+                "[WiiUCapture] hasCamera=%u draw3D=%llu quad2D=%llu clear3D=%u,%u,%u,%u clear2D=%u,%u,%u,%u\n",
+                frame3D.GetHasCamera() ? 1U : 0U,
+                static_cast<unsigned long long>(frame3D.GetDrawCommands().size()),
+                static_cast<unsigned long long>(frame2D.GetQuadCommands().size()),
+                clearColor3D.Red,
+                clearColor3D.Green,
+                clearColor3D.Blue,
+                clearColor3D.Alpha,
+                clearColor2D.Red,
+                clearColor2D.Green,
+                clearColor2D.Blue,
+                clearColor2D.Alpha);
+            AppendRuntimeTrace(
+                "[WiiUCapture] quadValidity alpha=%llu clip=%llu onScreen=%llu initializedTexture=%llu fallbackTexture=%llu\n",
+                static_cast<unsigned long long>(nonZeroAlphaQuads),
+                static_cast<unsigned long long>(usableClipQuads),
+                static_cast<unsigned long long>(onScreenQuads),
+                static_cast<unsigned long long>(initializedTextureQuads),
+                static_cast<unsigned long long>(fallbackTextureQuads));
+            if (representativeQuad != nullptr && representativeQuad->TextureHandle != nullptr) {
+                const WiiUGx2TextureHandle* textureHandle = representativeQuad->TextureHandle;
+                AppendRuntimeTrace(
+                    "[WiiUCapture] firstQuad bounds=%.2f,%.2f,%.2f,%.2f source=%.4f,%.4f,%.4f,%.4f clip=%.2f,%.2f,%.2f,%.2f color=%u,%u,%u,%u textureImage=%p textureSize=%ux%u\n",
+                    representativeQuad->X,
+                    representativeQuad->Y,
+                    representativeQuad->Width,
+                    representativeQuad->Height,
+                    representativeQuad->SourceX,
+                    representativeQuad->SourceY,
+                    representativeQuad->SourceWidth,
+                    representativeQuad->SourceHeight,
+                    representativeQuad->ClipRect.X,
+                    representativeQuad->ClipRect.Y,
+                    representativeQuad->ClipRect.Width,
+                    representativeQuad->ClipRect.Height,
+                    representativeQuad->Color.Red,
+                    representativeQuad->Color.Green,
+                    representativeQuad->Color.Blue,
+                    representativeQuad->Color.Alpha,
+                    textureHandle->Texture.surface.image,
+                    textureHandle->Texture.surface.width,
+                    textureHandle->Texture.surface.height);
+            } else if (representativeQuad != nullptr) {
+                AppendRuntimeTrace(
+                    "[WiiUCapture] firstQuad bounds=%.2f,%.2f,%.2f,%.2f clip=%.2f,%.2f,%.2f,%.2f color=%u,%u,%u,%u texture=fallback\n",
+                    representativeQuad->X,
+                    representativeQuad->Y,
+                    representativeQuad->Width,
+                    representativeQuad->Height,
+                    representativeQuad->ClipRect.X,
+                    representativeQuad->ClipRect.Y,
+                    representativeQuad->ClipRect.Width,
+                    representativeQuad->ClipRect.Height,
+                    representativeQuad->Color.Red,
+                    representativeQuad->Color.Green,
+                    representativeQuad->Color.Blue,
+                    representativeQuad->Color.Alpha);
+            }
+            HasTracedCapturedFrame = true;
+        }
+
+        Gx2Presenter->RenderFrame(frame3D, frame2D);
+        HELENGINE_WIIU_FRAME_TRACE("[WiiUFile] PresentRenderedFrame captured frame completed.\n");
     }
 
     /// Appends one host-readable Wii U runtime trace line to every supported trace sink.

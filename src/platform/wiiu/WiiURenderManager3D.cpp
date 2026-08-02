@@ -130,7 +130,7 @@ namespace helengine::wiiu {
                 return;
             }
 
-            List<RenderFrame*>* frames = extractionResult->get_Frames();
+            IReadOnlyList<RenderFrame*>* frames = extractionResult->get_Frames();
             if (frames != nullptr) {
                 for (int32_t frameIndex = 0; frameIndex < frames->get_Count(); frameIndex++) {
                     RenderFrame* frame = (*frames).get_Item(frameIndex);
@@ -138,7 +138,7 @@ namespace helengine::wiiu {
                         continue;
                     }
 
-                    List<RenderFrameDrawableSubmission*>* drawableSubmissions = frame->get_DrawableSubmissions();
+                    IReadOnlyList<RenderFrameDrawableSubmission*>* drawableSubmissions = frame->get_DrawableSubmissions();
                     if (drawableSubmissions != nullptr) {
                         for (int32_t drawableIndex = 0; drawableIndex < drawableSubmissions->get_Count(); drawableIndex++) {
                             delete (*drawableSubmissions).get_Item(drawableIndex);
@@ -147,7 +147,7 @@ namespace helengine::wiiu {
                         delete drawableSubmissions;
                     }
 
-                    List<RenderFrameLightSubmission*>* lightSubmissions = frame->get_LightSubmissions();
+                    IReadOnlyList<RenderFrameLightSubmission*>* lightSubmissions = frame->get_LightSubmissions();
                     if (lightSubmissions != nullptr) {
                         for (int32_t lightIndex = 0; lightIndex < lightSubmissions->get_Count(); lightIndex++) {
                             delete (*lightSubmissions).get_Item(lightIndex);
@@ -156,7 +156,7 @@ namespace helengine::wiiu {
                         delete lightSubmissions;
                     }
 
-                    List<RenderFrameShadowCasterSubmission*>* shadowCasterSubmissions = frame->get_ShadowCasterSubmissions();
+                    IReadOnlyList<RenderFrameShadowCasterSubmission*>* shadowCasterSubmissions = frame->get_ShadowCasterSubmissions();
                     if (shadowCasterSubmissions != nullptr) {
                         for (int32_t shadowCasterIndex = 0; shadowCasterIndex < shadowCasterSubmissions->get_Count(); shadowCasterIndex++) {
                             delete (*shadowCasterSubmissions).get_Item(shadowCasterIndex);
@@ -485,7 +485,7 @@ namespace helengine::wiiu {
         CurrentFrame.SetCamera(CreateCameraState(camera));
         CaptureSceneLighting(frame);
 
-        List<RenderFrameDrawableSubmission*>* drawableSubmissions = frame->get_DrawableSubmissions();
+        IReadOnlyList<RenderFrameDrawableSubmission*>* drawableSubmissions = frame->get_DrawableSubmissions();
         if (drawableSubmissions == nullptr) {
             return;
         }
@@ -510,7 +510,7 @@ namespace helengine::wiiu {
         WiiUGx23DDirectionalShadowState directionalShadowState {};
         directionalShadowState.LightViewProjection = CreateDirectionalShadowViewProjection(camera, CurrentFrame.GetDirectionalLight());
         directionalShadowState.Strength = CurrentFrame.GetDirectionalLight().ShadowStrength;
-        List<RenderFrameShadowCasterSubmission*>* shadowCasterSubmissions = frame->get_ShadowCasterSubmissions();
+        IReadOnlyList<RenderFrameShadowCasterSubmission*>* shadowCasterSubmissions = frame->get_ShadowCasterSubmissions();
         if (directionalShadowState.Strength <= 0.0f
             || shadowCasterSubmissions == nullptr || shadowCasterSubmissions->get_Count() == 0) {
             return;
@@ -540,7 +540,7 @@ namespace helengine::wiiu {
         DirectionalLightComponent* directionalLight = nullptr;
         int32_t directionalLightImportance = 0;
         bool hasDirectionalLight = false;
-        List<RenderFrameLightSubmission*>* lightSubmissions = frame->get_LightSubmissions();
+        IReadOnlyList<RenderFrameLightSubmission*>* lightSubmissions = frame->get_LightSubmissions();
         if (lightSubmissions != nullptr) {
             for (int32_t lightIndex = 0; lightIndex < lightSubmissions->get_Count(); lightIndex++) {
                 RenderFrameLightSubmission* lightSubmission = (*lightSubmissions).get_Item(lightIndex);

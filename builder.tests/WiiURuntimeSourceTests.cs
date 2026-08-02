@@ -534,6 +534,52 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
+    /// Ensures every GX2 path that draws after clearing restores its selected context after the final clear, matching libwhb's hardware-safe render sequence.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_RestoresGx2ContextAfterClearingBeforeEveryDrawPath() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        int frame2DStartIndex = presenterSource.IndexOf("void WiiUGx2Presenter::RenderFrameToColorBuffer(", StringComparison.Ordinal);
+        int frame3DStartIndex = presenterSource.IndexOf("void WiiUGx2Presenter::Render3DFrameToColorBuffer(", frame2DStartIndex, StringComparison.Ordinal);
+        int shadowPassStartIndex = presenterSource.IndexOf("void WiiUGx2Presenter::RenderDirectionalShadowDepthPass(", frame3DStartIndex, StringComparison.Ordinal);
+        int shadowPassEndIndex = presenterSource.IndexOf("void WiiUGx2Presenter::RenderStandard3DDrawCommandToColorBuffer(", shadowPassStartIndex, StringComparison.Ordinal);
+        int slotZeroStartIndex = presenterSource.IndexOf("void WiiUGx2Presenter::RenderDiagnosticUiSlotZeroToColorBuffer(", shadowPassEndIndex, StringComparison.Ordinal);
+        int squareStartIndex = presenterSource.IndexOf("void WiiUGx2Presenter::RenderDiagnosticSquareToColorBuffer(", slotZeroStartIndex, StringComparison.Ordinal);
+        int triangleStartIndex = presenterSource.IndexOf("void WiiUGx2Presenter::RenderDiagnosticTriangleToColorBuffer(", squareStartIndex, StringComparison.Ordinal);
+        int presentationStartIndex = presenterSource.IndexOf("void WiiUGx2Presenter::PresentScanBuffers()", triangleStartIndex, StringComparison.Ordinal);
+        Assert.True(frame2DStartIndex >= 0, "The presenter must define the 2D frame target path.");
+        Assert.True(frame3DStartIndex > frame2DStartIndex, "The 3D frame target path must follow the 2D target path.");
+        Assert.True(shadowPassStartIndex > frame3DStartIndex, "The shadow target path must follow the 3D target path.");
+        Assert.True(shadowPassEndIndex > shadowPassStartIndex, "The shadow target path must have a discoverable function boundary.");
+        Assert.True(slotZeroStartIndex > shadowPassEndIndex, "The UI diagnostic target path must follow the scene paths.");
+        Assert.True(squareStartIndex > slotZeroStartIndex, "The square diagnostic target path must follow the UI diagnostic path.");
+        Assert.True(triangleStartIndex > squareStartIndex, "The triangle diagnostic target path must follow the square diagnostic path.");
+        Assert.True(presentationStartIndex > triangleStartIndex, "The presentation path must follow the triangle diagnostic path.");
+
+        string frame2DSource = presenterSource.Substring(frame2DStartIndex, frame3DStartIndex - frame2DStartIndex);
+        string frame3DSource = presenterSource.Substring(frame3DStartIndex, shadowPassStartIndex - frame3DStartIndex);
+        string shadowPassSource = presenterSource.Substring(shadowPassStartIndex, shadowPassEndIndex - shadowPassStartIndex);
+        string slotZeroSource = presenterSource.Substring(slotZeroStartIndex, squareStartIndex - slotZeroStartIndex);
+        string squareSource = presenterSource.Substring(squareStartIndex, triangleStartIndex - squareStartIndex);
+        string triangleSource = presenterSource.Substring(triangleStartIndex, presentationStartIndex - triangleStartIndex);
+        int frame2DClearIndex = frame2DSource.IndexOf("GX2ClearColor(", StringComparison.Ordinal);
+        int frame3DClearIndex = frame3DSource.IndexOf("GX2ClearDepthStencilEx(", StringComparison.Ordinal);
+        int shadowClearIndex = shadowPassSource.IndexOf("GX2ClearDepthStencilEx(", StringComparison.Ordinal);
+        int slotZeroClearIndex = slotZeroSource.IndexOf("GX2ClearColor(", StringComparison.Ordinal);
+        int squareClearIndex = squareSource.IndexOf("GX2ClearColor(", StringComparison.Ordinal);
+        int triangleClearIndex = triangleSource.IndexOf("GX2ClearColor(", StringComparison.Ordinal);
+
+        Assert.True(frame2DSource.IndexOf("GX2SetContextState(contextState);", frame2DClearIndex, StringComparison.Ordinal) > frame2DClearIndex, "The 2D path must restore its context after clearing.");
+        Assert.True(frame3DSource.IndexOf("GX2SetContextState(contextState);", frame3DClearIndex, StringComparison.Ordinal) > frame3DClearIndex, "The 3D path must restore its context after clearing color and depth.");
+        Assert.True(shadowPassSource.IndexOf("GX2SetContextState(contextState);", shadowClearIndex, StringComparison.Ordinal) > shadowClearIndex, "The shadow path must restore its context after clearing depth.");
+        Assert.True(slotZeroSource.IndexOf("GX2SetContextState(contextState);", slotZeroClearIndex, StringComparison.Ordinal) > slotZeroClearIndex, "The UI diagnostic path must restore its context after clearing.");
+        Assert.True(squareSource.IndexOf("GX2SetContextState(contextState);", squareClearIndex, StringComparison.Ordinal) > squareClearIndex, "The square diagnostic path must restore its context after clearing.");
+        Assert.True(triangleSource.IndexOf("GX2SetContextState(contextState);", triangleClearIndex, StringComparison.Ordinal) > triangleClearIndex, "The triangle diagnostic path must restore its context after clearing.");
+    }
+
+    /// <summary>
     /// Ensures the earlier clear-only bring-up slice remains available as a presenter-owned GX2 diagnostic step even though the active frame path now uses captured 3D plus 2D frames.
     /// </summary>
     [Fact]
@@ -546,8 +592,8 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("void RenderDiagnosticClearFrame();", presenterHeaderSource, StringComparison.Ordinal);
         Assert.Contains("GX2ClearColor(&TvColorBuffer", presenterSource, StringComparison.Ordinal);
         Assert.Contains("GX2ClearColor(&DrcColorBuffer", presenterSource, StringComparison.Ordinal);
-        Assert.Contains("Gx2Presenter->RenderFrame(EngineRenderManager3D->GetCurrentFrame(), EngineRenderManager2D->GetCurrentFrame());", applicationSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("Gx2Presenter->RenderDiagnosticClearFrame();", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("Gx2Presenter->RenderFrame(frame3D, frame2D);", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("Gx2Presenter->RenderDiagnosticClearFrame();", applicationSource, StringComparison.Ordinal);
         Assert.DoesNotContain("Gx2Presenter->Present(", applicationSource, StringComparison.Ordinal);
         Assert.Contains("if (quadCommands.empty()) {", presenterSource, StringComparison.Ordinal);
         Assert.Contains("EnsureUiQuadBufferCapacity(totalVertexCount);", presenterSource, StringComparison.Ordinal);
@@ -565,6 +611,241 @@ public sealed class WiiURuntimeSourceTests {
 
         Assert.Contains("CurrentFrame.SetClearColor(WiiUGx2Color { 30U, 17U, 41U, 255U });", renderSource, StringComparison.Ordinal);
         Assert.DoesNotContain("CurrentFrame.SetClearColor(WiiUGx2Color { 0U, 255U, 0U, 255U });", renderSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures real-hardware presentation follows libwhb memory placement by keeping scan buffers in the foreground heap and render targets in MEM1.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_PlacesHardwarePresentationResourcesInRequiredHeaps() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        Assert.Contains("GfxHeapInitMEM1()", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GfxHeapInitForeground()", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RSetAllocator(&AllocateGx2Resource, &FreeGx2Resource);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("TvScanBuffer = GfxHeapAllocForeground(TvScanBufferSize, GX2_SCAN_BUFFER_ALIGNMENT);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("DrcScanBuffer = GfxHeapAllocForeground(DrcScanBufferSize, GX2_SCAN_BUFFER_ALIGNMENT);", presenterSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("TvScanBuffer = MEMAllocFromDefaultHeapEx", presenterSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("DrcScanBuffer = MEMAllocFromDefaultHeapEx", presenterSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures batched UI draws retain aligned attribute-buffer bases and select each uploaded quad through GX2's base-vertex argument.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_SelectsBatchedUiQuadsWithBaseVertex() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+        int renderQuadStartIndex = presenterSource.IndexOf("void WiiUGx2Presenter::RenderQuadCommandToColorBuffer(", StringComparison.Ordinal);
+        int diagnosticSquareStartIndex = presenterSource.IndexOf("void WiiUGx2Presenter::RenderDiagnosticSquareToColorBuffer(", renderQuadStartIndex, StringComparison.Ordinal);
+        string renderQuadSource = presenterSource.Substring(renderQuadStartIndex, diagnosticSquareStartIndex - renderQuadStartIndex);
+
+        Assert.Contains("GX2RSetAttributeBuffer(&UiQuadPositionBuffer, 0, UiQuadPositionBuffer.elemSize, 0);", renderQuadSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RSetAttributeBuffer(&UiQuadTexCoordBuffer, 1, UiQuadTexCoordBuffer.elemSize, 0);", renderQuadSource, StringComparison.Ordinal);
+        Assert.Contains("GX2RSetAttributeBuffer(&UiQuadColorBuffer, 2, UiQuadColorBuffer.elemSize, 0);", renderQuadSource, StringComparison.Ordinal);
+        Assert.Contains("GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, UiQuadVertexCount, vertexStartIndex, 1);", renderQuadSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("vertexStartIndex * UiQuadPositionElementSize", renderQuadSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("vertexStartIndex * UiQuadTexCoordElementSize", renderQuadSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("vertexStartIndex * UiQuadColorElementSize", renderQuadSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the verified textured UI probe remains available for diagnostics while steady-state presentation selects captured engine frames.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_RetainsTexturedUiSlotZeroProbeWhileSelectingCapturedFrames() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+        string presenterHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp"));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+        int slotZeroStartIndex = presenterSource.IndexOf("void WiiUGx2Presenter::RenderDiagnosticUiSlotZeroToColorBuffer(", StringComparison.Ordinal);
+        int diagnosticSquareStartIndex = presenterSource.IndexOf("void WiiUGx2Presenter::RenderDiagnosticSquareToColorBuffer(", slotZeroStartIndex, StringComparison.Ordinal);
+        Assert.True(slotZeroStartIndex >= 0, "The presenter must define the UI slot-zero target helper.");
+        Assert.True(diagnosticSquareStartIndex > slotZeroStartIndex, "The diagnostic square helper must follow the UI slot-zero helper.");
+        string slotZeroSource = presenterSource.Substring(slotZeroStartIndex, diagnosticSquareStartIndex - slotZeroStartIndex);
+
+        Assert.Contains("UiSlotZeroProbe", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("constexpr DiagnosticPresentationMode DiagnosticPresentationModeValue = DiagnosticPresentationMode::CapturedFrame;", applicationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("constexpr DiagnosticPresentationMode DiagnosticPresentationModeValue = DiagnosticPresentationMode::UiSlotZeroProbe;", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("Gx2Presenter->RenderDiagnosticUiSlotZeroFrame();", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("void RenderDiagnosticUiSlotZeroFrame();", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void RenderDiagnosticUiSlotZeroToColorBuffer(GX2ContextState* contextState, GX2ColorBuffer* colorBuffer);", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("GX2SetPixelTexture(&UiSolidWhiteTextureHandle.Texture", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2SetPixelSampler(&UiSolidWhiteTextureHandle.Sampler", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, UiQuadVertexCount, 0, 1);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("GX2SetColorControl(GX2_LOGIC_OP_COPY, 0x0, FALSE, TRUE);", slotZeroSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("GX2SetColorControl(GX2_LOGIC_OP_COPY, 0x1, FALSE, TRUE);", slotZeroSource, StringComparison.Ordinal);
+        Assert.Contains("GX2SetColorControl(GX2_LOGIC_OP_COPY, 0x1, FALSE, TRUE);", presenterSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the verified foreground lifecycle returns steady-state output to captured engine frames while retaining the clear-only branch for diagnostics.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_SelectsCapturedPresentationAfterForegroundLifecycleRepair() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+        int presentRenderedFrameStartIndex = applicationSource.IndexOf("void WiiUApplication::PresentRenderedFrame()", StringComparison.Ordinal);
+        int appendRuntimeTraceStartIndex = applicationSource.IndexOf("void WiiUApplication::AppendRuntimeTrace(", presentRenderedFrameStartIndex, StringComparison.Ordinal);
+        string presentRenderedFrameSource = applicationSource.Substring(presentRenderedFrameStartIndex, appendRuntimeTraceStartIndex - presentRenderedFrameStartIndex);
+
+        Assert.Contains("enum class DiagnosticPresentationMode", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("CapturedFrame", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("if (DiagnosticPresentationModeValue == DiagnosticPresentationMode::ClearOnly) {", presentRenderedFrameSource, StringComparison.Ordinal);
+        Assert.Contains("Gx2Presenter->RenderDiagnosticClearFrame();", presentRenderedFrameSource, StringComparison.Ordinal);
+        Assert.Contains("const WiiUGx23DRenderFrame& frame3D = EngineRenderManager3D->GetCurrentFrame();", presentRenderedFrameSource, StringComparison.Ordinal);
+        Assert.Contains("const WiiUGx2RenderFrame& frame2D = EngineRenderManager2D->GetCurrentFrame();", presentRenderedFrameSource, StringComparison.Ordinal);
+        Assert.Contains("Gx2Presenter->RenderFrame(frame3D, frame2D);", presentRenderedFrameSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures captured-frame diagnosis records the first frame's camera, command counts, and clear colors exactly once without generating per-frame trace traffic.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_TracesFirstCapturedFrameContentsOnce() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+        int presentRenderedFrameStartIndex = applicationSource.IndexOf("void WiiUApplication::PresentRenderedFrame()", StringComparison.Ordinal);
+        int appendRuntimeTraceStartIndex = applicationSource.IndexOf("void WiiUApplication::AppendRuntimeTrace(", presentRenderedFrameStartIndex, StringComparison.Ordinal);
+        string presentRenderedFrameSource = applicationSource.Substring(presentRenderedFrameStartIndex, appendRuntimeTraceStartIndex - presentRenderedFrameStartIndex);
+
+        Assert.Contains("bool HasTracedCapturedFrame;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains(", HasTracedCapturedFrame(false)", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("if (!HasTracedCapturedFrame) {", presentRenderedFrameSource, StringComparison.Ordinal);
+        Assert.Contains("frame3D.GetHasCamera()", presentRenderedFrameSource, StringComparison.Ordinal);
+        Assert.Contains("frame3D.GetDrawCommands().size()", presentRenderedFrameSource, StringComparison.Ordinal);
+        Assert.Contains("frame2D.GetQuadCommands().size()", presentRenderedFrameSource, StringComparison.Ordinal);
+        Assert.Contains("frame3D.GetClearColor()", presentRenderedFrameSource, StringComparison.Ordinal);
+        Assert.Contains("frame2D.GetClearColor()", presentRenderedFrameSource, StringComparison.Ordinal);
+        Assert.Contains("nonZeroAlphaQuads", presentRenderedFrameSource, StringComparison.Ordinal);
+        Assert.Contains("usableClipQuads", presentRenderedFrameSource, StringComparison.Ordinal);
+        Assert.Contains("onScreenQuads", presentRenderedFrameSource, StringComparison.Ordinal);
+        Assert.Contains("initializedTextureQuads", presentRenderedFrameSource, StringComparison.Ordinal);
+        Assert.Contains("[WiiUCapture] firstQuad", presentRenderedFrameSource, StringComparison.Ordinal);
+        Assert.Contains("HasTracedCapturedFrame = true;", presentRenderedFrameSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the custom GX2 presenter participates in ProcUI foreground ownership instead of acknowledging release while scan buffers remain allocated.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_RegistersPresenterProcUiForegroundCallbacks() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp"));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        Assert.Contains("static std::uint32_t HandleForegroundAcquired(void* context);", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("static std::uint32_t HandleForegroundReleased(void* context);", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("bool AcquireForegroundResources();", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("void ReleaseForegroundResources();", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("#include <proc_ui/procui.h>", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("ProcUIRegisterCallback(PROCUI_CALLBACK_ACQUIRE, &WiiUGx2Presenter::HandleForegroundAcquired, this, 100);", presenterSource, StringComparison.Ordinal);
+        Assert.Contains("ProcUIRegisterCallback(PROCUI_CALLBACK_RELEASE, &WiiUGx2Presenter::HandleForegroundReleased, this, 100);", presenterSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures foreground release drains GPU work before freeing every foreground allocation and acquire rebuilds every released display dependency.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_ReleasesAndReacquiresPresenterForegroundResources() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.hpp"));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+        int acquireStartIndex = presenterSource.IndexOf("bool WiiUGx2Presenter::AcquireForegroundResources()", StringComparison.Ordinal);
+        int releaseStartIndex = presenterSource.IndexOf("void WiiUGx2Presenter::ReleaseForegroundResources()", StringComparison.Ordinal);
+        int shutdownStartIndex = presenterSource.IndexOf("void WiiUGx2Presenter::Shutdown()", StringComparison.Ordinal);
+        Assert.True(acquireStartIndex >= 0, "The presenter must define foreground acquisition.");
+        Assert.True(releaseStartIndex > acquireStartIndex, "Foreground release must follow acquisition in the presenter implementation.");
+        Assert.True(shutdownStartIndex > releaseStartIndex, "Final shutdown must follow foreground release in the presenter implementation.");
+        string acquireSource = presenterSource.Substring(acquireStartIndex, releaseStartIndex - acquireStartIndex);
+        string releaseSource = presenterSource.Substring(releaseStartIndex, shutdownStartIndex - releaseStartIndex);
+
+        Assert.Contains("bool AreForegroundResourcesAcquired;", presenterHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("GfxHeapInitMEM1()", acquireSource, StringComparison.Ordinal);
+        Assert.Contains("GfxHeapInitForeground()", acquireSource, StringComparison.Ordinal);
+        Assert.Contains("TvScanBuffer = GfxHeapAllocForeground", acquireSource, StringComparison.Ordinal);
+        Assert.Contains("DrcScanBuffer = GfxHeapAllocForeground", acquireSource, StringComparison.Ordinal);
+        Assert.Contains("InitializeTvColorBuffer();", acquireSource, StringComparison.Ordinal);
+        Assert.Contains("InitializeDrcColorBuffer();", acquireSource, StringComparison.Ordinal);
+        Assert.Contains("InitializeTvDepthBuffer();", acquireSource, StringComparison.Ordinal);
+        Assert.Contains("InitializeDrcDepthBuffer();", acquireSource, StringComparison.Ordinal);
+        Assert.Contains("InitializeDirectionalShadowResources();", acquireSource, StringComparison.Ordinal);
+        Assert.Contains("ConfigurePresentationContexts();", acquireSource, StringComparison.Ordinal);
+        Assert.Contains("AreForegroundResourcesAcquired = true;", acquireSource, StringComparison.Ordinal);
+
+        int drawDoneIndex = releaseSource.IndexOf("GX2DrawDone();", StringComparison.Ordinal);
+        int shadowDestroyIndex = releaseSource.IndexOf("DestroyDirectionalShadowResources();", StringComparison.Ordinal);
+        int tvSurfaceDestroyIndex = releaseSource.IndexOf("GX2RDestroySurfaceEx(&TvColorBuffer.surface", StringComparison.Ordinal);
+        int tvScanFreeIndex = releaseSource.IndexOf("GfxHeapFreeForeground(TvScanBuffer);", StringComparison.Ordinal);
+        int mem1DestroyIndex = releaseSource.IndexOf("GfxHeapDestroyMEM1();", StringComparison.Ordinal);
+        int foregroundDestroyIndex = releaseSource.IndexOf("GfxHeapDestroyForeground();", StringComparison.Ordinal);
+        Assert.True(drawDoneIndex >= 0 && drawDoneIndex < shadowDestroyIndex);
+        Assert.True(shadowDestroyIndex < tvSurfaceDestroyIndex);
+        Assert.True(tvSurfaceDestroyIndex < tvScanFreeIndex);
+        Assert.True(tvScanFreeIndex < mem1DestroyIndex);
+        Assert.True(mem1DestroyIndex < foregroundDestroyIndex);
+        Assert.Contains("AreForegroundResourcesAcquired = false;", releaseSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures final presenter destruction does not submit a second GX2 drain after ProcUI already released foreground graphics ownership.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_DrainsGx2OnlyWhileForegroundResourcesAreAcquired() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+        int releaseStartIndex = presenterSource.IndexOf("void WiiUGx2Presenter::ReleaseForegroundResources()", StringComparison.Ordinal);
+        int configureStartIndex = presenterSource.IndexOf("void WiiUGx2Presenter::ConfigurePresentationContexts()", releaseStartIndex, StringComparison.Ordinal);
+        Assert.True(releaseStartIndex >= 0, "The presenter must retain foreground release handling.");
+        Assert.True(configureStartIndex > releaseStartIndex, "Presentation context configuration must follow foreground release handling.");
+        string releaseSource = presenterSource.Substring(releaseStartIndex, configureStartIndex - releaseStartIndex);
+
+        Assert.Contains("if (AreForegroundResourcesAcquired && IsGx2Initialized) {", releaseSource, StringComparison.Ordinal);
+        Assert.Contains("GX2DrawDone();", releaseSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures generated engine and renderer teardown releases every GX2R resource before the presenter removes the allocator and shuts GX2 down.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_DestroysEngineAndGx2ResourceOwnersBeforePresenter() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+        int destructorStartIndex = applicationSource.IndexOf("WiiUApplication::~WiiUApplication()", StringComparison.Ordinal);
+        int runStartIndex = applicationSource.IndexOf("int WiiUApplication::Run()", destructorStartIndex, StringComparison.Ordinal);
+        Assert.True(destructorStartIndex >= 0, "The application must retain explicit native teardown.");
+        Assert.True(runStartIndex > destructorStartIndex, "The application run loop must follow destructor teardown.");
+        string destructorSource = applicationSource.Substring(destructorStartIndex, runStartIndex - destructorStartIndex);
+        int coreDisposeIndex = destructorSource.IndexOf("EngineCore->Dispose();", StringComparison.Ordinal);
+        int coreDeleteIndex = destructorSource.IndexOf("delete EngineCore;", StringComparison.Ordinal);
+        int renderManager2DDeleteIndex = destructorSource.IndexOf("delete EngineRenderManager2D;", StringComparison.Ordinal);
+        int renderManager3DDeleteIndex = destructorSource.IndexOf("delete EngineRenderManager3D;", StringComparison.Ordinal);
+        int presenterDeleteIndex = destructorSource.IndexOf("delete Gx2Presenter;", StringComparison.Ordinal);
+
+        Assert.True(coreDisposeIndex >= 0 && coreDisposeIndex < coreDeleteIndex);
+        Assert.True(coreDeleteIndex < renderManager2DDeleteIndex);
+        Assert.True(renderManager2DDeleteIndex < presenterDeleteIndex);
+        Assert.True(renderManager3DDeleteIndex < presenterDeleteIndex);
+    }
+
+    /// <summary>
+    /// Ensures final process teardown does not call OSScreen shutdown after ProcUI has already released foreground display ownership.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_GuardsOsScreenShutdownWhenProcUiIsNotInForeground() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
+        int exitStartIndex = applicationSource.IndexOf("AppendRuntimeTrace(\"[WiiUExit] ProcUI application loop exited.\\n\");", StringComparison.Ordinal);
+        int runReturnIndex = applicationSource.IndexOf("return 0;", exitStartIndex, StringComparison.Ordinal);
+        Assert.True(exitStartIndex >= 0, "The application must retain the observed ProcUI exit boundary.");
+        Assert.True(runReturnIndex > exitStartIndex, "The final Run return must follow the ProcUI exit boundary.");
+        string exitSource = applicationSource.Substring(exitStartIndex, runReturnIndex - exitStartIndex);
+
+        Assert.Contains("#include <proc_ui/procui.h>", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("if (ProcUIInForeground()) {", exitSource, StringComparison.Ordinal);
+        Assert.Contains("OSScreenShutdown();", exitSource, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -773,7 +1054,7 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("const WiiUGx23DRenderFrame& GetCurrentFrame() const;", renderManagerHeaderSource, StringComparison.Ordinal);
         Assert.Contains("void Draw() override;", renderManagerHeaderSource, StringComparison.Ordinal);
         Assert.Contains("class WiiUGx23DRenderFrame {", renderFrameHeaderSource, StringComparison.Ordinal);
-        Assert.Contains("Gx2Presenter->RenderFrame(EngineRenderManager3D->GetCurrentFrame(), EngineRenderManager2D->GetCurrentFrame());", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("Gx2Presenter->RenderFrame(frame3D, frame2D);", applicationSource, StringComparison.Ordinal);
         Assert.DoesNotContain("void ConfigureSceneCubeMesh(const WiiURuntimeModel& runtimeModel);", presenterHeaderSource, StringComparison.Ordinal);
         Assert.DoesNotContain("void RenderSceneCubeFrame();", presenterHeaderSource, StringComparison.Ordinal);
         Assert.DoesNotContain("Gx2Presenter->RenderSceneCubeFrame();", applicationSource, StringComparison.Ordinal);
@@ -801,6 +1082,24 @@ public sealed class WiiURuntimeSourceTests {
         Assert.Contains("CurrentFrame.AddDrawCommand(", renderManagerSource, StringComparison.Ordinal);
         Assert.Contains("struct WiiUGx23DDrawCommand {", renderFrameHeaderSource, StringComparison.Ordinal);
         Assert.DoesNotContain("WiiURuntimeModel* GetLatestRuntimeModel() const;", renderManagerHeaderSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the Wii U 3D bridge consumes generated render-frame collection properties through their read-only interface contract.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_ReadsGeneratedRenderFrameCollectionsThroughReadOnlyInterfaces() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string renderManagerSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.cpp"));
+
+        Assert.Contains("IReadOnlyList<RenderFrame*>* frames = extractionResult->get_Frames();", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("IReadOnlyList<RenderFrameDrawableSubmission*>* drawableSubmissions = frame->get_DrawableSubmissions();", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("IReadOnlyList<RenderFrameLightSubmission*>* lightSubmissions = frame->get_LightSubmissions();", renderManagerSource, StringComparison.Ordinal);
+        Assert.Contains("IReadOnlyList<RenderFrameShadowCasterSubmission*>* shadowCasterSubmissions = frame->get_ShadowCasterSubmissions();", renderManagerSource, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"(?m)^\s*List<RenderFrame\*>\* frames = extractionResult->get_Frames\(\);", renderManagerSource);
+        Assert.DoesNotMatch(@"(?m)^\s*List<RenderFrameDrawableSubmission\*>\* drawableSubmissions = frame->get_DrawableSubmissions\(\);", renderManagerSource);
+        Assert.DoesNotMatch(@"(?m)^\s*List<RenderFrameLightSubmission\*>\* lightSubmissions = frame->get_LightSubmissions\(\);", renderManagerSource);
+        Assert.DoesNotMatch(@"(?m)^\s*List<RenderFrameShadowCasterSubmission\*>\* shadowCasterSubmissions = frame->get_ShadowCasterSubmissions\(\);", renderManagerSource);
     }
 
     /// <summary>
