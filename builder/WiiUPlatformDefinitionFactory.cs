@@ -42,7 +42,22 @@ public static class WiiUPlatformDefinitionFactory {
                     "Standard Wii U RPX build",
                     "wiiu-default",
                     "default",
-                    Array.Empty<PlatformSettingDefinition>())
+                    [
+                        new PlatformSettingDefinition(
+                            "game-name",
+                            "Game Name",
+                            PlatformSettingKind.Text,
+                            "helengine",
+                            true,
+                            []),
+                        new PlatformSettingDefinition(
+                            "game-description",
+                            "Game Description",
+                            PlatformSettingKind.Text,
+                            "Made with helengine",
+                            true,
+                            [])
+                    ])
             ],
             [
                 new PlatformGraphicsProfileDefinition(

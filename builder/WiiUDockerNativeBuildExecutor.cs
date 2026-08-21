@@ -41,7 +41,7 @@ public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
         string packageSourceRootPath = WiiUBuilderPaths.ResolvePackageSourceRootPath(request);
         EnsureCleanNativeBuildOutput(repositoryRootPath);
         PreparePackageSource(packageSourceRootPath);
-        ProcessStartInfo startInfo = CreateStartInfo(repositoryRootPath, generatedCoreRootPath, packageSourceRootPath);
+        ProcessStartInfo startInfo = CreateStartInfo(repositoryRootPath, generatedCoreRootPath, packageSourceRootPath, request);
 
         NativeProcessRunResult result = new NativeProcessRunner().Run(startInfo, cancellationToken);
         if (result.ExitCode != 0) {
@@ -72,14 +72,17 @@ public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
     /// <param name="repositoryRootPath">Absolute Wii U repository root.</param>
     /// <param name="generatedCoreRootPath">Absolute generated-core root that should be passed into the native build.</param>
     /// <param name="packageSourceRootPath">Absolute builder package-source root that should be mounted as bundled content when present.</param>
+    /// <param name="request">Resolved platform build request carrying selected build options.</param>
     /// <returns>Configured Docker process start info.</returns>
-    static ProcessStartInfo CreateStartInfo(string repositoryRootPath, string generatedCoreRootPath, string packageSourceRootPath) {
+    static ProcessStartInfo CreateStartInfo(string repositoryRootPath, string generatedCoreRootPath, string packageSourceRootPath, PlatformBuildRequest request) {
         if (string.IsNullOrWhiteSpace(repositoryRootPath)) {
             throw new ArgumentException("Repository root path is required.", nameof(repositoryRootPath));
         } else if (string.IsNullOrWhiteSpace(generatedCoreRootPath)) {
             throw new ArgumentException("Generated core root path is required.", nameof(generatedCoreRootPath));
         } else if (string.IsNullOrWhiteSpace(packageSourceRootPath)) {
             throw new ArgumentException("Package source root path is required.", nameof(packageSourceRootPath));
+        } else if (request == null) {
+            throw new ArgumentNullException(nameof(request));
         }
 
         ProcessStartInfo startInfo = new() {
@@ -112,11 +115,31 @@ public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
         startInfo.ArgumentList.Add("/workspace");
         startInfo.ArgumentList.Add("-e");
         startInfo.ArgumentList.Add("HELENGINE_CORE_CPP_ROOT=" + generatedCoreContainerPath);
+        startInfo.ArgumentList.Add("-e");
+        startInfo.ArgumentList.Add("HELENGINE_WIIU_GAME_TITLE=" + ReadBundleMetadataOption(request, "game-name"));
+        startInfo.ArgumentList.Add("-e");
+        startInfo.ArgumentList.Add("HELENGINE_WIIU_GAME_SUBTITLE=" + ReadBundleMetadataOption(request, "game-description"));
         startInfo.ArgumentList.Add(WiiUBuilderPaths.DockerImageName);
         startInfo.ArgumentList.Add("sh");
         startInfo.ArgumentList.Add("-lc");
         startInfo.ArgumentList.Add(hasPackagedContent ? "make CONTENT=/workspace/content APP_CONTENT=/workspace/content WIIU_STANDARD_SHADER_SOURCES=/workspace/content/cooked/shaders" : "make");
         return startInfo;
+    }
+
+    /// <summary>
+    /// Reads one selected bundle metadata build option, stripping the quote character the wuhbtool shell invocation cannot carry.
+    /// </summary>
+    /// <param name="request">Resolved platform build request carrying selected build options.</param>
+    /// <param name="optionId">Build option identifier to read.</param>
+    /// <returns>Sanitized metadata value, or an empty string when the option is not selected.</returns>
+    static string ReadBundleMetadataOption(PlatformBuildRequest request, string optionId) {
+        if (request.SelectedBuildOptionValues == null
+            || !request.SelectedBuildOptionValues.TryGetValue(optionId, out string value)
+            || string.IsNullOrWhiteSpace(value)) {
+            return string.Empty;
+        }
+
+        return value.Replace("\"", string.Empty).Trim();
     }
 
     /// <summary>

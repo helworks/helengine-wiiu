@@ -7,6 +7,17 @@ endif
 HELENGINE_CORE_CPP_ROOT ?=
 TOPDIR ?= $(CURDIR)
 
+# Editor-authored bundle metadata; blank values keep the wut defaults. Must be set before wut_rules is included.
+HELENGINE_WIIU_GAME_TITLE ?=
+HELENGINE_WIIU_GAME_SUBTITLE ?=
+ifneq ($(strip $(HELENGINE_WIIU_GAME_TITLE)),)
+APP_NAME := $(HELENGINE_WIIU_GAME_TITLE)
+APP_SHORTNAME := $(HELENGINE_WIIU_GAME_TITLE)
+endif
+ifneq ($(strip $(HELENGINE_WIIU_GAME_SUBTITLE)),)
+APP_AUTHOR := $(HELENGINE_WIIU_GAME_SUBTITLE)
+endif
+
 include $(DEVKITPRO)/wut/share/wut_rules
 
 TARGET := helengine_wiiu
