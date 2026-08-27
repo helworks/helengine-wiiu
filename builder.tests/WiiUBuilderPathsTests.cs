@@ -31,7 +31,9 @@ public sealed class WiiUBuilderPathsTests {
                 [],
                 [],
                 [],
-                new PlatformContainerWritePlan("default", [])),
+                new PlatformContainerWritePlan("default", []),
+                [],
+                PlatformBuildRuntimeFeatureManifest.Empty),
             [new PlatformBuildTargetVariant("wiiu-default", "wiiu", "wiiu", "wiiu-default")],
             [new PlatformCookProfile(
                 "wiiu-default",

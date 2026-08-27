@@ -49,12 +49,12 @@ public sealed class WiiUMaterialCooker {
             StandardPixelProgramName,
             StandardVariantName);
         if (string.Equals(request.SchemaId, WiiUMaterialSchemaIds.StandardShaderSchemaId, StringComparison.OrdinalIgnoreCase)) {
-            return PlatformMaterialCookResult.CreateWithDependencies(
+            return new PlatformMaterialCookResult(
                 new WiiUStandardShaderMaterialBinarySerializer().Serialize(CreateStandardShaderMaterialAsset(request)),
                 [dependency]);
         }
 
-        return PlatformMaterialCookResult.CreateWithDependencies(
+        return new PlatformMaterialCookResult(
             global::helengine.files.AssetSerializer.SerializeToBytes(CreateLegacyMaterialAsset(request)),
             [dependency]);
     }

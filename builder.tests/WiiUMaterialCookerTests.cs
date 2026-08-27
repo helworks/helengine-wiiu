@@ -39,7 +39,7 @@ public sealed class WiiUMaterialCookerTests {
         Assert.Equal((byte)51, asset.EmissiveColorA);
         Assert.True(asset.Lit);
         Assert.True(asset.DoubleSided);
-        Assert.Equal("ForwardStandardShader", Assert.Single(result.ReferencedShaderAssetIds));
+        Assert.Equal("ForwardStandardShader", Assert.Single(result.ReferencedShaderDependencies).ShaderAssetId);
     }
 
     /// <summary>
@@ -146,7 +146,7 @@ public sealed class WiiUMaterialCookerTests {
         Assert.Equal((byte)32, asset.BaseColorG);
         Assert.Equal((byte)48, asset.BaseColorB);
         Assert.Equal((byte)64, asset.BaseColorA);
-        Assert.Equal("ForwardStandardShader", Assert.Single(result.ReferencedShaderAssetIds));
+        Assert.Equal("ForwardStandardShader", Assert.Single(result.ReferencedShaderDependencies).ShaderAssetId);
     }
 
     /// <summary>

@@ -82,7 +82,7 @@ public sealed class WiiUPlatformAssetBuilderTests {
         Assert.Equal((byte)255, asset.BaseColorA);
         Assert.False(asset.Lit);
         Assert.True(asset.DoubleSided);
-        Assert.Equal("ForwardStandardShader", Assert.Single(result.ReferencedShaderAssetIds));
+        Assert.Equal("ForwardStandardShader", Assert.Single(result.ReferencedShaderDependencies).ShaderAssetId);
     }
 
     /// <summary>
