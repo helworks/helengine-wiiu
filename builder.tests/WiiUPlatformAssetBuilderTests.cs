@@ -171,7 +171,9 @@ public sealed class WiiUPlatformAssetBuilderTests {
             [],
             [],
             [],
-            new PlatformContainerWritePlan("default", []));
+            new PlatformContainerWritePlan("default", []),
+            Array.Empty<PlatformCookWorkItem>(),
+            PlatformBuildRuntimeFeatureManifest.Empty);
 
         return new PlatformBuildRequest(
             manifest,
