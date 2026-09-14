@@ -929,16 +929,16 @@ public sealed class WiiURuntimeSourceTests {
     /// Ensures the Wii U host assigns one generated-core content stream source into initialization options instead of using the removed content-root-path seam.
     /// </summary>
     [Fact]
-    public void RuntimeSeam_WiresHostFileSystemContentStreamSourceIntoCoreInitialization() {
+    public void RuntimeSeam_WiresWiiUContentStreamSourceIntoCoreInitialization() {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string applicationHeaderSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.hpp"));
         string applicationSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUApplication.cpp"));
 
-        Assert.Contains("class HostFileSystemContentStreamSource;", applicationHeaderSource, StringComparison.Ordinal);
-        Assert.Contains("HostFileSystemContentStreamSource* EngineContentStreamSource;", applicationHeaderSource, StringComparison.Ordinal);
-        Assert.Contains("#include \"HostFileSystemContentStreamSource.hpp\"", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("class WiiUContentStreamSource;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("WiiUContentStreamSource* EngineContentStreamSource;", applicationHeaderSource, StringComparison.Ordinal);
+        Assert.Contains("#include \"platform/wiiu/WiiUContentStreamSource.hpp\"", applicationSource, StringComparison.Ordinal);
         Assert.Contains("CoreInitializationOptions* initializationOptions = new CoreInitializationOptions();", applicationSource, StringComparison.Ordinal);
-        Assert.Contains("EngineContentStreamSource = new HostFileSystemContentStreamSource(packagedContentRootPath);", applicationSource, StringComparison.Ordinal);
+        Assert.Contains("EngineContentStreamSource = new WiiUContentStreamSource(packagedContentRootPath);", applicationSource, StringComparison.Ordinal);
         Assert.Contains("initializationOptions->ContentStreamSource = EngineContentStreamSource;", applicationSource, StringComparison.Ordinal);
         Assert.Contains("EngineCore = new Core(initializationOptions);", applicationSource, StringComparison.Ordinal);
         Assert.DoesNotContain("EngineCore = new Core();", applicationSource, StringComparison.Ordinal);
@@ -1214,6 +1214,46 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
+    /// Ensures Wii U 3D material textures repeat authored UVs outside zero-to-one instead of clamping edge texels.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_WrapsCooked3dMaterialTextureUvs() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string renderManagerSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager3D.cpp"));
+        int initializeStart = renderManagerSource.IndexOf("void WiiURenderManager3D::InitializeTextureHandle(", StringComparison.Ordinal);
+        int destroyStart = renderManagerSource.IndexOf("void WiiURenderManager3D::DestroyTextureHandle(", initializeStart, StringComparison.Ordinal);
+
+        Assert.True(initializeStart >= 0, "Expected the Wii U 3D texture initializer.");
+        Assert.True(destroyStart > initializeStart, "Expected the Wii U 3D texture destroy helper after initialization.");
+
+        string initializeSource = renderManagerSource.Substring(initializeStart, destroyStart - initializeStart);
+        Assert.Contains(
+            "GX2InitSampler(&textureHandle->Sampler, GX2_TEX_CLAMP_MODE_WRAP, GX2_TEX_XY_FILTER_MODE_LINEAR);",
+            initializeSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("GX2_TEX_CLAMP_MODE_CLAMP", initializeSource, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures Wii U UI and directional-shadow samplers retain edge clamping independently of 3D material textures.
+    /// </summary>
+    [Fact]
+    public void RuntimeSeam_KeepsUiAndShadowTextureSamplersClamped() {
+        string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string render2dSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiURenderManager2D.cpp"));
+        string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
+
+        Assert.Contains(
+            "GX2InitSampler(&textureHandle->Sampler, GX2_TEX_CLAMP_MODE_CLAMP, GX2_TEX_XY_FILTER_MODE_LINEAR);",
+            render2dSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "GX2InitSampler(&DirectionalShadowSampler, GX2_TEX_CLAMP_MODE_CLAMP, GX2_TEX_XY_FILTER_MODE_POINT);",
+            presenterSource,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures the current incremental Wii U opaque-scene shader slice binds GPU material and light blocks for opaque Lambert-lit draws.
     /// </summary>
     [Fact]
@@ -1279,10 +1319,10 @@ public sealed class WiiURuntimeSourceTests {
     }
 
     /// <summary>
-    /// Ensures the current opaque-scene clip-space upload fence waits for prior GX2 draws before recycling shared geometry buffers across multiple draw commands.
+    /// Ensures opaque-scene uploads reuse grow-only GX2 buffers instead of destroying and recreating three GPU resources for every mesh draw.
     /// </summary>
     [Fact]
-    public void RuntimeSeam_WaitsForPriorOpaqueDrawBeforeRecyclingSharedGeometryBuffers() {
+    public void RuntimeSeam_ReusesCapacityManagedGeometryBuffersAcrossMeshDraws() {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
 
@@ -1293,16 +1333,17 @@ public sealed class WiiURuntimeSourceTests {
         Assert.True(nextFunctionStart > functionStart, "Expected the next presenter helper to appear after the clip-space opaque upload function.");
 
         string clipSpaceUploadSource = presenterSource.Substring(functionStart, nextFunctionStart - functionStart);
-        Assert.Contains("if (SceneOpaquePositionBuffer.buffer != nullptr) {", clipSpaceUploadSource, StringComparison.Ordinal);
-        Assert.Contains("GX2DrawDone();", clipSpaceUploadSource, StringComparison.Ordinal);
-        Assert.Contains("GX2RDestroyBufferEx(&SceneOpaquePositionBuffer, NoGx2rResourceFlags);", clipSpaceUploadSource, StringComparison.Ordinal);
+        Assert.Contains("EnsureSceneOpaqueBufferCapacity(static_cast<std::uint32_t>(indexData.size()));", clipSpaceUploadSource, StringComparison.Ordinal);
+        Assert.Contains("UploadSceneOpaqueVertexBuffer(&SceneOpaquePositionBuffer", clipSpaceUploadSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("GX2RDestroyBufferEx", clipSpaceUploadSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("GX2RCreateBuffer", clipSpaceUploadSource, StringComparison.Ordinal);
     }
 
     /// <summary>
-    /// Ensures StandardShader and directional-shadow draws finish using shared model-space geometry buffers before the next mesh upload destroys those buffers.
+    /// Ensures the model-space uploader follows the same grow-only buffer contract used by the clip-space path.
     /// </summary>
     [Fact]
-    public void RuntimeSeam_WaitsForPriorStandardShaderDrawBeforeRecyclingSharedGeometryBuffers() {
+    public void RuntimeSeam_ReusesCapacityManagedGeometryBuffersForStandardShaderDraws() {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string presenterSource = File.ReadAllText(Path.Combine(repositoryRootPath, "src", "platform", "wiiu", "WiiUGx2Presenter.cpp"));
 
@@ -1313,11 +1354,10 @@ public sealed class WiiURuntimeSourceTests {
         Assert.True(nextFunctionStart > functionStart, "Expected the clip-space uploader to appear after the model-space uploader.");
 
         string modelSpaceUploadSource = presenterSource.Substring(functionStart, nextFunctionStart - functionStart);
-        int drawFenceIndex = modelSpaceUploadSource.IndexOf("GX2DrawDone();", StringComparison.Ordinal);
-        int firstDestroyIndex = modelSpaceUploadSource.IndexOf("GX2RDestroyBufferEx(&SceneOpaquePositionBuffer, NoGx2rResourceFlags);", StringComparison.Ordinal);
-
-        Assert.True(drawFenceIndex >= 0, "Expected model-space geometry recycling to wait for prior GX2 draws.");
-        Assert.True(firstDestroyIndex > drawFenceIndex, "Expected the GX2 draw fence before the first shared geometry buffer is destroyed.");
+        Assert.Contains("EnsureSceneOpaqueBufferCapacity(static_cast<std::uint32_t>(indexData.size()));", modelSpaceUploadSource, StringComparison.Ordinal);
+        Assert.Contains("UploadSceneOpaqueVertexBuffer(&SceneOpaquePositionBuffer", modelSpaceUploadSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("GX2RDestroyBufferEx", modelSpaceUploadSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("GX2RCreateBuffer", modelSpaceUploadSource, StringComparison.Ordinal);
     }
 
     /// <summary>

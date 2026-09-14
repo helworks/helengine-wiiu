@@ -2,6 +2,7 @@
 #include "platform/wiiu/WiiUGx2Presenter.hpp"
 #include "platform/wiiu/WiiUGx2TextureHandle.hpp"
 #include "platform/wiiu/WiiUInputBackend.hpp"
+#include "platform/wiiu/WiiUContentStreamSource.hpp"
 #include "platform/wiiu/WiiURuntimeDiagnosticsProvider.hpp"
 #include "platform/wiiu/WiiUSceneBootstrap.hpp"
 
@@ -360,7 +361,7 @@ namespace helengine::wiiu {
 
             initializationStage = "ConstructInitializationOptions";
             CoreInitializationOptions* initializationOptions = new CoreInitializationOptions();
-            EngineContentStreamSource = new HostFileSystemContentStreamSource(packagedContentRootPath);
+            EngineContentStreamSource = new WiiUContentStreamSource(packagedContentRootPath);
             EngineRuntimeDiagnosticsProvider = new WiiURuntimeDiagnosticsProvider();
 
             initializationStage = "AssignInitializationOptions";

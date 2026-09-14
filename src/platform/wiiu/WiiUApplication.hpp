@@ -9,7 +9,7 @@
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
 class Core;
-class HostFileSystemContentStreamSource;
+class WiiUContentStreamSource;
 class IAudioBackend;
 class PlatformInfo;
 class StandardPlatformInputConfiguration;
@@ -133,7 +133,7 @@ namespace helengine::wiiu {
         WiiURuntimeDiagnosticsProvider* EngineRuntimeDiagnosticsProvider;
 
         /// Stores the content stream source that backs core-owned runtime asset reads for the packaged Wii U build.
-        HostFileSystemContentStreamSource* EngineContentStreamSource;
+        WiiUContentStreamSource* EngineContentStreamSource;
 #endif
     };
 }
