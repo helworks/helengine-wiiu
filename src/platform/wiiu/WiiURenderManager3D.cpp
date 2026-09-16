@@ -1020,7 +1020,7 @@ namespace helengine::wiiu {
         textureHandle->Texture.viewNumSlices = 1U;
         textureHandle->Texture.compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_G, GX2_SQ_SEL_B, GX2_SQ_SEL_A);
         GX2InitTextureRegs(&textureHandle->Texture);
-        GX2InitSampler(&textureHandle->Sampler, GX2_TEX_CLAMP_MODE_CLAMP, GX2_TEX_XY_FILTER_MODE_LINEAR);
+        GX2InitSampler(&textureHandle->Sampler, GX2_TEX_CLAMP_MODE_WRAP, GX2_TEX_XY_FILTER_MODE_LINEAR);
 
         std::uint32_t* destinationPixels = static_cast<std::uint32_t*>(GX2RLockSurfaceEx(&textureHandle->Texture.surface, 0, NoGx2rResourceFlags));
         if (destinationPixels == nullptr) {
