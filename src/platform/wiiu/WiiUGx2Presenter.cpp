@@ -1303,22 +1303,85 @@ namespace helengine::wiiu {
         AreDirectionalShadowResourcesInitialized = false;
     }
 
-    /// Initializes one presenter-owned opaque-scene vertex buffer from immutable float vertex data.
-    void WiiUGx2Presenter::InitializeSceneOpaqueVertexBuffer(GX2RBuffer* buffer, const float* sourceData, std::uint32_t floatCount, std::uint32_t elementSize, std::uint32_t elementStride) {
+    /// Initializes one presenter-owned opaque-scene vertex buffer with reusable dynamic capacity.
+    void WiiUGx2Presenter::InitializeSceneOpaqueVertexBuffer(GX2RBuffer* buffer, std::uint32_t elementSize, std::uint32_t elementCount) {
         if (buffer == nullptr) {
             throw std::runtime_error("Wii U GX2 presenter requires a valid opaque-scene vertex buffer.");
-        } else if (sourceData == nullptr) {
-            throw std::runtime_error("Wii U GX2 presenter requires valid opaque-scene vertex data.");
-        } else if (floatCount == 0U || (floatCount % elementStride) != 0U) {
-            throw std::runtime_error("Wii U GX2 presenter requires opaque-scene vertex data aligned to the requested stride.");
+        } else if (elementSize == 0U || elementCount == 0U) {
+            throw std::runtime_error("Wii U GX2 presenter requires nonzero opaque-scene vertex buffer dimensions.");
         }
 
         std::memset(buffer, 0, sizeof(GX2RBuffer));
         buffer->flags = DiagnosticVertexBufferFlags;
         buffer->elemSize = elementSize;
-        buffer->elemCount = floatCount / elementStride;
+        buffer->elemCount = elementCount;
         if (!GX2RCreateBuffer(buffer)) {
             throw std::runtime_error("Wii U GX2 presenter could not allocate an opaque-scene vertex buffer.");
+        }
+    }
+
+    /// Grows the shared opaque-scene vertex buffers only when the next mesh exceeds their current capacity.
+    void WiiUGx2Presenter::EnsureSceneOpaqueBufferCapacity(std::uint32_t requiredVertexCount) {
+        if (requiredVertexCount == 0U) {
+            throw std::runtime_error("Wii U GX2 presenter requires at least one opaque-scene vertex.");
+        }
+
+        const bool hasRequiredCapacity =
+            SceneOpaquePositionBuffer.buffer != nullptr
+            && SceneOpaqueNormalBuffer.buffer != nullptr
+            && SceneOpaqueTexCoordBuffer.buffer != nullptr
+            && SceneOpaquePositionBuffer.elemSize == SceneOpaquePositionElementSize
+            && SceneOpaqueNormalBuffer.elemSize == SceneOpaqueNormalElementSize
+            && SceneOpaqueTexCoordBuffer.elemSize == SceneOpaqueTexCoordElementSize
+            && SceneOpaquePositionBuffer.elemCount >= requiredVertexCount
+            && SceneOpaqueNormalBuffer.elemCount >= requiredVertexCount
+            && SceneOpaqueTexCoordBuffer.elemCount >= requiredVertexCount;
+        if (hasRequiredCapacity) {
+            return;
+        }
+
+        if (SceneOpaquePositionBuffer.buffer != nullptr || SceneOpaqueNormalBuffer.buffer != nullptr || SceneOpaqueTexCoordBuffer.buffer != nullptr || SceneOpaqueIndexBuffer.buffer != nullptr) {
+            GX2DrawDone();
+        }
+
+        if (SceneOpaquePositionBuffer.buffer != nullptr) {
+            GX2RDestroyBufferEx(&SceneOpaquePositionBuffer, NoGx2rResourceFlags);
+            std::memset(&SceneOpaquePositionBuffer, 0, sizeof(SceneOpaquePositionBuffer));
+        }
+
+        if (SceneOpaqueNormalBuffer.buffer != nullptr) {
+            GX2RDestroyBufferEx(&SceneOpaqueNormalBuffer, NoGx2rResourceFlags);
+            std::memset(&SceneOpaqueNormalBuffer, 0, sizeof(SceneOpaqueNormalBuffer));
+        }
+
+        if (SceneOpaqueTexCoordBuffer.buffer != nullptr) {
+            GX2RDestroyBufferEx(&SceneOpaqueTexCoordBuffer, NoGx2rResourceFlags);
+            std::memset(&SceneOpaqueTexCoordBuffer, 0, sizeof(SceneOpaqueTexCoordBuffer));
+        }
+
+        if (SceneOpaqueIndexBuffer.buffer != nullptr) {
+            GX2RDestroyBufferEx(&SceneOpaqueIndexBuffer, NoGx2rResourceFlags);
+            std::memset(&SceneOpaqueIndexBuffer, 0, sizeof(SceneOpaqueIndexBuffer));
+        }
+
+        InitializeSceneOpaqueVertexBuffer(&SceneOpaquePositionBuffer, SceneOpaquePositionElementSize, requiredVertexCount);
+        InitializeSceneOpaqueVertexBuffer(&SceneOpaqueNormalBuffer, SceneOpaqueNormalElementSize, requiredVertexCount);
+        InitializeSceneOpaqueVertexBuffer(&SceneOpaqueTexCoordBuffer, SceneOpaqueTexCoordElementSize, requiredVertexCount);
+    }
+
+    /// Rewrites the active prefix of one capacity-managed opaque-scene vertex buffer.
+    void WiiUGx2Presenter::UploadSceneOpaqueVertexBuffer(GX2RBuffer* buffer, const float* sourceData, std::uint32_t floatCount, std::uint32_t elementSize, std::uint32_t elementStride) {
+        if (buffer == nullptr || buffer->buffer == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires an allocated opaque-scene vertex buffer before upload.");
+        } else if (sourceData == nullptr) {
+            throw std::runtime_error("Wii U GX2 presenter requires valid opaque-scene vertex data.");
+        } else if (floatCount == 0U || elementStride == 0U || (floatCount % elementStride) != 0U) {
+            throw std::runtime_error("Wii U GX2 presenter requires opaque-scene vertex data aligned to the requested stride.");
+        }
+
+        const std::uint32_t requiredElementCount = floatCount / elementStride;
+        if (buffer->elemSize != elementSize || buffer->elemCount < requiredElementCount) {
+            throw std::runtime_error("Wii U GX2 presenter received opaque-scene vertex data larger than its allocated buffer capacity.");
         }
 
         void* uploadBuffer = GX2RLockBufferEx(buffer, NoGx2rResourceFlags);
@@ -1326,7 +1389,7 @@ namespace helengine::wiiu {
             throw std::runtime_error("Wii U GX2 presenter could not lock an opaque-scene vertex buffer.");
         }
 
-        std::memcpy(uploadBuffer, sourceData, static_cast<std::size_t>(buffer->elemSize) * static_cast<std::size_t>(buffer->elemCount));
+        std::memcpy(uploadBuffer, sourceData, static_cast<std::size_t>(elementSize) * static_cast<std::size_t>(requiredElementCount));
         GX2RUnlockBufferEx(buffer, NoGx2rResourceFlags);
         GX2RInvalidateBuffer(buffer, GX2R_RESOURCE_USAGE_CPU_WRITE);
     }
@@ -2300,33 +2363,10 @@ namespace helengine::wiiu {
             expandedTexCoordData.push_back(sourceTexCoordData[texCoordOffset + 1U]);
         }
 
-        if (SceneOpaquePositionBuffer.buffer != nullptr || SceneOpaqueNormalBuffer.buffer != nullptr || SceneOpaqueTexCoordBuffer.buffer != nullptr || SceneOpaqueIndexBuffer.buffer != nullptr) {
-            GX2DrawDone();
-        }
-
-        if (SceneOpaquePositionBuffer.buffer != nullptr) {
-            GX2RDestroyBufferEx(&SceneOpaquePositionBuffer, NoGx2rResourceFlags);
-            std::memset(&SceneOpaquePositionBuffer, 0, sizeof(SceneOpaquePositionBuffer));
-        }
-
-        if (SceneOpaqueNormalBuffer.buffer != nullptr) {
-            GX2RDestroyBufferEx(&SceneOpaqueNormalBuffer, NoGx2rResourceFlags);
-            std::memset(&SceneOpaqueNormalBuffer, 0, sizeof(SceneOpaqueNormalBuffer));
-        }
-
-        if (SceneOpaqueTexCoordBuffer.buffer != nullptr) {
-            GX2RDestroyBufferEx(&SceneOpaqueTexCoordBuffer, NoGx2rResourceFlags);
-            std::memset(&SceneOpaqueTexCoordBuffer, 0, sizeof(SceneOpaqueTexCoordBuffer));
-        }
-
-        if (SceneOpaqueIndexBuffer.buffer != nullptr) {
-            GX2RDestroyBufferEx(&SceneOpaqueIndexBuffer, NoGx2rResourceFlags);
-            std::memset(&SceneOpaqueIndexBuffer, 0, sizeof(SceneOpaqueIndexBuffer));
-        }
-
-        InitializeSceneOpaqueVertexBuffer(&SceneOpaquePositionBuffer, expandedPositionData.data(), static_cast<std::uint32_t>(expandedPositionData.size()), SceneOpaquePositionElementSize, 4U);
-        InitializeSceneOpaqueVertexBuffer(&SceneOpaqueNormalBuffer, expandedNormalData.data(), static_cast<std::uint32_t>(expandedNormalData.size()), SceneOpaqueNormalElementSize, 3U);
-        InitializeSceneOpaqueVertexBuffer(&SceneOpaqueTexCoordBuffer, expandedTexCoordData.data(), static_cast<std::uint32_t>(expandedTexCoordData.size()), SceneOpaqueTexCoordElementSize, 2U);
+        EnsureSceneOpaqueBufferCapacity(static_cast<std::uint32_t>(indexData.size()));
+        UploadSceneOpaqueVertexBuffer(&SceneOpaquePositionBuffer, expandedPositionData.data(), static_cast<std::uint32_t>(expandedPositionData.size()), SceneOpaquePositionElementSize, 4U);
+        UploadSceneOpaqueVertexBuffer(&SceneOpaqueNormalBuffer, expandedNormalData.data(), static_cast<std::uint32_t>(expandedNormalData.size()), SceneOpaqueNormalElementSize, 3U);
+        UploadSceneOpaqueVertexBuffer(&SceneOpaqueTexCoordBuffer, expandedTexCoordData.data(), static_cast<std::uint32_t>(expandedTexCoordData.size()), SceneOpaqueTexCoordElementSize, 2U);
         SceneOpaqueVertexCount = static_cast<std::uint32_t>(expandedPositionData.size() / 4U);
     }
 
@@ -2426,33 +2466,10 @@ namespace helengine::wiiu {
             expandedTexCoordData.push_back(sourceTexCoordData[texCoordOffset + 1U]);
         }
 
-        if (SceneOpaquePositionBuffer.buffer != nullptr || SceneOpaqueNormalBuffer.buffer != nullptr || SceneOpaqueTexCoordBuffer.buffer != nullptr || SceneOpaqueIndexBuffer.buffer != nullptr) {
-            GX2DrawDone();
-        }
-
-        if (SceneOpaquePositionBuffer.buffer != nullptr) {
-            GX2RDestroyBufferEx(&SceneOpaquePositionBuffer, NoGx2rResourceFlags);
-            std::memset(&SceneOpaquePositionBuffer, 0, sizeof(SceneOpaquePositionBuffer));
-        }
-
-        if (SceneOpaqueNormalBuffer.buffer != nullptr) {
-            GX2RDestroyBufferEx(&SceneOpaqueNormalBuffer, NoGx2rResourceFlags);
-            std::memset(&SceneOpaqueNormalBuffer, 0, sizeof(SceneOpaqueNormalBuffer));
-        }
-
-        if (SceneOpaqueTexCoordBuffer.buffer != nullptr) {
-            GX2RDestroyBufferEx(&SceneOpaqueTexCoordBuffer, NoGx2rResourceFlags);
-            std::memset(&SceneOpaqueTexCoordBuffer, 0, sizeof(SceneOpaqueTexCoordBuffer));
-        }
-
-        if (SceneOpaqueIndexBuffer.buffer != nullptr) {
-            GX2RDestroyBufferEx(&SceneOpaqueIndexBuffer, NoGx2rResourceFlags);
-            std::memset(&SceneOpaqueIndexBuffer, 0, sizeof(SceneOpaqueIndexBuffer));
-        }
-
-        InitializeSceneOpaqueVertexBuffer(&SceneOpaquePositionBuffer, expandedPositionData.data(), static_cast<std::uint32_t>(expandedPositionData.size()), SceneOpaquePositionElementSize, 4U);
-        InitializeSceneOpaqueVertexBuffer(&SceneOpaqueNormalBuffer, expandedNormalData.data(), static_cast<std::uint32_t>(expandedNormalData.size()), SceneOpaqueNormalElementSize, 3U);
-        InitializeSceneOpaqueVertexBuffer(&SceneOpaqueTexCoordBuffer, expandedTexCoordData.data(), static_cast<std::uint32_t>(expandedTexCoordData.size()), SceneOpaqueTexCoordElementSize, 2U);
+        EnsureSceneOpaqueBufferCapacity(static_cast<std::uint32_t>(indexData.size()));
+        UploadSceneOpaqueVertexBuffer(&SceneOpaquePositionBuffer, expandedPositionData.data(), static_cast<std::uint32_t>(expandedPositionData.size()), SceneOpaquePositionElementSize, 4U);
+        UploadSceneOpaqueVertexBuffer(&SceneOpaqueNormalBuffer, expandedNormalData.data(), static_cast<std::uint32_t>(expandedNormalData.size()), SceneOpaqueNormalElementSize, 3U);
+        UploadSceneOpaqueVertexBuffer(&SceneOpaqueTexCoordBuffer, expandedTexCoordData.data(), static_cast<std::uint32_t>(expandedTexCoordData.size()), SceneOpaqueTexCoordElementSize, 2U);
         SceneOpaqueVertexCount = static_cast<std::uint32_t>(expandedPositionData.size() / 4U);
     }
 

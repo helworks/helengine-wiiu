@@ -124,8 +124,14 @@ namespace helengine::wiiu {
         /// Releases the depth texture and sampler consumed by the directional-shadow receiver pass.
         void DestroyDirectionalShadowResources();
 
-        /// Initializes one presenter-owned opaque-scene vertex buffer from immutable float vertex data.
-        void InitializeSceneOpaqueVertexBuffer(GX2RBuffer* buffer, const float* sourceData, std::uint32_t floatCount, std::uint32_t elementSize, std::uint32_t elementStride);
+        /// Initializes one presenter-owned opaque-scene vertex buffer with reusable dynamic capacity.
+        void InitializeSceneOpaqueVertexBuffer(GX2RBuffer* buffer, std::uint32_t elementSize, std::uint32_t elementCount);
+
+        /// Grows the shared opaque-scene vertex buffers only when the next mesh exceeds their current capacity.
+        void EnsureSceneOpaqueBufferCapacity(std::uint32_t requiredVertexCount);
+
+        /// Rewrites the active prefix of one capacity-managed opaque-scene vertex buffer.
+        void UploadSceneOpaqueVertexBuffer(GX2RBuffer* buffer, const float* sourceData, std::uint32_t floatCount, std::uint32_t elementSize, std::uint32_t elementStride);
 
         /// Initializes one presenter-owned opaque-scene index buffer from immutable 16-bit index data.
         void InitializeSceneOpaqueIndexBuffer(GX2RBuffer* buffer, const std::uint16_t* sourceData, std::uint32_t indexCount);
