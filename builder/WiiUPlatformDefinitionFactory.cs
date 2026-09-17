@@ -167,6 +167,13 @@ public static class WiiUPlatformDefinitionFactory {
                             PlatformSettingKind.Text,
                             NativeNumericTypeRemaps,
                             true,
+                            []),
+                        new PlatformSettingDefinition(
+                            "codegen-use-rtti",
+                            "Use Compiler RTTI",
+                            PlatformSettingKind.Boolean,
+                            "true",
+                            true,
                             [])
                     ])
             ],
