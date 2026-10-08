@@ -120,10 +120,26 @@ else
 .PHONY: all
 
 DEPENDS := $(OFILES:.o=.d)
+NATIVE_BUILD_CONFIG := $(CURDIR)/.native-build-config
+PACKAGE_BUILD_CONFIG := $(CURDIR)/.package-build-config
+.PHONY: FORCE_NATIVE_BUILD_CONFIG
+FORCE_NATIVE_BUILD_CONFIG:
+$(NATIVE_BUILD_CONFIG): FORCE_NATIVE_BUILD_CONFIG
+	@printf '%s\n' '$(CC) $(shell $(CC) --version | head -n 1) $(CXX) $(shell $(CXX) --version | head -n 1) $(CFLAGS) $(CXXFLAGS) $(ASFLAGS) $(LDFLAGS) $(LIBS) $(MACHDEP) $(HELENGINE_CORE_CPP_ROOT)' > $@.tmp
+	@if ! cmp -s $@.tmp $@; then mv $@.tmp $@; else rm $@.tmp; fi
+$(OFILES) $(OUTPUT).elf: $(NATIVE_BUILD_CONFIG)
+.PHONY: FORCE_PACKAGE_BUILD_CONFIG
+FORCE_PACKAGE_BUILD_CONFIG:
+$(PACKAGE_BUILD_CONFIG): FORCE_PACKAGE_BUILD_CONFIG
+	@printf '%s\n' '$(HELENGINE_WIIU_GAME_TITLE) $(HELENGINE_WIIU_GAME_SUBTITLE)' > $@.tmp
+	@if ! cmp -s $@.tmp $@; then mv $@.tmp $@; else rm $@.tmp; fi
 
 all: $(OUTPUT).wuhb
 
-$(OUTPUT).wuhb: $(OUTPUT).rpx
+$(OUTPUT).wuhb: $(OUTPUT).rpx $(PACKAGE_BUILD_CONFIG)
+ifneq ($(strip $(APP_CONTENT)),)
+$(OUTPUT).wuhb: $(shell find $(APP_CONTENT) -type f 2>/dev/null)
+endif
 $(OUTPUT).rpx: $(OUTPUT).elf
 $(OUTPUT).elf: $(OFILES)
 $(OFILES_SRC): $(HFILES)

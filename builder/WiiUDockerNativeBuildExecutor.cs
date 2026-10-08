@@ -39,9 +39,10 @@ public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
         string repositoryRootPath = WiiUBuilderPaths.ResolveRepositoryRootPath();
         string generatedCoreRootPath = WiiUBuilderPaths.ResolveGeneratedCoreRootPath(request);
         string packageSourceRootPath = WiiUBuilderPaths.ResolvePackageSourceRootPath(request);
-        EnsureCleanNativeBuildOutput(repositoryRootPath);
+        string nativeObjectCacheRootPath = WiiUBuilderPaths.ResolveNativeObjectCacheRootPath(request);
+        Directory.CreateDirectory(nativeObjectCacheRootPath);
         PreparePackageSource(packageSourceRootPath);
-        ProcessStartInfo startInfo = CreateStartInfo(repositoryRootPath, generatedCoreRootPath, packageSourceRootPath, request);
+        ProcessStartInfo startInfo = CreateStartInfo(repositoryRootPath, nativeObjectCacheRootPath, generatedCoreRootPath, packageSourceRootPath, request);
 
         NativeProcessRunResult result = new NativeProcessRunner().Run(startInfo, cancellationToken);
         if (result.ExitCode != 0) {
@@ -74,11 +75,13 @@ public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
     /// <param name="packageSourceRootPath">Absolute builder package-source root that should be mounted as bundled content when present.</param>
     /// <param name="request">Resolved platform build request carrying selected build options.</param>
     /// <returns>Configured Docker process start info.</returns>
-    static ProcessStartInfo CreateStartInfo(string repositoryRootPath, string generatedCoreRootPath, string packageSourceRootPath, PlatformBuildRequest request) {
+    static ProcessStartInfo CreateStartInfo(string repositoryRootPath, string nativeObjectCacheRootPath, string generatedCoreRootPath, string packageSourceRootPath, PlatformBuildRequest request) {
         if (string.IsNullOrWhiteSpace(repositoryRootPath)) {
             throw new ArgumentException("Repository root path is required.", nameof(repositoryRootPath));
         } else if (string.IsNullOrWhiteSpace(generatedCoreRootPath)) {
             throw new ArgumentException("Generated core root path is required.", nameof(generatedCoreRootPath));
+        } else if (string.IsNullOrWhiteSpace(nativeObjectCacheRootPath)) {
+            throw new ArgumentException("Native object cache root path is required.", nameof(nativeObjectCacheRootPath));
         } else if (string.IsNullOrWhiteSpace(packageSourceRootPath)) {
             throw new ArgumentException("Package source root path is required.", nameof(packageSourceRootPath));
         } else if (request == null) {
@@ -99,6 +102,8 @@ public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
         startInfo.ArgumentList.Add("--rm");
         startInfo.ArgumentList.Add("-v");
         startInfo.ArgumentList.Add(repositoryRootPath + ":/workspace");
+        startInfo.ArgumentList.Add("-v");
+        startInfo.ArgumentList.Add(nativeObjectCacheRootPath + ":/workspace/build");
         if (!IsPathUnderRoot(generatedCoreRootPath, repositoryRootPath)) {
             generatedCoreContainerPath = "/helengine-generated-core";
             startInfo.ArgumentList.Add("-v");
@@ -160,25 +165,6 @@ public sealed class WiiUDockerNativeBuildExecutor : IWiiUNativeBuildExecutor {
 
         string aliasMaterialPath = Path.Combine(packageSourceRootPath, WiiUStandardMaterialAliasRelativePath);
         File.Copy(sourceMaterialPath, aliasMaterialPath, true);
-    }
-
-    /// <summary>
-    /// Removes the native build output directory before one Dockerized Wii U build starts.
-    /// </summary>
-    /// <param name="repositoryRootPath">Absolute Wii U repository root.</param>
-    static void EnsureCleanNativeBuildOutput(string repositoryRootPath) {
-        if (string.IsNullOrWhiteSpace(repositoryRootPath)) {
-            throw new ArgumentException("Repository root path is required.", nameof(repositoryRootPath));
-        }
-
-        string buildRootPath = Path.Combine(repositoryRootPath, "build");
-        if (!IsPathUnderRoot(buildRootPath, repositoryRootPath)) {
-            throw new InvalidOperationException("Wii U native build output must stay inside the repository root.");
-        }
-
-        if (Directory.Exists(buildRootPath)) {
-            Directory.Delete(buildRootPath, recursive: true);
-        }
     }
 
     /// <summary>

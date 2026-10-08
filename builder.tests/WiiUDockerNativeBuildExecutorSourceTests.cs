@@ -5,18 +5,19 @@ namespace helengine.wiiu.builder.tests;
 /// </summary>
 public sealed class WiiUDockerNativeBuildExecutorSourceTests {
     /// <summary>
-    /// Ensures the Docker executor performs one clean native build, mounts packaged content when available, and avoids a container-side make clean target.
+    /// Ensures the Docker executor keeps the native output cache and mounts freshly staged package content when available.
     /// </summary>
     [Fact]
-    public void DockerExecutor_UsesContentAwareMakeAfterCleaningBuildDirectoryInManagedCode() {
+    public void DockerExecutor_UsesContentAwareMakeWithPersistentNativeBuildDirectory() {
         string repositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string executorSource = File.ReadAllText(Path.Combine(repositoryRootPath, "builder", "WiiUDockerNativeBuildExecutor.cs"));
 
-        Assert.Contains("EnsureCleanNativeBuildOutput(repositoryRootPath);", executorSource, StringComparison.Ordinal);
+        Assert.Contains("ResolveNativeObjectCacheRootPath(request)", executorSource, StringComparison.Ordinal);
         Assert.Contains("PreparePackageSource(packageSourceRootPath);", executorSource, StringComparison.Ordinal);
         Assert.Contains("wiiu_standard_material.hasset", executorSource, StringComparison.Ordinal);
         Assert.Contains("File.Copy(sourceMaterialPath, aliasMaterialPath, true);", executorSource, StringComparison.Ordinal);
-        Assert.Contains("Directory.Delete(buildRootPath, recursive: true);", executorSource, StringComparison.Ordinal);
+        Assert.Contains("nativeObjectCacheRootPath + \":/workspace/build\"", executorSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Directory.Delete(buildRootPath, recursive: true);", executorSource, StringComparison.Ordinal);
         Assert.Contains("Directory.Exists(packageSourceRootPath)", executorSource, StringComparison.Ordinal);
         Assert.Contains("packageSourceRootPath + \":/workspace/content\"", executorSource, StringComparison.Ordinal);
         Assert.Contains("make CONTENT=/workspace/content", executorSource, StringComparison.Ordinal);

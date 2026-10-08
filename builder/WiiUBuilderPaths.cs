@@ -76,7 +76,7 @@ public static class WiiUBuilderPaths {
             throw new ArgumentNullException(nameof(request));
         }
 
-        return Path.Combine(ResolveRepositoryRootPath(), "build", RpxFileName);
+        return Path.Combine(ResolveNativeObjectCacheRootPath(request), RpxFileName);
     }
 
     /// <summary>
@@ -89,6 +89,21 @@ public static class WiiUBuilderPaths {
             throw new ArgumentNullException(nameof(request));
         }
 
-        return Path.Combine(ResolveRepositoryRootPath(), "build", WuhbFileName);
+        return Path.Combine(ResolveNativeObjectCacheRootPath(request), WuhbFileName);
+    }
+
+    /// <summary>
+    /// Resolves the stable native build output root, falling back to the repository build folder for legacy requests.
+    /// </summary>
+    /// <param name="request">Resolved platform build request.</param>
+    /// <returns>Absolute persistent native build output root.</returns>
+    public static string ResolveNativeObjectCacheRootPath(PlatformBuildRequest request) {
+        if (request == null) {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        return string.IsNullOrWhiteSpace(request.NativeObjectCacheRoot)
+            ? Path.Combine(ResolveRepositoryRootPath(), "build")
+            : Path.GetFullPath(request.NativeObjectCacheRoot);
     }
 }
