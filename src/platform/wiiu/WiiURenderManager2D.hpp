@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <memory>
 
 #include <gx2/sampler.h>
 #include <gx2/texture.h>
@@ -12,6 +13,7 @@
 #include "RenderManager2D.hpp"
 #include "platform/wiiu/WiiUGx2RenderFrame.hpp"
 #include "platform/wiiu/WiiUGx2TextureHandle.hpp"
+#include "platform/wiiu/WiiUGx2ReleaseQueue.hpp"
 
 class RuntimeTexture;
 class FontAsset;
@@ -55,6 +57,12 @@ namespace helengine::wiiu {
 
         /// GX2 texture and sampler state consumed by the presenter.
         WiiUGx2TextureHandle Gx2TextureHandle;
+        /// Stores whether the RGBA8 update API can modify this source format without changing its packed contract.
+        bool AllowsRgbaUpdate = false;
+        /// Stores the source alpha policy used by cooked native RGBA updates.
+        std::uint32_t AlphaPrecision = 3;
+        /// Preserves the legacy RGBA byte coverage, including anonymous dynamic font atlases.
+        bool PreserveCoverage = true;
     };
 
     /// Provides the minimum Wii U 2D renderer bridge required to capture authored menu scenes into GX2-ready quad commands.
@@ -103,6 +111,9 @@ namespace helengine::wiiu {
         void DrawText(::ITextDrawable2D* text) override;
 
     private:
+        /// Updates the live texture allocation in place while preserving its source format and completing earlier GPU reads.
+        void UpdateTextureRegionCore(::RuntimeTexture* texture, int32_t x, int32_t y, int32_t width, int32_t height,
+            Array<std::uint8_t>* rgba8, int32_t sourceRowPitch) override;
         /// Resets the current frame capture state before the next draw pass begins.
         void BeginFrame();
 
@@ -176,7 +187,9 @@ namespace helengine::wiiu {
         std::vector<WiiURoundedRectDrawCommand> RoundedRectQueue;
 
         /// CPU-readable pixel payloads keyed by the runtime texture instances returned to the shared engine.
-        std::vector<WiiUTexturePixelData> TexturePixelDataRecords;
+        std::vector<std::unique_ptr<WiiUTexturePixelData>> TexturePixelDataRecords;
+        /// Retains released texture records until a frame boundary completes the GX2 fence.
+        WiiUGx2ReleaseQueue<::RuntimeTexture> PendingTextureReleases;
 
         /// Reusable generated 2D command builder kept alive across frames.
         RenderCommandListBuilder2D* CommandListBuilder;

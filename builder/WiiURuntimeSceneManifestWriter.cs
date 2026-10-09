@@ -19,12 +19,16 @@ public sealed class WiiURuntimeSceneManifestWriter {
             throw new ArgumentNullException(nameof(manifest));
         }
 
+        string contents = Prepare(manifest);
         string runtimeRootPath = Path.Combine(generatedCoreRootPath, "runtime");
         Directory.CreateDirectory(runtimeRootPath);
-        Write(
-            Path.Combine(runtimeRootPath, "wiiu_runtime_scene_manifest.hpp"),
-            ResolveStartupSceneId(manifest),
-            ResolveSceneEntries(manifest));
+        File.WriteAllText(Path.Combine(runtimeRootPath, "wiiu_runtime_scene_manifest.hpp"), contents);
+    }
+
+    /// <summary>Validates runtime scene metadata and renders its header without touching staging or generated files.</summary>
+    public string Prepare(PlatformBuildManifest manifest) {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return BuildHeaderContents(ResolveStartupSceneId(manifest), ResolveSceneEntries(manifest));
     }
 
     /// <summary>

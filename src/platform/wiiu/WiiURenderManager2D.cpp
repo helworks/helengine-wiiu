@@ -35,6 +35,8 @@
 #include "RuntimeTexture.hpp"
 #include "TextureAsset.hpp"
 #include "TextureAssetColorFormat.hpp"
+#include "TextureAssetPixelCodec.hpp"
+#include "platform/wiiu/WiiUNativeTextureUpload.hpp"
 #include "runtime/finally.hpp"
 #include "runtime/native_cast.hpp"
 #include "runtime/native_exceptions.hpp"
@@ -66,8 +68,10 @@ namespace helengine::wiiu {
 
     /// Releases reusable render state owned by the Wii U 2D render bridge.
     WiiURenderManager2D::~WiiURenderManager2D() {
+        FlushReleasedTextures();
+        GX2DrawDone();
         for (std::size_t index = 0; index < TexturePixelDataRecords.size(); index++) {
-            DestroyTextureHandle(&TexturePixelDataRecords[index].Gx2TextureHandle);
+            DestroyTextureHandle(&TexturePixelDataRecords[index]->Gx2TextureHandle);
         }
 
         DestroyTextureHandle(&SolidWhiteTextureHandle);
@@ -137,23 +141,46 @@ namespace helengine::wiiu {
     ::RuntimeTexture* WiiURenderManager2D::BuildTextureFromRaw(::TextureAsset* data) {
         if (data == nullptr) {
             throw new ArgumentNullException("data");
-        } else if (data->Width == 0U || data->Height == 0U) {
+        } else if (data->Width == 0U || data->Height == 0U || data->Width > 8192U || data->Height > 8192U) {
             throw new InvalidOperationException("Wii U runtime textures require nonzero dimensions.");
         }
 
-        RuntimeTexture* runtimeTexture = new RuntimeTexture();
+        auto runtimeTextureOwner = std::make_unique<RuntimeTexture>();
+        RuntimeTexture* runtimeTexture = runtimeTextureOwner.get();
         runtimeTexture->set_Width(static_cast<int32_t>(data->Width));
         runtimeTexture->set_Height(static_cast<int32_t>(data->Height));
         runtimeTexture->set_IsEngineOwned(data->IsEngineOwned);
 
-        WiiUTexturePixelData pixelData {};
-        pixelData.Texture = runtimeTexture;
-        pixelData.Width = data->Width;
-        pixelData.Height = data->Height;
-        std::vector<std::uint32_t> pixels = DecodeTexturePixels(data);
-        InitializeTextureHandle(&pixelData.Gx2TextureHandle, data->Width, data->Height, pixels);
-        TexturePixelDataRecords.push_back(pixelData);
-        return runtimeTexture;
+        auto pixelData = std::make_unique<WiiUTexturePixelData>();
+        pixelData->Texture = runtimeTexture;
+        pixelData->Width = data->Width;
+        pixelData->Height = data->Height;
+        if (data->ColorFormat == TextureAssetColorFormat::WiiUNative) {
+            WiiUNativeTextureLayout layout;
+            if (data->Colors == nullptr || !TryParseWiiUNativeTexturePayload(data->Colors->Data,
+                data->Colors->get_Length(), data->PaletteColors == nullptr ? nullptr : data->PaletteColors->Data,
+                data->PaletteColors == nullptr ? 0 : data->PaletteColors->get_Length(), layout)
+                || layout.Width != data->Width || layout.Height != data->Height
+                || layout.AlphaPrecision != static_cast<std::uint32_t>(data->AlphaPrecision)) {
+                throw new InvalidOperationException("Wii U native texture contains invalid or mismatched WGT1 metadata.");
+            }
+            InitializeWiiUNativeTextureHandle(&pixelData->Gx2TextureHandle, layout,
+                data->Colors->Data + 64, layout.TexelLength, false);
+            pixelData->AllowsRgbaUpdate = layout.Format == 0x1au && layout.CompMap == 0x00010203u;
+            pixelData->AlphaPrecision = layout.AlphaPrecision;
+            pixelData->PreserveCoverage = false;
+        } else {
+            std::vector<std::uint32_t> pixels = DecodeTexturePixels(data);
+            InitializeTextureHandle(&pixelData->Gx2TextureHandle, data->Width, data->Height, pixels);
+            pixelData->AllowsRgbaUpdate = data->ColorFormat == TextureAssetColorFormat::Rgba32;
+        }
+        try {
+            TexturePixelDataRecords.push_back(std::move(pixelData));
+        } catch (...) {
+            DestroyTextureHandle(&pixelData->Gx2TextureHandle);
+            throw;
+        }
+        return runtimeTextureOwner.release();
     }
 
     /// Releases one Wii U runtime texture.
@@ -162,18 +189,10 @@ namespace helengine::wiiu {
             throw new ArgumentNullException("texture");
         }
 
-        for (std::size_t index = 0; index < TexturePixelDataRecords.size(); index++) {
-            if (TexturePixelDataRecords[index].Texture != texture) {
-                continue;
-            }
-
-            DestroyTextureHandle(&TexturePixelDataRecords[index].Gx2TextureHandle);
-            TexturePixelDataRecords.erase(TexturePixelDataRecords.begin() + static_cast<std::ptrdiff_t>(index));
-            break;
+        if (FindTexturePixelData(texture) == nullptr) {
+            throw new InvalidOperationException("Wii U cannot release a texture not owned by this renderer.");
         }
-
-        texture->Dispose();
-        delete texture;
+        PendingTextureReleases.Add(texture);
     }
 
     /// Releases one font asset.
@@ -182,6 +201,8 @@ namespace helengine::wiiu {
             throw new ArgumentNullException("font");
         }
 
+        RuntimeTexture* atlas = font->get_Texture();
+        if (atlas != nullptr && !atlas->get_IsEngineOwned()) ReleaseTexture(atlas);
         font->Dispose();
         delete font;
     }
@@ -242,6 +263,28 @@ namespace helengine::wiiu {
 
     /// Clears deferred release state after an engine frame.
     void WiiURenderManager2D::FlushReleasedTextures() {
+        PendingTextureReleases.Drain([&](RuntimeTexture* texture) {
+            for (auto iterator = TexturePixelDataRecords.begin(); iterator != TexturePixelDataRecords.end(); ++iterator) {
+                if ((*iterator)->Texture != texture) continue;
+                DestroyTextureHandle(&(*iterator)->Gx2TextureHandle);
+                TexturePixelDataRecords.erase(iterator);
+                texture->Dispose();
+                delete texture;
+                break;
+            }
+        });
+    }
+
+    /// Validates the owning record before performing the shared mutable RGBA8 upload operation.
+    void WiiURenderManager2D::UpdateTextureRegionCore(RuntimeTexture* texture, int32_t x, int32_t y,
+        int32_t width, int32_t height, Array<std::uint8_t>* rgba8, int32_t sourceRowPitch) {
+        WiiUTexturePixelData* record = texture == nullptr ? nullptr : FindTexturePixelData(texture);
+        if (record == nullptr || !record->AllowsRgbaUpdate || rgba8 == nullptr
+            || PendingTextureReleases.Contains(texture)) {
+            throw new InvalidOperationException("Wii U RGBA region updates require a live mutable RGBA32 texture.");
+        }
+        UpdateWiiURgbaTextureRegion(&record->Gx2TextureHandle, x, y, width, height,
+            rgba8->Data, rgba8->get_Length(), sourceRowPitch, record->AlphaPrecision, record->PreserveCoverage);
     }
 
     /// Accepts a rounded-rectangle draw request without issuing rasterization yet.
@@ -491,8 +534,8 @@ namespace helengine::wiiu {
         }
 
         for (std::size_t index = 0; index < TexturePixelDataRecords.size(); index++) {
-            if (TexturePixelDataRecords[index].Texture == texture) {
-                return &TexturePixelDataRecords[index];
+            if (TexturePixelDataRecords[index]->Texture == texture) {
+                return TexturePixelDataRecords[index].get();
             }
         }
 
@@ -503,7 +546,7 @@ namespace helengine::wiiu {
     std::vector<std::uint32_t> WiiURenderManager2D::DecodeTexturePixels(TextureAsset* data) {
         if (data == nullptr) {
             throw new ArgumentNullException("data");
-        } else if (data->Width == 0U || data->Height == 0U) {
+        } else if (data->Width == 0U || data->Height == 0U || data->Width > 8192U || data->Height > 8192U) {
             throw new InvalidOperationException("Wii U texture decoding requires nonzero dimensions.");
         } else if (data->Colors == nullptr) {
             throw new InvalidOperationException("Wii U texture decoding requires a color payload.");
@@ -629,7 +672,13 @@ namespace helengine::wiiu {
             return pixels;
         }
 
-        throw new InvalidOperationException("Wii U runtime textures received an unsupported color format.");
+        Array<std::uint8_t>* rgba = TextureAssetPixelCodec::DecodeToRgba32(data);
+        auto decodedGuard = he_cpp_make_scope_exit([&]() { delete rgba; });
+        for (std::size_t pixelIndex = 0; pixelIndex < pixelCount; ++pixelIndex) {
+            const int32_t offset = static_cast<int32_t>(pixelIndex * 4u);
+            pixels[pixelIndex] = PackArgb((*rgba)[offset], (*rgba)[offset + 1], (*rgba)[offset + 2], (*rgba)[offset + 3]);
+        }
+        return pixels;
     }
 
     /// Initializes one GX2 texture handle from decoded ARGB8888 pixels.
@@ -694,12 +743,7 @@ namespace helengine::wiiu {
             return;
         }
 
-        if (textureHandle->Texture.surface.image != nullptr) {
-            GX2RDestroySurfaceEx(&textureHandle->Texture.surface, NoGx2rResourceFlags);
-        }
-
-        std::memset(&textureHandle->Texture, 0, sizeof(textureHandle->Texture));
-        std::memset(&textureHandle->Sampler, 0, sizeof(textureHandle->Sampler));
+        DestroyWiiUTextureHandleAfterFence(textureHandle);
     }
 
     /// Packs one 8-bit RGBA color into the ARGB8888 layout used by texture decode.

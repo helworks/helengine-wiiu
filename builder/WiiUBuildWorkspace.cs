@@ -39,6 +39,22 @@ public static class WiiUBuildWorkspace {
             throw new ArgumentNullException(nameof(nativeBuildExecutor));
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+        string packageSourceRootPath = WiiUBuilderPaths.ResolvePackageSourceRootPath(request);
+        string stagedContentRootPath = Path.Combine(request.OutputRoot, ContentDirectoryName);
+        WiiUTextureCookPath.ValidateRoot(request.OutputRoot);
+        WiiUTextureCookPath.ValidateRoot(request.WorkingRoot);
+        WiiUTextureCookPath.Resolve(request.OutputRoot, WiiUBuilderPaths.RpxFileName);
+        WiiUTextureCookPath.Resolve(request.OutputRoot, WiiUBuilderPaths.WuhbFileName);
+        if (CanWriteRuntimeSceneManifest(request.Manifest)) {
+            string generatedRoot = WiiUBuilderPaths.ResolveGeneratedCoreRootPath(request);
+            WiiUTextureCookPath.ValidateRoot(generatedRoot);
+            WiiUTextureCookPath.Resolve(generatedRoot, "runtime/wiiu_runtime_scene_manifest.hpp");
+            new WiiURuntimeSceneManifestWriter().Prepare(request.Manifest);
+        }
+        WiiUPackagedContentStager stager = new();
+        IReadOnlyList<WiiUPreparedPayload> prepared = stager.Prepare(request.Manifest, packageSourceRootPath, stagedContentRootPath, cancellationToken);
+        stager.Publish(prepared, packageSourceRootPath);
         Directory.CreateDirectory(request.OutputRoot);
         Directory.CreateDirectory(request.WorkingRoot);
         if (CanWriteRuntimeSceneManifest(request.Manifest)) {
@@ -54,9 +70,7 @@ public static class WiiUBuildWorkspace {
         progressReporter.Report(new PlatformBuildProgressUpdate("Stage Native Artifacts", WiiUBuilderPaths.WuhbFileName, 3, 4, "Copied the native Wii U RPX and WUHB into the output root."));
 
         if (CanStagePackagedContent(request.Manifest)) {
-            string packageSourceRootPath = WiiUBuilderPaths.ResolvePackageSourceRootPath(request);
-            string stagedContentRootPath = Path.Combine(request.OutputRoot, ContentDirectoryName);
-            new WiiUPackagedContentStager().Stage(request.Manifest, packageSourceRootPath, stagedContentRootPath);
+            stager.Publish(prepared, stagedContentRootPath);
         }
 
         progressReporter.Report(new PlatformBuildProgressUpdate("Stage Packaged Content", ContentDirectoryName, 4, 4, "Staged the packaged Wii U content tree into the output root."));
@@ -98,7 +112,7 @@ public static class WiiUBuildWorkspace {
             return true;
         }
 
-        return (manifest.PlatformCookWorkItems ?? []).Length > 0;
+        return (manifest.PlatformCookWorkItems ?? []).Length > 0 || manifest.CookedArtifacts.Length > 0;
     }
 
     /// <summary>

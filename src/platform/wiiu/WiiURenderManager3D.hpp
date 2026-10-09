@@ -8,6 +8,7 @@
 #include "RenderManager3D.hpp"
 #include "platform/wiiu/WiiUGx23DRenderFrame.hpp"
 #include "platform/wiiu/WiiUGx2TextureHandle.hpp"
+#include "platform/wiiu/WiiUGx2ReleaseQueue.hpp"
 
 class CameraComponent;
 class DirectionalLightComponent;
@@ -35,6 +36,8 @@ namespace helengine::wiiu {
 
         /// Captures the current scene-driven 3D frame from the generated runtime.
         void Draw() override;
+        /// Retires released material textures only after GX2 has completed the previous captured frame.
+        void FlushReleasedAssets() override;
 
         /// Builds one concrete Wii U runtime material from a cooked platform material asset record.
         ::RuntimeMaterial* BuildMaterialFromCooked(::PlatformMaterialAsset* materialAsset) override;
@@ -162,6 +165,8 @@ namespace helengine::wiiu {
 
         /// Stores the most recently captured 3D frame.
         WiiUGx23DRenderFrame CurrentFrame;
+        /// Retains material handles referenced by captured commands until the GPU fence completes.
+        WiiUGx2ReleaseQueue<::RuntimeMaterial> PendingMaterialReleases;
     };
 }
 

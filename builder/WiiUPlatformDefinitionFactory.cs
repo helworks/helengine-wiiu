@@ -1,5 +1,6 @@
 using helengine.baseplatform.Definitions;
 using helengine.baseplatform.Profiles;
+using helengine.editor;
 
 namespace helengine.wiiu.builder;
 
@@ -26,6 +27,16 @@ public static class WiiUPlatformDefinitionFactory {
     /// Generic runtime specialization id used by the first Wii U loose-file packaged runtime slice.
     /// </summary>
     const string WiiURuntimeSpecializationId = "wiiu-loose-files";
+
+    /// <summary>Retains the editor's existing uncapped RGBA32/A8 settings for image and atlas imports.</summary>
+    public static string CreateDefaultSerializedTextureCookSettings() {
+        return WiiUTextureCookSettingsSerializer.Serialize(WiiUTextureCookSettingsSerializer.CreateDefaults());
+    }
+
+    /// <summary>Preserves the font-atlas default independently from future image default changes.</summary>
+    public static string CreateDefaultSerializedFontAtlasTextureCookSettings() {
+        return WiiUTextureCookSettingsSerializer.Serialize(WiiUTextureCookSettingsSerializer.CreateDefaults());
+    }
 
     /// <summary>
     /// Creates the current Wii U platform definition.
@@ -204,6 +215,38 @@ public static class WiiUPlatformDefinitionFactory {
                 RuntimeMaterialResolutionMode.CookedPlatformOwned,
                 true,
                 PackagedPathPolicy.ContentRelativeOnly,
-                [PortableInputPreprocessorSymbolCatalog.BepuUseClassicBroadPhaseUpdateSymbol]));
+                [PortableInputPreprocessorSymbolCatalog.BepuUseClassicBroadPhaseUpdateSymbol]),
+            assetCookCapabilities: [
+                new PlatformAssetCookCapabilityDefinition("texture", "runtime-texture", PlatformAssetCookOwnershipKind.BuilderOwned,
+                    "wiiu-texture", CreateDefaultSerializedTextureCookSettings(), CreateTextureFormatCapabilities()),
+                new PlatformAssetCookCapabilityDefinition("font-atlas-texture", "runtime-texture", PlatformAssetCookOwnershipKind.BuilderOwned,
+                    "wiiu-font-atlas-texture", CreateDefaultSerializedFontAtlasTextureCookSettings(), CreateTextureFormatCapabilities(), ".hetex")
+            ]);
+    }
+
+    /// <summary>Advertises compatible generic settings and only GX2 formats with an actual image encoder.</summary>
+    static PlatformTextureFormatCapabilityDefinition CreateTextureFormatCapabilities() {
+        List<string> ids = [];
+        HashSet<TextureAssetAlphaPrecision> alphas = [];
+        List<PlatformTextureFormatCombinationDefinition> combinations = [];
+        foreach (TextureAssetColorFormat colorFormat in Enum.GetValues<TextureAssetColorFormat>()) {
+            string id = colorFormat.ToString();
+            if (!TextureAssetProcessorSettings.TryResolveGenericColorFormat(id, out _)) continue;
+            ids.Add(id);
+            foreach (TextureAssetAlphaPrecision alpha in Enum.GetValues<TextureAssetAlphaPrecision>()) {
+                if (!TextureAssetPixelCodec.IsAlphaPrecisionSupported(colorFormat, alpha)) continue;
+                alphas.Add(alpha);
+                combinations.Add(new PlatformTextureFormatCombinationDefinition(id, alpha));
+            }
+        }
+        foreach (WiiUNativeTextureFormatDefinition format in WiiUNativeTextureFormatCatalog.Formats) {
+            if (!format.SupportsCooking) continue;
+            ids.Add(format.Id);
+            foreach (TextureAssetAlphaPrecision alpha in format.SupportedAlphaPrecisions) {
+                alphas.Add(alpha);
+                combinations.Add(new PlatformTextureFormatCombinationDefinition(format.Id, alpha));
+            }
+        }
+        return new PlatformTextureFormatCapabilityDefinition(ids, alphas.OrderBy(alpha => alpha).ToArray(), combinations);
     }
 }
