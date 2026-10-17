@@ -9,7 +9,6 @@
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
 class Core;
-class WiiUContentStreamSource;
 class IAudioBackend;
 class PlatformInfo;
 class StandardPlatformInputConfiguration;
@@ -19,6 +18,7 @@ namespace helengine::wiiu {
     class WiiUGx2Presenter;
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
+    class WiiUContentStreamSource;
     class WiiUInputBackend;
     class WiiURenderManager2D;
     class WiiURenderManager3D;
@@ -44,7 +44,7 @@ namespace helengine::wiiu {
         /// Initializes the Wii U generated core and queues the packaged startup scene.
         bool InitializeEngineCore();
 
-        /// Opens representative packaged payloads before engine startup so bundle filesystem failures identify the missing entry directly.
+        /// Opens every selected packaged scene before engine startup so bundle failures identify the missing catalog entry directly.
         bool ProbePackagedContent();
 
         /// Initializes the Wii U GX2 presenter used for steady-state rendered output.

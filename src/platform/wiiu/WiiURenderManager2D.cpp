@@ -1,3 +1,4 @@
+#include "Batch2DGeometry.hpp"
 #include "platform/wiiu/WiiURenderManager2D.hpp"
 
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
@@ -333,7 +334,7 @@ namespace helengine::wiiu {
 
     /// Captures one sprite drawable for the current frame.
     void WiiURenderManager2D::SubmitSprite(::ISpriteDrawable2D* sprite) {
-        SpriteQueue.push_back(WiiUSpriteDrawCommand { sprite });
+        SpriteQueue.push_back(WiiUSpriteDrawCommand { sprite, Batch2DGeometry::ResolveSpriteQuad(sprite) });
     }
 
     /// Captures one text drawable for the current frame.
@@ -397,10 +398,7 @@ namespace helengine::wiiu {
             throw new ArgumentNullException("commandList");
         }
 
-        float4 bounds = commandList->GetTexturedQuadBounds(payloadIndex);
-        if (bounds.Z <= 0.0f || bounds.W <= 0.0f) {
-            return;
-        }
+        const SpriteQuad2D quad = commandList->GetTexturedQuadGeometry(payloadIndex);
 
         RuntimeTexture* runtimeTexture = commandList->GetTexturedQuadTexture(payloadIndex);
         if (runtimeTexture == nullptr) {
@@ -408,11 +406,7 @@ namespace helengine::wiiu {
         }
 
         CaptureTexturedQuad2D(
-            bounds.X,
-            bounds.Y,
-            bounds.Z,
-            bounds.W,
-            commandList->GetTexturedQuadRotation(payloadIndex),
+            quad,
             commandList->GetTexturedQuadSourceRect(payloadIndex),
             commandList->GetTexturedQuadColor(payloadIndex),
             runtimeTexture,
@@ -517,6 +511,26 @@ namespace helengine::wiiu {
         command.Width = width;
         command.Height = height;
         command.RotationRadians = rotationRadians;
+        command.SourceX = sourceRect.X;
+        command.SourceY = sourceRect.Y;
+        command.SourceWidth = sourceRect.Z;
+        command.SourceHeight = sourceRect.W;
+        command.Color = WiiUGx2Color { color.X, color.Y, color.Z, color.W };
+        command.ClipRect = WiiUGx2ClipRect { clipRect.X, clipRect.Y, clipRect.Z, clipRect.W };
+        command.TextureHandle = &texturePixelData->Gx2TextureHandle;
+        CurrentFrame.AddQuad(command);
+    }
+
+    /// Captures exact shared sprite corners into the existing GX2 quad stream.
+    void WiiURenderManager2D::CaptureTexturedQuad2D(const SpriteQuad2D& quad, const float4& sourceRect, byte4 color, RuntimeTexture* texture, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
+        if (texture == nullptr) { throw new ArgumentNullException("texture"); }
+        if (logicalFrameWidth == 0U || logicalFrameHeight == 0U) { return; }
+        WiiUTexturePixelData* texturePixelData = FindTexturePixelData(texture);
+        if (texturePixelData == nullptr) { return; }
+        WiiUGx2QuadCommand command {};
+        command.HasResolvedCorners = true;
+        command.CornerX = {quad.TopLeft.X, quad.TopRight.X, quad.BottomRight.X, quad.BottomLeft.X};
+        command.CornerY = {quad.TopLeft.Y, quad.TopRight.Y, quad.BottomRight.Y, quad.BottomLeft.Y};
         command.SourceX = sourceRect.X;
         command.SourceY = sourceRect.Y;
         command.SourceWidth = sourceRect.Z;

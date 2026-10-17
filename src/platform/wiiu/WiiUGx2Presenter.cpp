@@ -1,3 +1,4 @@
+#include "platform/wiiu/WiiUGx2QuadGeometry.hpp"
 #include "platform/wiiu/WiiUGx2Presenter.hpp"
 
 #include "diagnostic_triangle_shader_bin.h"
@@ -1874,10 +1875,6 @@ namespace helengine::wiiu {
         std::vector<float> frameColorData(static_cast<std::size_t>(totalVertexCount) * 4U);
         for (std::size_t commandIndex = 0; commandIndex < quadCommands.size(); commandIndex++) {
             const WiiUGx2QuadCommand& command = quadCommands[commandIndex];
-            const float left = (command.X / static_cast<float>(LogicalFrameWidth)) * 2.0f - 1.0f;
-            const float right = ((command.X + command.Width) / static_cast<float>(LogicalFrameWidth)) * 2.0f - 1.0f;
-            const float top = 1.0f - ((command.Y / static_cast<float>(LogicalFrameHeight)) * 2.0f);
-            const float bottom = 1.0f - (((command.Y + command.Height) / static_cast<float>(LogicalFrameHeight)) * 2.0f);
             const float texLeft = command.SourceX;
             const float texTop = command.SourceY;
             const float texRight = command.SourceX + command.SourceWidth;
@@ -1891,14 +1888,8 @@ namespace helengine::wiiu {
             const std::size_t positionStartIndex = vertexStartIndex * 2U;
             const std::size_t texCoordStartIndex = vertexStartIndex * 2U;
             const std::size_t colorStartIndex = vertexStartIndex * 4U;
-            const float positionData[] = {
-                left, bottom,
-                right, bottom,
-                right, top,
-                left, bottom,
-                right, top,
-                left, top
-            };
+            float positionData[12];
+            WiiUGx2QuadGeometry::WritePositions(command, static_cast<float>(LogicalFrameWidth), static_cast<float>(LogicalFrameHeight), positionData);
             const float texCoordData[] = {
                 texLeft, texBottom,
                 texRight, texBottom,

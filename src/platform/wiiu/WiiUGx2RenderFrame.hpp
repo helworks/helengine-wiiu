@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
 #include <vector>
 
 namespace helengine::wiiu {
@@ -52,6 +53,15 @@ namespace helengine::wiiu {
 
         /// Rotation requested by the shared engine in radians.
         float RotationRadians;
+
+        /// True when this command carries already transformed sprite geometry.
+        bool HasResolvedCorners = false;
+
+        /// Exact top-left, top-right, bottom-right, bottom-left logical X coordinates.
+        std::array<float, 4> CornerX {};
+
+        /// Exact top-left, top-right, bottom-right, bottom-left logical Y coordinates.
+        std::array<float, 4> CornerY {};
 
         /// Normalized texture-space left edge.
         float SourceX;

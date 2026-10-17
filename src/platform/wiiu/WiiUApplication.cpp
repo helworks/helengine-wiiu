@@ -5,6 +5,7 @@
 #include "platform/wiiu/WiiUContentStreamSource.hpp"
 #include "platform/wiiu/WiiURuntimeDiagnosticsProvider.hpp"
 #include "platform/wiiu/WiiUSceneBootstrap.hpp"
+#include "platform/wiiu/WiiUPackagedSceneProbePaths.hpp"
 
 #include <cstdarg>
 #include <cstdio>
@@ -28,6 +29,7 @@
 #include "runtime/native_list.hpp"
 #include "runtime/native_exceptions.hpp"
 #include "runtime/runtime_standard_platform_input_manifest.hpp"
+#include "runtime/wiiu_runtime_scene_manifest.hpp"
 #include "platform/wiiu/WiiURenderManager2D.hpp"
 #include "platform/wiiu/WiiURenderManager3D.hpp"
 #endif
@@ -469,29 +471,28 @@ namespace helengine::wiiu {
 #endif
     }
 
-    /// Opens representative packaged payloads before engine startup so bundle filesystem failures identify the missing entry directly.
+    /// Opens every selected packaged scene before engine startup so bundle failures identify the missing catalog entry directly.
     bool WiiUApplication::ProbePackagedContent() {
 #if HELENGINE_WIIU_HAS_GENERATED_CORE
         if (EngineContentStreamSource == nullptr) {
             throw std::logic_error("The packaged content stream source was not initialized.");
         }
 
-        constexpr const char* ContentPaths[] = {
-            "cooked/scenes/helenofcodesplash.hasset",
-            "wiiu_standard_material.hasset",
-            "cooked/engine/materials/standard.hasset"
-        };
-        for (const char* contentPath : ContentPaths) {
+        std::size_t entryCount = 0;
+        const HEWiiURuntimeSceneEntry* entries = he_get_runtime_wiiu_scene_entries(&entryCount);
+        const std::vector<std::string> paths = WiiUPackagedSceneProbePaths::Resolve(he_get_runtime_wiiu_startup_scene_id(), entries, entryCount);
+        for (const std::string& path : paths) {
+            const char* contentPath = path.c_str();
             try {
                 Stream* stream = EngineContentStreamSource->OpenRead(contentPath);
                 delete stream;
                 AppendRuntimeTrace("[WiiUFile] Packaged content probe opened: %s\n", contentPath);
             }
             catch (Exception* exception) {
-                const char* message = exception != nullptr ? exception->what() : "<null generated exception>";
-                AppendRuntimeTrace("[WiiUFile] Packaged content probe failed: %s message=%s\n", contentPath, message);
+                const std::string message = exception != nullptr ? exception->what() : "<null generated exception>";
+                AppendRuntimeTrace("[WiiUFile] Packaged content probe failed: %s message=%s\n", contentPath, message.c_str());
                 delete exception;
-                ShowBootFailure("ProbePackagedContent", message);
+                ShowBootFailure("ProbePackagedContent", message.c_str());
                 return false;
             }
             catch (const std::exception& exception) {

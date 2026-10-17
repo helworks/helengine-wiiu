@@ -1,4 +1,5 @@
 .SUFFIXES:
+.DEFAULT_GOAL := all
 
 ifeq ($(strip $(DEVKITPRO)),)
 $(error "Please set DEVKITPRO in your environment. export DEVKITPRO=/opt/devkitpro")
@@ -111,7 +112,7 @@ all: $(BUILD)
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
-	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile all
 
 clean:
 	@rm -fr $(BUILD)

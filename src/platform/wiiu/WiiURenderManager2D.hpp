@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <vector>
+#include "SpriteQuad2D.hpp"
 #include <memory>
 
 #include <gx2/sampler.h>
@@ -30,6 +31,9 @@ namespace helengine::wiiu {
     struct WiiUSpriteDrawCommand {
         /// Pointer to the shared-engine sprite drawable submitted during the current frame.
         ISpriteDrawable2D* Drawable;
+
+        /// Exact logical corners resolved at capture time.
+        SpriteQuad2D Geometry;
     };
 
     /// Stores one captured text draw request for the current Wii U 2D frame.
@@ -146,6 +150,9 @@ namespace helengine::wiiu {
 
         /// Captures one textured logical-space rectangle into the current GX2 frame.
         void CaptureTexturedQuad2D(float x, float y, float width, float height, float rotationRadians, const float4& sourceRect, byte4 color, RuntimeTexture* texture, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight);
+
+        /// Submits the exact resolved corners without reconstructing an angle or scale.
+        void CaptureTexturedQuad2D(const SpriteQuad2D& quad, const float4& sourceRect, byte4 color, RuntimeTexture* texture, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight);
 
         /// Returns one GX2 texture record for the supplied runtime texture or null when it is unknown to the renderer.
         WiiUTexturePixelData* FindTexturePixelData(RuntimeTexture* texture);

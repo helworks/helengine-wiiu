@@ -22,7 +22,7 @@ namespace helengine::wiiu {
         /// <summary>
         /// Releases the borrowed host source owned by this adapter.
         /// </summary>
-        ~WiiUContentStreamSource() override;
+        ~WiiUContentStreamSource();
 
         /// <summary>
         /// Opens a packaged asset while mapping the canonical Standard material path to its Wii U package alias.
