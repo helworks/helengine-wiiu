@@ -165,6 +165,6 @@ public sealed class WiiUMaterialCookerTests {
             "wiiu-default",
             "wiiu-default",
             schemaId,
-            fields);
+            fields, numericPolicy: global::helengine.NumericPrecisionPolicy.Default);
     }
 }

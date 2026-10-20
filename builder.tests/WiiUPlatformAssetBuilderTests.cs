@@ -68,7 +68,7 @@ public sealed class WiiUPlatformAssetBuilderTests {
                 ["vertex-color-mode"] = "ignore",
                 ["base-color"] = "#804020FF",
                 ["lighting-mode"] = "unlit"
-            });
+            }, numericPolicy: global::helengine.NumericPrecisionPolicy.Default);
 
         PlatformMaterialCookResult result = builder.CookMaterial(request);
         WiiUStandardShaderMaterialAsset asset = new WiiUStandardShaderMaterialBinarySerializer().Deserialize(result.CookedMaterialBytes);
