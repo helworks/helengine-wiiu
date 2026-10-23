@@ -31,3 +31,7 @@ The current packaged startup target is the authored `textured_cube_grid` scene. 
 
 - [Docker Build Notes](docs/Docker.md)
 - [Platform Notes](docs/PlatformNotes.md)
+
+## Portable source imports
+
+The .NET 9 builder uses the engine's existing portable texture registry and file-backed font rasterizer for source cook work items, retaining authored importer ids and the existing default font pixel request. It no longer loads Windows editor UI assemblies. Serialized textures, embedded atlases, Wii U native layouts and numeric serialization policies retain their existing contracts.

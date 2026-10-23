@@ -13,27 +13,17 @@ public sealed class WiiUPlatformCookSourceProcessor : IWiiUPlatformCookSourcePro
     const string FontAtlasSuffix = "#atlas";
 
     /// <summary>
-    /// Relative Windows editor backend assembly path used when the importer assembly has not been loaded yet.
-    /// </summary>
-    const string EditorWindowsAssemblyRelativePath = @"engine\helengine.editor.windows\bin\Debug\net9.0-windows\helengine.editor.windows.dll";
-
-    /// <summary>
-    /// Relative editor host assembly path used when the importer-host assembly has not been loaded yet.
-    /// </summary>
-    const string EditorAppAssemblyRelativePath = @"helengine.ui\helengine.editor.app\bin\Debug\net9.0-windows\helengine.editor.app.dll";
-
-    /// <summary>
     /// Builder-owned cooker that preserves imported storage while applying generic or native Wii U settings.
     /// </summary>
     readonly WiiUTextureCooker TextureCooker;
 
     /// <summary>
-    /// Lazily initialized default texture importer registrations loaded from the Windows editor backend.
+    /// Lazily initialized default texture importer registrations provided by the portable editor backend.
     /// </summary>
     IReadOnlyList<TextureImporterRegistration> TextureImporterRegistrationsValue;
 
     /// <summary>
-    /// Lazily initialized source font importer loaded from the Windows editor backend.
+    /// Lazily initialized source font importer provided by the portable editor backend.
     /// </summary>
     IFontImporter FontImporterValue;
 
@@ -216,124 +206,18 @@ public sealed class WiiUPlatformCookSourceProcessor : IWiiUPlatformCookSourcePro
         return importedFontAsset;
     }
 
-    /// <summary>
-    /// Gets the lazily loaded default texture importer registrations provided by the Windows editor backend.
-    /// </summary>
-    /// <returns>Default texture importer registrations.</returns>
+    /// <summary>Gets the existing portable texture registrations, retaining their stable authored importer identifiers.</summary>
+    /// <returns>Portable texture importer registrations.</returns>
     IReadOnlyList<TextureImporterRegistration> GetTextureImporterRegistrations() {
-        if (TextureImporterRegistrationsValue != null) {
-            return TextureImporterRegistrationsValue;
-        }
-
-        Assembly editorWindowsAssembly = LoadEditorWindowsAssembly();
-        Type textureFactoryType = editorWindowsAssembly.GetType("helengine.editor.EditorHostTextureImporterFactory", true)
-            ?? throw new InvalidOperationException("Windows editor backend did not expose EditorHostTextureImporterFactory.");
-        MethodInfo createDefaultMethod = textureFactoryType.GetMethod("CreateDefault", BindingFlags.Public | BindingFlags.Static)
-            ?? throw new InvalidOperationException("Windows editor backend did not expose EditorHostTextureImporterFactory.CreateDefault().");
-        object result = createDefaultMethod.Invoke(null, null)
-            ?? throw new InvalidOperationException("Windows editor backend returned no default texture importers.");
-        IReadOnlyList<IAssetImporterRegistration> registrations = result as IReadOnlyList<IAssetImporterRegistration>
-            ?? throw new InvalidOperationException("Windows editor backend returned an unexpected texture importer collection.");
-
-        List<TextureImporterRegistration> textureRegistrations = new List<TextureImporterRegistration>();
-        for (int index = 0; index < registrations.Count; index++) {
-            if (registrations[index] is TextureImporterRegistration textureRegistration) {
-                textureRegistrations.Add(textureRegistration);
-            }
-        }
-
-        if (textureRegistrations.Count == 0) {
-            throw new InvalidOperationException("Windows editor backend did not expose any texture importer registrations.");
-        }
-
-        TextureImporterRegistrationsValue = textureRegistrations;
-        return TextureImporterRegistrationsValue;
+        return TextureImporterRegistrationsValue ??= PortableImporterFactory.CreateDefault()
+            .OfType<TextureImporterRegistration>().ToArray();
     }
 
-    /// <summary>
-    /// Gets the lazily loaded default source font importer provided by the editor host.
-    /// </summary>
-    /// <returns>Editor-host source font importer.</returns>
+    /// <summary>Gets the existing file-backed font rasterizer without loading a Windows editor UI assembly.</summary>
+    /// <returns>Portable source font importer honoring the supplied pixel request.</returns>
     IFontImporter GetFontImporter() {
-        if (FontImporterValue != null) {
-            return FontImporterValue;
-        }
-
-        Assembly editorAppAssembly = LoadEditorAppAssembly();
-        Type importerFactoryType = editorAppAssembly.GetType("helengine.editor.app.EditorHostImporterFactory", true)
-            ?? throw new InvalidOperationException("Editor host assembly did not expose helengine.editor.app.EditorHostImporterFactory.");
-        MethodInfo createDefaultMethod = importerFactoryType.GetMethod("CreateDefault", BindingFlags.Public | BindingFlags.Static)
-            ?? throw new InvalidOperationException("Editor host assembly did not expose EditorHostImporterFactory.CreateDefault().");
-        object result = createDefaultMethod.Invoke(null, null)
-            ?? throw new InvalidOperationException("Editor host assembly returned no default source importers.");
-        object[] importers = result as object[]
-            ?? throw new InvalidOperationException("Editor host assembly returned an unexpected source importer collection.");
-        for (int index = 0; index < importers.Length; index++) {
-            if (importers[index] is IFontImporter fontImporter) {
-                FontImporterValue = fontImporter;
-                return FontImporterValue;
-            }
-        }
-
-        throw new InvalidOperationException("Editor host assembly did not expose any font importers.");
+        return FontImporterValue ??= new PortableFontImporter();
     }
-
-    /// <summary>
-    /// Loads the Windows editor backend assembly that owns the source texture import implementations.
-    /// </summary>
-    /// <returns>Loaded editor backend assembly.</returns>
-    static Assembly LoadEditorWindowsAssembly() {
-        Assembly[] loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
-        for (int index = 0; index < loadedAssemblies.Length; index++) {
-            Assembly assembly = loadedAssemblies[index];
-            if (string.Equals(assembly.GetName().Name, "helengine.editor.windows", StringComparison.OrdinalIgnoreCase)) {
-                return assembly;
-            }
-        }
-
-        try {
-            return Assembly.Load("helengine.editor.windows");
-        } catch {
-        }
-
-        string assemblyPath = Path.Combine(ResolveHelengineRootPath(), NormalizeRelativePath(EditorWindowsAssemblyRelativePath));
-        if (!File.Exists(assemblyPath)) {
-            throw new FileNotFoundException(
-                "Windows editor backend assembly 'helengine.editor.windows' was not found. Build helengine.editor.windows before executing Wii U builder-owned cook work items.",
-                assemblyPath);
-        }
-
-        return Assembly.LoadFrom(assemblyPath);
-    }
-
-    /// <summary>
-    /// Loads the editor host assembly that owns the source font import implementations.
-    /// </summary>
-    /// <returns>Loaded editor host assembly.</returns>
-    static Assembly LoadEditorAppAssembly() {
-        Assembly[] loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
-        for (int index = 0; index < loadedAssemblies.Length; index++) {
-            Assembly assembly = loadedAssemblies[index];
-            if (string.Equals(assembly.GetName().Name, "helengine.editor.app", StringComparison.OrdinalIgnoreCase)) {
-                return assembly;
-            }
-        }
-
-        try {
-            return Assembly.Load("helengine.editor.app");
-        } catch {
-        }
-
-        string assemblyPath = Path.Combine(ResolveHelengineRootPath(), NormalizeRelativePath(EditorAppAssemblyRelativePath));
-        if (!File.Exists(assemblyPath)) {
-            throw new FileNotFoundException(
-                "Editor host assembly 'helengine.editor.app' was not found. Build helengine.editor.app before executing Wii U builder-owned font cook work items.",
-                assemblyPath);
-        }
-
-        return Assembly.LoadFrom(assemblyPath);
-    }
-
     /// <summary>
     /// Normalizes one texture-file extension into a lowercase extension including the leading dot.
     /// </summary>
@@ -349,68 +233,4 @@ public sealed class WiiUPlatformCookSourceProcessor : IWiiUPlatformCookSourcePro
             : "." + extension.ToLowerInvariant();
     }
 
-    /// <summary>
-    /// Resolves the helengine repository root used to locate editor backend assemblies when they have not been preloaded.
-    /// </summary>
-    /// <returns>Absolute helengine repository root path.</returns>
-    static string ResolveHelengineRootPath() {
-        string configuredHelengineRootPath = Environment.GetEnvironmentVariable("HELENGINE_ROOT") ?? string.Empty;
-        if (IsHelengineRootPath(configuredHelengineRootPath)) {
-            return Path.GetFullPath(configuredHelengineRootPath);
-        }
-
-        string configuredHelengineSourceRootPath = Environment.GetEnvironmentVariable("HELENGINE_SOURCE_ROOT") ?? string.Empty;
-        if (IsHelengineRootPath(configuredHelengineSourceRootPath)) {
-            return Path.GetFullPath(configuredHelengineSourceRootPath);
-        }
-
-        string configuredWiiURepositoryRootPath = Environment.GetEnvironmentVariable("HELENGINE_WIIU_REPOSITORY_ROOT") ?? string.Empty;
-        if (!string.IsNullOrWhiteSpace(configuredWiiURepositoryRootPath)) {
-            string siblingHelengineRootPath = Path.GetFullPath(Path.Combine(configuredWiiURepositoryRootPath, "..", "helengine"));
-            if (IsHelengineRootPath(siblingHelengineRootPath)) {
-                return siblingHelengineRootPath;
-            }
-        }
-
-        string currentPath = AppContext.BaseDirectory;
-        while (!string.IsNullOrWhiteSpace(currentPath)) {
-            string siblingHelengineRootPath = Path.GetFullPath(Path.Combine(currentPath, "..", "..", "..", "..", "..", "helengine"));
-            if (IsHelengineRootPath(siblingHelengineRootPath)) {
-                return siblingHelengineRootPath;
-            }
-
-            DirectoryInfo parentDirectory = Directory.GetParent(currentPath);
-            if (parentDirectory == null) {
-                break;
-            }
-
-            currentPath = parentDirectory.FullName;
-        }
-
-        throw new InvalidOperationException("The helengine repository root could not be resolved for Wii U builder-owned cook work items.");
-    }
-
-    /// <summary>
-    /// Determines whether one path looks like the helengine repository root.
-    /// </summary>
-    /// <param name="path">Candidate helengine repository root path.</param>
-    /// <returns>True when the path contains the helengine editor solution entry points.</returns>
-    static bool IsHelengineRootPath(string path) {
-        if (string.IsNullOrWhiteSpace(path)) {
-            return false;
-        }
-
-        string editorWindowsProjectPath = Path.Combine(path, "engine", "helengine.editor.windows", "helengine.editor.windows.csproj");
-        string editorAppProjectPath = Path.Combine(path, "helengine.ui", "helengine.editor.app", "helengine.editor.app.csproj");
-        return File.Exists(editorWindowsProjectPath) && File.Exists(editorAppProjectPath);
-    }
-
-    /// <summary>
-    /// Normalizes one logical path into the current filesystem separator convention.
-    /// </summary>
-    /// <param name="path">Logical path to normalize.</param>
-    /// <returns>Normalized filesystem path.</returns>
-    static string NormalizeRelativePath(string path) {
-        return path.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
-    }
 }

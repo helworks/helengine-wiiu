@@ -79,6 +79,30 @@ public sealed class WiiUNativeTextureWorkItemTests {
         Assert.Equal(TextureAssetColorFormat.Rgba32, cooked.ColorFormat);
     }
 
+    /// <summary>Imports literal PNG rows without a Windows editor host, retaining RGBA, alpha and runtime identity.</summary>
+    [Fact]
+    public void PngSourcePreservesRgbaRowsAndRuntimeIdentity() {
+        string root = PrepareFixture("portable-png");
+        string source = Path.Combine(root, "source.png");
+        byte[] png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwgbGIA0GAAARNIJeLaHI0sAAAAASUVORK5CYII=");
+        File.WriteAllBytes(source, png);
+        using TextureAsset cooked = new WiiUPlatformCookSourceProcessor().CookTexture(source, "portable-image", WiiUTextureCookSettingsSerializer.CreateDefaults());
+        Assert.Equal("portable-image", cooked.Id);
+        Assert.Equal(RuntimeAssetIdGenerator.Generate(cooked.Id), cooked.RuntimeAssetId);
+        Assert.Equal(new byte[] { 255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 255, 255, 255, 255, 255 }, TextureAssetPixelCodec.DecodeToRgba32(cooked));
+        Assert.Equal(png, File.ReadAllBytes(source));
+    }
+
+    /// <summary>Rasterizes an explicit source face with the existing default pixel request and cooks a nonempty atlas without Windows UI assemblies.</summary>
+    [Fact]
+    public void RawFontAtlasCooksWithoutWindowsEditorHost() {
+        string source = Path.Combine(AppContext.BaseDirectory, "fixtures", "Synthetic.ttf");
+        using TextureAsset cooked = new WiiUPlatformCookSourceProcessor().CookFontAtlasTexture(source, "portable-font", WiiUTextureCookSettingsSerializer.CreateDefaults());
+        Assert.Equal("portable-font#atlas", cooked.Id);
+        Assert.Equal(RuntimeAssetIdGenerator.Generate(cooked.Id), cooked.RuntimeAssetId);
+        Assert.True(cooked.Width > 0 && cooked.Height > 0);
+        Assert.Contains(TextureAssetPixelCodec.DecodeToRgba32(cooked), channel => channel != 0);
+    }
     /// <summary>Copies an explicitly supplied native atlas and its font metadata without changing bytes or recooking the texture.</summary>
     [Fact]
     public async Task ExplicitNativeAtlasAndFontMetadataArePreserved() {
