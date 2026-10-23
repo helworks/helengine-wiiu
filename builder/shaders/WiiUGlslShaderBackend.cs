@@ -427,13 +427,17 @@ public sealed class WiiUGlslShaderBackend : IShaderBackend {
     }
 
     /// <summary>
-    /// Resolves the packaged SPIRV-Cross native library for the current Windows builder process.
+    /// Resolves the packaged SPIRV-Cross native library for the current builder process operating system and architecture.
     /// </summary>
     /// <returns>Absolute path to the native SPIRV-Cross library.</returns>
     string ResolveSpirvCrossLibraryPath() {
         string assemblyDirectoryPath = Path.GetDirectoryName(typeof(WiiUGlslShaderBackend).Assembly.Location)
             ?? throw new InvalidOperationException("Unable to resolve the Wii U builder assembly directory.");
-        string libraryPath = Path.Combine(assemblyDirectoryPath, "runtimes", "win-x64", "native", "spirv-cross.dll");
+        string host = OperatingSystem.IsWindows() ? "win" : OperatingSystem.IsMacOS() ? "osx" : OperatingSystem.IsLinux() ? "linux"
+            : throw new PlatformNotSupportedException("The Wii U shader compiler does not package SPIRV-Cross for this host OS.");
+        string architecture = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+        string fileName = host == "win" ? "spirv-cross.dll" : host == "osx" ? "libspirv-cross.dylib" : "libspirv-cross.so";
+        string libraryPath = Path.Combine(assemblyDirectoryPath, "runtimes", host + "-" + architecture, "native", fileName);
         if (!File.Exists(libraryPath)) {
             throw new FileNotFoundException("The packaged SPIRV-Cross native library was not found.", libraryPath);
         }
