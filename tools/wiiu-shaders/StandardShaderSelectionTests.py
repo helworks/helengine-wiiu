@@ -1,4 +1,9 @@
-"""Exercise the real Make inventory policy without a shader compiler or Wii U SDK."""
+"""Exercise the real Make policy without shader compilation or a game build.
+
+Run with the SDK's GNU Make (4.3) and CC/CXX host compiler, selecting a fixed
+HELENGINE_WIIU_SHADER_TEST_ROOT. macOS's bundled Make 3.81 cannot validate the
+rapid cache transitions because it compares file timestamps at whole seconds.
+"""
 
 import os
 from pathlib import Path
