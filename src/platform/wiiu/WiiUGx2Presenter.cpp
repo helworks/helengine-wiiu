@@ -1987,18 +1987,18 @@ namespace helengine::wiiu {
             float4x4 lightWorldViewProjection;
             float4x4::Multiply__ref0_ref1_out2(worldMatrix, lightViewProjectionMatrix, lightWorldViewProjection);
             const float transformData[56] = {
-                worldMatrix.M11, worldMatrix.M21, worldMatrix.M31, worldMatrix.M41,
-                worldMatrix.M12, worldMatrix.M22, worldMatrix.M32, worldMatrix.M42,
-                worldMatrix.M13, worldMatrix.M23, worldMatrix.M33, worldMatrix.M43,
-                worldMatrix.M14, worldMatrix.M24, worldMatrix.M34, worldMatrix.M44,
-                lightWorldViewProjection.M11, lightWorldViewProjection.M21, lightWorldViewProjection.M31, lightWorldViewProjection.M41,
-                lightWorldViewProjection.M12, lightWorldViewProjection.M22, lightWorldViewProjection.M32, lightWorldViewProjection.M42,
-                lightWorldViewProjection.M13, lightWorldViewProjection.M23, lightWorldViewProjection.M33, lightWorldViewProjection.M43,
-                lightWorldViewProjection.M14, lightWorldViewProjection.M24, lightWorldViewProjection.M34, lightWorldViewProjection.M44,
-                worldMatrix.M11, worldMatrix.M21, worldMatrix.M31, worldMatrix.M41,
-                worldMatrix.M12, worldMatrix.M22, worldMatrix.M32, worldMatrix.M42,
-                worldMatrix.M13, worldMatrix.M23, worldMatrix.M33, worldMatrix.M43,
-                worldMatrix.M14, worldMatrix.M24, worldMatrix.M34, worldMatrix.M44,
+                static_cast<float>(RealEvaluation(worldMatrix.M11)), static_cast<float>(RealEvaluation(worldMatrix.M21)), static_cast<float>(RealEvaluation(worldMatrix.M31)), static_cast<float>(RealEvaluation(worldMatrix.M41)),
+                static_cast<float>(RealEvaluation(worldMatrix.M12)), static_cast<float>(RealEvaluation(worldMatrix.M22)), static_cast<float>(RealEvaluation(worldMatrix.M32)), static_cast<float>(RealEvaluation(worldMatrix.M42)),
+                static_cast<float>(RealEvaluation(worldMatrix.M13)), static_cast<float>(RealEvaluation(worldMatrix.M23)), static_cast<float>(RealEvaluation(worldMatrix.M33)), static_cast<float>(RealEvaluation(worldMatrix.M43)),
+                static_cast<float>(RealEvaluation(worldMatrix.M14)), static_cast<float>(RealEvaluation(worldMatrix.M24)), static_cast<float>(RealEvaluation(worldMatrix.M34)), static_cast<float>(RealEvaluation(worldMatrix.M44)),
+                static_cast<float>(RealEvaluation(lightWorldViewProjection.M11)), static_cast<float>(RealEvaluation(lightWorldViewProjection.M21)), static_cast<float>(RealEvaluation(lightWorldViewProjection.M31)), static_cast<float>(RealEvaluation(lightWorldViewProjection.M41)),
+                static_cast<float>(RealEvaluation(lightWorldViewProjection.M12)), static_cast<float>(RealEvaluation(lightWorldViewProjection.M22)), static_cast<float>(RealEvaluation(lightWorldViewProjection.M32)), static_cast<float>(RealEvaluation(lightWorldViewProjection.M42)),
+                static_cast<float>(RealEvaluation(lightWorldViewProjection.M13)), static_cast<float>(RealEvaluation(lightWorldViewProjection.M23)), static_cast<float>(RealEvaluation(lightWorldViewProjection.M33)), static_cast<float>(RealEvaluation(lightWorldViewProjection.M43)),
+                static_cast<float>(RealEvaluation(lightWorldViewProjection.M14)), static_cast<float>(RealEvaluation(lightWorldViewProjection.M24)), static_cast<float>(RealEvaluation(lightWorldViewProjection.M34)), static_cast<float>(RealEvaluation(lightWorldViewProjection.M44)),
+                static_cast<float>(RealEvaluation(worldMatrix.M11)), static_cast<float>(RealEvaluation(worldMatrix.M21)), static_cast<float>(RealEvaluation(worldMatrix.M31)), static_cast<float>(RealEvaluation(worldMatrix.M41)),
+                static_cast<float>(RealEvaluation(worldMatrix.M12)), static_cast<float>(RealEvaluation(worldMatrix.M22)), static_cast<float>(RealEvaluation(worldMatrix.M32)), static_cast<float>(RealEvaluation(worldMatrix.M42)),
+                static_cast<float>(RealEvaluation(worldMatrix.M13)), static_cast<float>(RealEvaluation(worldMatrix.M23)), static_cast<float>(RealEvaluation(worldMatrix.M33)), static_cast<float>(RealEvaluation(worldMatrix.M43)),
+                static_cast<float>(RealEvaluation(worldMatrix.M14)), static_cast<float>(RealEvaluation(worldMatrix.M24)), static_cast<float>(RealEvaluation(worldMatrix.M34)), static_cast<float>(RealEvaluation(worldMatrix.M44)),
                 0.0f, 0.0f, 0.0f, 1.0f,
                 0.0f, 0.0f, 0.0f, 0.0f
             };
@@ -2062,21 +2062,21 @@ namespace helengine::wiiu {
 
         GX2DrawDone();
         const float transformData[] = {
-            drawCommand.WorldMatrix.M11, drawCommand.WorldMatrix.M21, drawCommand.WorldMatrix.M31, drawCommand.WorldMatrix.M41, drawCommand.WorldMatrix.M12, drawCommand.WorldMatrix.M22, drawCommand.WorldMatrix.M32, drawCommand.WorldMatrix.M42, drawCommand.WorldMatrix.M13, drawCommand.WorldMatrix.M23, drawCommand.WorldMatrix.M33, drawCommand.WorldMatrix.M43, drawCommand.WorldMatrix.M14, drawCommand.WorldMatrix.M24, drawCommand.WorldMatrix.M34, drawCommand.WorldMatrix.M44,
-            worldViewProjectionMatrix.M11, worldViewProjectionMatrix.M21, worldViewProjectionMatrix.M31, worldViewProjectionMatrix.M41, worldViewProjectionMatrix.M12, worldViewProjectionMatrix.M22, worldViewProjectionMatrix.M32, worldViewProjectionMatrix.M42, worldViewProjectionMatrix.M13, worldViewProjectionMatrix.M23, worldViewProjectionMatrix.M33, worldViewProjectionMatrix.M43, worldViewProjectionMatrix.M14, worldViewProjectionMatrix.M24, worldViewProjectionMatrix.M34, worldViewProjectionMatrix.M44,
-            drawCommand.WorldMatrix.M11, drawCommand.WorldMatrix.M21, drawCommand.WorldMatrix.M31, drawCommand.WorldMatrix.M41, drawCommand.WorldMatrix.M12, drawCommand.WorldMatrix.M22, drawCommand.WorldMatrix.M32, drawCommand.WorldMatrix.M42, drawCommand.WorldMatrix.M13, drawCommand.WorldMatrix.M23, drawCommand.WorldMatrix.M33, drawCommand.WorldMatrix.M43, drawCommand.WorldMatrix.M14, drawCommand.WorldMatrix.M24, drawCommand.WorldMatrix.M34, drawCommand.WorldMatrix.M44,
-            cameraState.CameraPosition.X, cameraState.CameraPosition.Y, cameraState.CameraPosition.Z, 1.0f,
+            static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M11)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M21)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M31)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M41)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M12)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M22)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M32)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M42)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M13)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M23)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M33)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M43)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M14)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M24)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M34)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M44)),
+            static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M11)), static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M21)), static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M31)), static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M41)), static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M12)), static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M22)), static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M32)), static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M42)), static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M13)), static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M23)), static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M33)), static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M43)), static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M14)), static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M24)), static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M34)), static_cast<float>(RealEvaluation(worldViewProjectionMatrix.M44)),
+            static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M11)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M21)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M31)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M41)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M12)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M22)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M32)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M42)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M13)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M23)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M33)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M43)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M14)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M24)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M34)), static_cast<float>(RealEvaluation(drawCommand.WorldMatrix.M44)),
+            static_cast<float>(RealEvaluation(cameraState.CameraPosition.X)), static_cast<float>(RealEvaluation(cameraState.CameraPosition.Y)), static_cast<float>(RealEvaluation(cameraState.CameraPosition.Z)), 1.0f,
             runtimeMaterial.GetIsLit() ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f
         };
         const float4 ambient = frame.GetAmbientLightColor();
         const float4 directionalColor = frame.GetDirectionalLight().Color;
         const float4 directionalDirection = frame.GetDirectionalLight().Direction;
-        const float lightData[] = { ambient.X, ambient.Y, ambient.Z, ambient.W, 1.0f, 0.0f, 0.0f, 0.0f, directionalColor.X, directionalColor.Y, directionalColor.Z, 0.0f, directionalDirection.X, directionalDirection.Y, directionalDirection.Z, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+        const float lightData[] = { static_cast<float>(RealEvaluation(ambient.X)), static_cast<float>(RealEvaluation(ambient.Y)), static_cast<float>(RealEvaluation(ambient.Z)), static_cast<float>(RealEvaluation(ambient.W)), 1.0f, 0.0f, 0.0f, 0.0f, static_cast<float>(RealEvaluation(directionalColor.X)), static_cast<float>(RealEvaluation(directionalColor.Y)), static_cast<float>(RealEvaluation(directionalColor.Z)), 0.0f, static_cast<float>(RealEvaluation(directionalDirection.X)), static_cast<float>(RealEvaluation(directionalDirection.Y)), static_cast<float>(RealEvaluation(directionalDirection.Z)), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
         const float forwardLightData[72] = {
-            ambient.X, ambient.Y, ambient.Z, ambient.W,
+            static_cast<float>(RealEvaluation(ambient.X)), static_cast<float>(RealEvaluation(ambient.Y)), static_cast<float>(RealEvaluation(ambient.Z)), static_cast<float>(RealEvaluation(ambient.W)),
             1.0f, 0.0f, 0.0f, 0.0f,
-            directionalColor.X, directionalColor.Y, directionalColor.Z, 0.0f,
-            directionalDirection.X, directionalDirection.Y, directionalDirection.Z,
+            static_cast<float>(RealEvaluation(directionalColor.X)), static_cast<float>(RealEvaluation(directionalColor.Y)), static_cast<float>(RealEvaluation(directionalColor.Z)), 0.0f,
+            static_cast<float>(RealEvaluation(directionalDirection.X)), static_cast<float>(RealEvaluation(directionalDirection.Y)), static_cast<float>(RealEvaluation(directionalDirection.Z)),
             directionalShadowsEnabled ? frame.GetDirectionalShadow().Strength : 0.0f
         };
         float shadowData[100] = {};
@@ -2090,28 +2090,28 @@ namespace helengine::wiiu {
             shadowData[8] = 1.0f;
             shadowData[9] = frame.GetDirectionalShadow().Strength;
             shadowData[10] = 1.0f;
-            shadowData[12] = shadowMatrix.M11;
-            shadowData[13] = shadowMatrix.M21;
-            shadowData[14] = shadowMatrix.M31;
-            shadowData[15] = shadowMatrix.M41;
-            shadowData[16] = shadowMatrix.M12;
-            shadowData[17] = shadowMatrix.M22;
-            shadowData[18] = shadowMatrix.M32;
-            shadowData[19] = shadowMatrix.M42;
-            shadowData[20] = shadowMatrix.M13;
-            shadowData[21] = shadowMatrix.M23;
-            shadowData[22] = shadowMatrix.M33;
-            shadowData[23] = shadowMatrix.M43;
-            shadowData[24] = shadowMatrix.M14;
-            shadowData[25] = shadowMatrix.M24;
-            shadowData[26] = shadowMatrix.M34;
-            shadowData[27] = shadowMatrix.M44;
+            shadowData[12] = static_cast<float>(RealEvaluation(shadowMatrix.M11));
+            shadowData[13] = static_cast<float>(RealEvaluation(shadowMatrix.M21));
+            shadowData[14] = static_cast<float>(RealEvaluation(shadowMatrix.M31));
+            shadowData[15] = static_cast<float>(RealEvaluation(shadowMatrix.M41));
+            shadowData[16] = static_cast<float>(RealEvaluation(shadowMatrix.M12));
+            shadowData[17] = static_cast<float>(RealEvaluation(shadowMatrix.M22));
+            shadowData[18] = static_cast<float>(RealEvaluation(shadowMatrix.M32));
+            shadowData[19] = static_cast<float>(RealEvaluation(shadowMatrix.M42));
+            shadowData[20] = static_cast<float>(RealEvaluation(shadowMatrix.M13));
+            shadowData[21] = static_cast<float>(RealEvaluation(shadowMatrix.M23));
+            shadowData[22] = static_cast<float>(RealEvaluation(shadowMatrix.M33));
+            shadowData[23] = static_cast<float>(RealEvaluation(shadowMatrix.M43));
+            shadowData[24] = static_cast<float>(RealEvaluation(shadowMatrix.M14));
+            shadowData[25] = static_cast<float>(RealEvaluation(shadowMatrix.M24));
+            shadowData[26] = static_cast<float>(RealEvaluation(shadowMatrix.M34));
+            shadowData[27] = static_cast<float>(RealEvaluation(shadowMatrix.M44));
         }
-        const float baseColorData[] = { runtimeMaterial.GetBaseColor().X, runtimeMaterial.GetBaseColor().Y, runtimeMaterial.GetBaseColor().Z, runtimeMaterial.GetBaseColor().W };
+        const float baseColorData[] = { static_cast<float>(RealEvaluation(runtimeMaterial.GetBaseColor().X)), static_cast<float>(RealEvaluation(runtimeMaterial.GetBaseColor().Y)), static_cast<float>(RealEvaluation(runtimeMaterial.GetBaseColor().Z)), static_cast<float>(RealEvaluation(runtimeMaterial.GetBaseColor().W)) };
         const float roughnessData[] = { runtimeMaterial.GetRoughness(), 0.0f, 0.0f, 0.0f };
         const float metallicData[] = { runtimeMaterial.GetMetallic(), 0.0f, 0.0f, 0.0f };
         const float specularData[] = { runtimeMaterial.GetSpecular(), 0.0f, 0.0f, 0.0f };
-        const float emissiveData[] = { runtimeMaterial.GetEmissiveColor().X, runtimeMaterial.GetEmissiveColor().Y, runtimeMaterial.GetEmissiveColor().Z, runtimeMaterial.GetEmissiveColor().W };
+        const float emissiveData[] = { static_cast<float>(RealEvaluation(runtimeMaterial.GetEmissiveColor().X)), static_cast<float>(RealEvaluation(runtimeMaterial.GetEmissiveColor().Y)), static_cast<float>(RealEvaluation(runtimeMaterial.GetEmissiveColor().Z)), static_cast<float>(RealEvaluation(runtimeMaterial.GetEmissiveColor().W)) };
         GX2RBuffer* buffers[] = { &StandardShaderTransformBuffer, &StandardShaderForwardLightBuffer, &StandardShaderShadowBuffer, &StandardShaderBaseColorBuffer, &StandardShaderRoughnessBuffer, &StandardShaderMetallicBuffer, &StandardShaderSpecularBuffer, &StandardShaderEmissiveBuffer };
         const char* bufferNames[] = { "TransformBuffer", "ForwardLightBuffer", "ShadowBuffer", "BaseColorBuffer", "RoughnessBuffer", "MetallicBuffer", "SpecularBuffer", "EmissiveBuffer" };
         const float* payloads[] = { transformData, forwardLightData, shadowData, baseColorData, roughnessData, metallicData, specularData, emissiveData };
@@ -2231,8 +2231,8 @@ namespace helengine::wiiu {
         }
 
         float materialData[] = {
-            runtimeMaterial.GetBaseColor().X, runtimeMaterial.GetBaseColor().Y, runtimeMaterial.GetBaseColor().Z, runtimeMaterial.GetBaseColor().W,
-            runtimeMaterial.GetEmissiveColor().X, runtimeMaterial.GetEmissiveColor().Y, runtimeMaterial.GetEmissiveColor().Z, runtimeMaterial.GetEmissiveColor().W
+            static_cast<float>(RealEvaluation(runtimeMaterial.GetBaseColor().X)), static_cast<float>(RealEvaluation(runtimeMaterial.GetBaseColor().Y)), static_cast<float>(RealEvaluation(runtimeMaterial.GetBaseColor().Z)), static_cast<float>(RealEvaluation(runtimeMaterial.GetBaseColor().W)),
+            static_cast<float>(RealEvaluation(runtimeMaterial.GetEmissiveColor().X)), static_cast<float>(RealEvaluation(runtimeMaterial.GetEmissiveColor().Y)), static_cast<float>(RealEvaluation(runtimeMaterial.GetEmissiveColor().Z)), static_cast<float>(RealEvaluation(runtimeMaterial.GetEmissiveColor().W))
         };
         void* materialUploadBuffer = GX2RLockBufferEx(&SceneOpaqueMaterialBuffer, NoGx2rResourceFlags);
         if (materialUploadBuffer == nullptr) {
@@ -2251,9 +2251,9 @@ namespace helengine::wiiu {
         const float4 directionalLightColor = frame.GetHasDirectionalLight() ? frame.GetDirectionalLight().Color : float4(0.0f, 0.0f, 0.0f, 0.0f);
         const float4 directionalLightDirection = frame.GetHasDirectionalLight() ? frame.GetDirectionalLight().Direction : float4(0.0f, 0.0f, -1.0f, 0.0f);
         float lightData[] = {
-            ambientLightColor.X, ambientLightColor.Y, ambientLightColor.Z, ambientLightColor.W,
-            directionalLightColor.X, directionalLightColor.Y, directionalLightColor.Z, directionalLightColor.W,
-            directionalLightDirection.X, directionalLightDirection.Y, directionalLightDirection.Z, directionalLightDirection.W
+            static_cast<float>(RealEvaluation(ambientLightColor.X)), static_cast<float>(RealEvaluation(ambientLightColor.Y)), static_cast<float>(RealEvaluation(ambientLightColor.Z)), static_cast<float>(RealEvaluation(ambientLightColor.W)),
+            static_cast<float>(RealEvaluation(directionalLightColor.X)), static_cast<float>(RealEvaluation(directionalLightColor.Y)), static_cast<float>(RealEvaluation(directionalLightColor.Z)), static_cast<float>(RealEvaluation(directionalLightColor.W)),
+            static_cast<float>(RealEvaluation(directionalLightDirection.X)), static_cast<float>(RealEvaluation(directionalLightDirection.Y)), static_cast<float>(RealEvaluation(directionalLightDirection.Z)), static_cast<float>(RealEvaluation(directionalLightDirection.W))
         };
         void* lightUploadBuffer = GX2RLockBufferEx(&SceneOpaqueLightBuffer, NoGx2rResourceFlags);
         if (lightUploadBuffer == nullptr) {
@@ -2413,55 +2413,55 @@ namespace helengine::wiiu {
             const float sourceY = sourcePositionData[positionOffset + 1U];
             const float sourceZ = sourcePositionData[positionOffset + 2U];
             const float sourceW = sourcePositionData[positionOffset + 3U];
-            const float clipX =
+            const RealEvaluation clipX =
                 (sourceX * worldViewProjectionMatrix.M11) +
                 (sourceY * worldViewProjectionMatrix.M21) +
                 (sourceZ * worldViewProjectionMatrix.M31) +
                 (sourceW * worldViewProjectionMatrix.M41);
-            const float clipY =
+            const RealEvaluation clipY =
                 (sourceX * worldViewProjectionMatrix.M12) +
                 (sourceY * worldViewProjectionMatrix.M22) +
                 (sourceZ * worldViewProjectionMatrix.M32) +
                 (sourceW * worldViewProjectionMatrix.M42);
-            const float clipZ =
+            const RealEvaluation clipZ =
                 (sourceX * worldViewProjectionMatrix.M13) +
                 (sourceY * worldViewProjectionMatrix.M23) +
                 (sourceZ * worldViewProjectionMatrix.M33) +
                 (sourceW * worldViewProjectionMatrix.M43);
-            const float clipW =
+            const RealEvaluation clipW =
                 (sourceX * worldViewProjectionMatrix.M14) +
                 (sourceY * worldViewProjectionMatrix.M24) +
                 (sourceZ * worldViewProjectionMatrix.M34) +
                 (sourceW * worldViewProjectionMatrix.M44);
 
-            expandedPositionData.push_back(clipX);
-            expandedPositionData.push_back(clipY);
-            expandedPositionData.push_back(clipZ);
-            expandedPositionData.push_back(clipW);
-            const double sourceNormalX = static_cast<double>(sourceNormalData[normalOffset + 0U]);
-            const double sourceNormalY = static_cast<double>(sourceNormalData[normalOffset + 1U]);
-            const double sourceNormalZ = static_cast<double>(sourceNormalData[normalOffset + 2U]);
-            const double worldNormalX =
-                (sourceNormalX * static_cast<double>(worldMatrix.M11)) +
-                (sourceNormalY * static_cast<double>(worldMatrix.M21)) +
-                (sourceNormalZ * static_cast<double>(worldMatrix.M31));
-            const double worldNormalY =
-                (sourceNormalX * static_cast<double>(worldMatrix.M12)) +
-                (sourceNormalY * static_cast<double>(worldMatrix.M22)) +
-                (sourceNormalZ * static_cast<double>(worldMatrix.M32));
-            const double worldNormalZ =
-                (sourceNormalX * static_cast<double>(worldMatrix.M13)) +
-                (sourceNormalY * static_cast<double>(worldMatrix.M23)) +
-                (sourceNormalZ * static_cast<double>(worldMatrix.M33));
-            const double worldNormalLengthSquared =
+            expandedPositionData.push_back(static_cast<float>(clipX));
+            expandedPositionData.push_back(static_cast<float>(clipY));
+            expandedPositionData.push_back(static_cast<float>(clipZ));
+            expandedPositionData.push_back(static_cast<float>(clipW));
+            const RealEvaluation sourceNormalX = RealEvaluation(sourceNormalData[normalOffset + 0U]);
+            const RealEvaluation sourceNormalY = RealEvaluation(sourceNormalData[normalOffset + 1U]);
+            const RealEvaluation sourceNormalZ = RealEvaluation(sourceNormalData[normalOffset + 2U]);
+            const RealEvaluation worldNormalX =
+                (sourceNormalX * RealEvaluation(worldMatrix.M11)) +
+                (sourceNormalY * RealEvaluation(worldMatrix.M21)) +
+                (sourceNormalZ * RealEvaluation(worldMatrix.M31));
+            const RealEvaluation worldNormalY =
+                (sourceNormalX * RealEvaluation(worldMatrix.M12)) +
+                (sourceNormalY * RealEvaluation(worldMatrix.M22)) +
+                (sourceNormalZ * RealEvaluation(worldMatrix.M32));
+            const RealEvaluation worldNormalZ =
+                (sourceNormalX * RealEvaluation(worldMatrix.M13)) +
+                (sourceNormalY * RealEvaluation(worldMatrix.M23)) +
+                (sourceNormalZ * RealEvaluation(worldMatrix.M33));
+            const RealEvaluation worldNormalLengthSquared =
                 (worldNormalX * worldNormalX) +
                 (worldNormalY * worldNormalY) +
                 (worldNormalZ * worldNormalZ);
-            if (worldNormalLengthSquared <= 0.0) {
+            if (worldNormalLengthSquared <= 0.0f) {
                 throw std::runtime_error("Wii U GX2 presenter requires non-zero opaque-scene world normals after CPU transform.");
             }
 
-            const double worldNormalInverseLength = 1.0 / std::sqrt(worldNormalLengthSquared);
+            const RealEvaluation worldNormalInverseLength = 1.0f / RealMath::Sqrt(worldNormalLengthSquared);
             expandedNormalData.push_back(static_cast<float>(worldNormalX * worldNormalInverseLength));
             expandedNormalData.push_back(static_cast<float>(worldNormalY * worldNormalInverseLength));
             expandedNormalData.push_back(static_cast<float>(worldNormalZ * worldNormalInverseLength));
