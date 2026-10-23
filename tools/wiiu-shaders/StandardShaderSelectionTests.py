@@ -88,7 +88,8 @@ class StandardShaderSelectionTests(unittest.TestCase):
         arguments = [
             "make", "--no-print-directory", "-f", str(repository / "Makefile"),
             "WiiUGx2Presenter.o", f"TOPDIR={repository}", f"DEVKITPRO={self.Root / 'devkitpro'}",
-            "CC=clang", "CXX=clang++", "OFILES=WiiUGx2Presenter.o", "OFILES_SRC=WiiUGx2Presenter.o",
+            f"CC={os.environ.get('CC', 'clang')}", f"CXX={os.environ.get('CXX', 'clang++')}",
+            "OFILES=WiiUGx2Presenter.o", "OFILES_SRC=WiiUGx2Presenter.o",
             f"WIIU_CACHE_TEST_SOURCE={source}", f"WIIU_CACHE_TEST_LOG={log}",
             f"WIIU_STANDARD_SHADER_SOURCES={self.Shaders}", f"CONTENT={self.Content}",
         ]
