@@ -63,5 +63,16 @@ int main() {
         throw std::runtime_error("GX2 geometry or UV arithmetic rounded before vertex packing");
     }
 #endif
+#if HELENGINE_WIIU_HAS_GENERATED_CORE && HELENGINE_WIIU_TEST_STORAGE_BITS == 32 && HELENGINE_WIIU_TEST_ARITHMETIC_BITS == 64
+    // Both operands are exact in float storage; their sum needs the selected wider arithmetic.
+    command.X = Real(16777216.0f);
+    command.Width = Real(1.0f);
+    frame.Clear();
+    frame.AddQuad(command);
+    WiiUGx2QuadGeometry::WritePositions(frame.GetQuadCommands()[0], 16777216, 100, positions);
+    if (positions[2] != 1.00000011920928955078125f) {
+        throw std::runtime_error("GX2 32-bit storage incorrectly forced 32-bit arithmetic before packing");
+    }
+#endif
     std::puts("PASS GX2 configured queue precision and final vertex/scissor packing");
 }
