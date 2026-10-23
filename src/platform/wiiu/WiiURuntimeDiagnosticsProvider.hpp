@@ -23,7 +23,7 @@ namespace helengine::wiiu {
         RuntimeMemoryDiagnosticsSnapshot* CaptureSnapshot() override;
 
         /// Appends the current generated-core update stage into the persistent Wii U runtime trace.
-        void ReportUpdateStage(std::string stage) override;
+        void ReportUpdateStage(HeCppString stage) override;
 
     private:
         /// Appends one host-readable Wii U runtime trace line to every supported trace sink.

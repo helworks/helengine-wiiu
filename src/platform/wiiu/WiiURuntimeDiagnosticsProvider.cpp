@@ -29,9 +29,9 @@ namespace helengine::wiiu {
     }
 
     /// Appends the current generated-core update stage into the persistent Wii U runtime trace.
-    void WiiURuntimeDiagnosticsProvider::ReportUpdateStage(std::string stage) {
+    void WiiURuntimeDiagnosticsProvider::ReportUpdateStage(HeCppString stage) {
 #if defined(HELENGINE_WIIU_RUNTIME_STAGE_TRACE)
-        AppendRuntimeTrace("[WiiUFile] Managed update stage: %s\n", stage.c_str());
+        AppendRuntimeTrace("[WiiUFile] Managed update stage: %s\n", stage.raw().c_str());
 #else
         (void)stage;
 #endif
