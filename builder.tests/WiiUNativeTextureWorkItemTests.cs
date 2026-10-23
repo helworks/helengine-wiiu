@@ -9,6 +9,27 @@ namespace helengine.wiiu.builder.tests;
 
 /// <summary>Runs production image and atlas workitems through the real builder up to its injected native executor boundary.</summary>
 public sealed class WiiUNativeTextureWorkItemTests {
+    /// <summary>Checks image and font-atlas workitem payloads load under each target policy.</summary>
+    [Theory]
+    [InlineData(16)]
+    [InlineData(32)]
+    [InlineData(64)]
+    public async Task PayloadsLoadWithTargetNumericPolicy(int bits) {
+        var policy = new NumericPrecisionPolicy(bits, bits);
+        string root = PrepareFixture("numeric-policy");
+        string source = WriteSource(root, ".hasset");
+        string font = WriteFontSource(root, "source.hefont", "cooked/fonts/atlas.hetex");
+        var items = new[] { Item("cooked/image.hetex", source), Item("cooked/fonts/atlas.hetex", font, "font-atlas-texture") };
+        var request = Request(root, items, numericPolicy: policy);
+        var report = await new WiiUPlatformAssetBuilder(new RecordingWiiUNativeBuildExecutor()).BuildAsync(request, new RecordingProgressReporter(), new RecordingDiagnosticReporter(), CancellationToken.None);
+        Assert.True(report.Succeeded);
+        foreach (var item in items) {
+            using var stream = File.OpenRead(Path.Combine(request.OutputRoot, "content", item.OutputRelativePath));
+            using TextureAsset cooked = Assert.IsType<TextureAsset>(PackagedAssetBinarySerializer.Deserialize(stream, policy));
+            Assert.Equal(5, cooked.Width);
+        }
+    }
+
     /// <summary>Prepares every image-cookable GX2 format for both images and embedded font atlases in one real package batch.</summary>
     [Fact]
     public async Task EveryNativeImageAndFontAtlasWorkItemIsCookedBeforeNativeBuild() {
@@ -180,11 +201,13 @@ public sealed class WiiUNativeTextureWorkItemTests {
     }
 
     /// <summary>Uses the real manifest and builder contracts with stable workspace roots while injecting only the SDK execution boundary.</summary>
-    static PlatformBuildRequest Request(string root, PlatformCookWorkItem[] items, PlatformBuildArtifact[] artifacts = null, PlatformBuildAsset[] assets = null) {
+    static PlatformBuildRequest Request(string root, PlatformCookWorkItem[] items, PlatformBuildArtifact[] artifacts = null, PlatformBuildAsset[] assets = null, NumericPrecisionPolicy numericPolicy = null) {
+        Dictionary<string, string> numericOptions = [];
+        helengine.baseplatform.Definitions.PlatformNumericPolicyResolver.ApplyToOptions(numericPolicy ?? NumericPrecisionPolicy.Default, numericOptions);
         PlatformBuildManifest manifest = new(2, "project", "1.0.0", "1.0.0", "wiiu", "1.0.0", "", [], assets ?? [], artifacts ?? [], [], [],
             new PlatformContainerWritePlan("default", []), items, PlatformBuildRuntimeFeatureManifest.Empty);
         return new PlatformBuildRequest(manifest, [new PlatformBuildTargetVariant("wiiu-default", "wiiu", "wiiu", "wiiu-default")],
             [new PlatformCookProfile("wiiu-default", "Wii U", new PlatformCookProfileCapabilities("wiiu", "raw", "rgba", "scene", PlatformSerializationEndianness.BigEndian))],
-            Path.Combine(root, "output"), Path.Combine(root, "working"));
+            Path.Combine(root, "output"), Path.Combine(root, "working"), string.Empty, string.Empty, string.Empty, null, null, numericOptions);
     }
 }

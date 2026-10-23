@@ -53,7 +53,7 @@ public static class WiiUBuildWorkspace {
             new WiiURuntimeSceneManifestWriter().Prepare(request.Manifest);
         }
         WiiUPackagedContentStager stager = new();
-        IReadOnlyList<WiiUPreparedPayload> prepared = stager.Prepare(request.Manifest, packageSourceRootPath, stagedContentRootPath, cancellationToken);
+        IReadOnlyList<WiiUPreparedPayload> prepared = stager.Prepare(request.Manifest, packageSourceRootPath, stagedContentRootPath, cancellationToken, request.NumericPolicy);
         stager.Publish(prepared, packageSourceRootPath);
         Directory.CreateDirectory(request.OutputRoot);
         Directory.CreateDirectory(request.WorkingRoot);

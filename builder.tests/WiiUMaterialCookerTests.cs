@@ -9,6 +9,20 @@ namespace helengine.wiiu.builder.tests;
 /// Verifies schema-specific Wii U material cooking and the compatibility contract for legacy payloads.
 /// </summary>
 public sealed class WiiUMaterialCookerTests {
+    /// <summary>Loads generic legacy material payloads with the requested target envelope.</summary>
+    [Theory]
+    [InlineData(16)]
+    [InlineData(32)]
+    [InlineData(64)]
+    public void LegacyMaterialLoadsWithTargetNumericPolicy(int bits) {
+        var policy = new NumericPrecisionPolicy(bits, bits);
+        var request = new PlatformMaterialCookRequest("material", "materials/sample.hasset", "wiiu", "wiiu-default", "wiiu-default",
+            WiiUMaterialSchemaIds.StandardTexturedSchemaId, new Dictionary<string, string>(), numericPolicy: policy);
+        var result = new WiiUMaterialCooker().Cook(request);
+        using var stream = new MemoryStream(result.CookedMaterialBytes);
+        Assert.IsType<PlatformMaterialAsset>(PackagedAssetBinarySerializer.Deserialize(stream, policy));
+    }
+
     /// <summary>
     /// Ensures authored StandardShader surface parameters, colors, flags, and shader dependency survive cooking.
     /// </summary>

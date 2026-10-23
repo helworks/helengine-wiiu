@@ -55,7 +55,7 @@ public sealed class WiiUMaterialCooker {
         }
 
         return new PlatformMaterialCookResult(
-            global::helengine.files.AssetSerializer.SerializeToBytes(CreateLegacyMaterialAsset(request)),
+            global::helengine.files.AssetSerializer.SerializeToBytes(CreateLegacyMaterialAsset(request), request.NumericPolicy),
             [dependency]);
     }
 

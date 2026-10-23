@@ -6,14 +6,15 @@ namespace helengine.wiiu.builder;
 /// <summary>Prepares complete Wii U package bytes before publishing payloads or invoking the native bundle build.</summary>
 public sealed class WiiUPackagedContentStager {
     /// <summary>Validates and cooks all manifest payloads before changing any destination file.</summary>
-    public void Stage(PlatformBuildManifest manifest, string sourceRootPath, string destinationRootPath) {
-        IReadOnlyList<WiiUPreparedPayload> prepared = Prepare(manifest, sourceRootPath, destinationRootPath, CancellationToken.None);
+    public void Stage(PlatformBuildManifest manifest, string sourceRootPath, string destinationRootPath, NumericPrecisionPolicy numericPolicy = null) {
+        IReadOnlyList<WiiUPreparedPayload> prepared = Prepare(manifest, sourceRootPath, destinationRootPath, CancellationToken.None, numericPolicy ?? NumericPrecisionPolicy.Default);
         Publish(prepared, destinationRootPath);
     }
 
     /// <summary>Reads all packaged inputs and executes image/atlas workitems in memory after validating the complete batch.</summary>
-    internal IReadOnlyList<WiiUPreparedPayload> Prepare(PlatformBuildManifest manifest, string sourceRootPath, string destinationRootPath, CancellationToken cancellationToken) {
+    internal IReadOnlyList<WiiUPreparedPayload> Prepare(PlatformBuildManifest manifest, string sourceRootPath, string destinationRootPath, CancellationToken cancellationToken, NumericPrecisionPolicy numericPolicy) {
         ArgumentNullException.ThrowIfNull(manifest);
+        RealBinaryCodec.ValidatePolicy(numericPolicy);
         WiiUTextureCookPath.ValidateRoot(sourceRootPath);
         WiiUTextureCookPath.ValidateRoot(destinationRootPath);
         string sourceRoot = Path.GetFullPath(sourceRootPath);
@@ -54,7 +55,7 @@ public sealed class WiiUPackagedContentStager {
                 : processor.CookFontAtlasTexture(source, assetId, settings);
             prepared.Add(new WiiUPreparedPayload {
                 RelativePath = WiiUTextureCookPath.Normalize(item.OutputRelativePath),
-                Bytes = global::helengine.files.AssetSerializer.SerializeToBytes(texture)
+                Bytes = global::helengine.files.AssetSerializer.SerializeToBytes(texture, numericPolicy)
             });
         }
         return prepared;
