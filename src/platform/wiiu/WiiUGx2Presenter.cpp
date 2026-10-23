@@ -1887,10 +1887,6 @@ namespace helengine::wiiu {
         std::vector<float> frameColorData(static_cast<std::size_t>(totalVertexCount) * 4U);
         for (std::size_t commandIndex = 0; commandIndex < quadCommands.size(); commandIndex++) {
             const WiiUGx2QuadCommand& command = quadCommands[commandIndex];
-            const float texLeft = command.SourceX;
-            const float texTop = command.SourceY;
-            const float texRight = command.SourceX + command.SourceWidth;
-            const float texBottom = command.SourceY + command.SourceHeight;
             const float colorRed = static_cast<float>(command.Color.Red) / 255.0f;
             const float colorGreen = static_cast<float>(command.Color.Green) / 255.0f;
             const float colorBlue = static_cast<float>(command.Color.Blue) / 255.0f;
@@ -1901,15 +1897,9 @@ namespace helengine::wiiu {
             const std::size_t texCoordStartIndex = vertexStartIndex * 2U;
             const std::size_t colorStartIndex = vertexStartIndex * 4U;
             float positionData[12];
-            WiiUGx2QuadGeometry::WritePositions(command, static_cast<float>(LogicalFrameWidth), static_cast<float>(LogicalFrameHeight), positionData);
-            const float texCoordData[] = {
-                texLeft, texBottom,
-                texRight, texBottom,
-                texRight, texTop,
-                texLeft, texBottom,
-                texRight, texTop,
-                texLeft, texTop
-            };
+            WiiUGx2QuadGeometry::WritePositions(command, WiiUGx2Evaluation(LogicalFrameWidth), WiiUGx2Evaluation(LogicalFrameHeight), positionData);
+            float texCoordData[12];
+            WiiUGx2QuadGeometry::WriteTextureCoordinates(command, texCoordData);
             const float colorData[] = {
                 colorRed, colorGreen, colorBlue, colorAlpha,
                 colorRed, colorGreen, colorBlue, colorAlpha,
@@ -2483,26 +2473,15 @@ namespace helengine::wiiu {
         }
 
         const WiiUGx2TextureHandle* textureHandle = command.TextureHandle != nullptr ? command.TextureHandle : &UiSolidWhiteTextureHandle;
-        const double scaleX = static_cast<double>(targetWidth) / static_cast<double>(logicalWidth);
-        const double scaleY = static_cast<double>(targetHeight) / static_cast<double>(logicalHeight);
-        const double clippedLeft = std::max(0.0, static_cast<double>(command.ClipRect.X));
-        const double clippedTop = std::max(0.0, static_cast<double>(command.ClipRect.Y));
-        const double clippedRight = std::min(static_cast<double>(logicalWidth), static_cast<double>(command.ClipRect.X + command.ClipRect.Width));
-        const double clippedBottom = std::min(static_cast<double>(logicalHeight), static_cast<double>(command.ClipRect.Y + command.ClipRect.Height));
-        if (clippedRight <= clippedLeft || clippedBottom <= clippedTop) {
-            return;
-        }
-
-        const std::uint32_t scissorX = static_cast<std::uint32_t>(std::max(0.0, std::floor(clippedLeft * scaleX)));
-        const std::uint32_t scissorY = static_cast<std::uint32_t>(std::max(0.0, std::floor(clippedTop * scaleY)));
-        const std::uint32_t scissorWidth = static_cast<std::uint32_t>(std::max(0.0, std::ceil(clippedRight * scaleX) - std::floor(clippedLeft * scaleX)));
-        const std::uint32_t scissorHeight = static_cast<std::uint32_t>(std::max(0.0, std::ceil(clippedBottom * scaleY) - std::floor(clippedTop * scaleY)));
-        if (scissorWidth == 0U || scissorHeight == 0U) {
+        std::uint32_t scissor[4];
+        WiiUGx2QuadGeometry::WriteScissor(command.ClipRect, WiiUGx2Evaluation(logicalWidth), WiiUGx2Evaluation(logicalHeight),
+            WiiUGx2Evaluation(targetWidth), WiiUGx2Evaluation(targetHeight), scissor);
+        if (scissor[2] == 0U || scissor[3] == 0U) {
             return;
         }
         static_cast<void>(command.RotationRadians);
 
-        GX2SetScissor(scissorX, scissorY, scissorWidth, scissorHeight);
+        GX2SetScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
         const std::uint32_t vertexStartIndex = quadIndex * UiQuadVertexCount;
         GX2RSetAttributeBuffer(&UiQuadPositionBuffer, 0, UiQuadPositionBuffer.elemSize, 0);
         GX2RSetAttributeBuffer(&UiQuadTexCoordBuffer, 1, UiQuadTexCoordBuffer.elemSize, 0);

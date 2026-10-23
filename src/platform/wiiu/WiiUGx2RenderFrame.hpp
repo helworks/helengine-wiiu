@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <array>
 #include <vector>
+#include "platform/wiiu/WiiUGx2Numeric.hpp"
 
 namespace helengine::wiiu {
     class WiiUGx2TextureHandle;
@@ -10,16 +11,16 @@ namespace helengine::wiiu {
     /// Stores one logical-space clip rectangle consumed by the GX2 presenter.
     struct WiiUGx2ClipRect {
         /// Left edge in logical pixels.
-        float X;
+        WiiUGx2Real X;
 
         /// Top edge in logical pixels.
-        float Y;
+        WiiUGx2Real Y;
 
         /// Width in logical pixels.
-        float Width;
+        WiiUGx2Real Width;
 
         /// Height in logical pixels.
-        float Height;
+        WiiUGx2Real Height;
     };
 
     /// Stores one RGBA tint color consumed by the GX2 presenter.
@@ -40,40 +41,40 @@ namespace helengine::wiiu {
     /// Stores one textured logical-space quad ready for pure GX2 submission.
     struct WiiUGx2QuadCommand {
         /// Left edge in logical pixels.
-        float X;
+        WiiUGx2Real X;
 
         /// Top edge in logical pixels.
-        float Y;
+        WiiUGx2Real Y;
 
         /// Width in logical pixels.
-        float Width;
+        WiiUGx2Real Width;
 
         /// Height in logical pixels.
-        float Height;
+        WiiUGx2Real Height;
 
         /// Rotation requested by the shared engine in radians.
-        float RotationRadians;
+        WiiUGx2Real RotationRadians;
 
         /// True when this command carries already transformed sprite geometry.
         bool HasResolvedCorners = false;
 
         /// Exact top-left, top-right, bottom-right, bottom-left logical X coordinates.
-        std::array<float, 4> CornerX {};
+        std::array<WiiUGx2Real, 4> CornerX {};
 
         /// Exact top-left, top-right, bottom-right, bottom-left logical Y coordinates.
-        std::array<float, 4> CornerY {};
+        std::array<WiiUGx2Real, 4> CornerY {};
 
         /// Normalized texture-space left edge.
-        float SourceX;
+        WiiUGx2Real SourceX;
 
         /// Normalized texture-space top edge.
-        float SourceY;
+        WiiUGx2Real SourceY;
 
         /// Normalized texture-space width.
-        float SourceWidth;
+        WiiUGx2Real SourceWidth;
 
         /// Normalized texture-space height.
-        float SourceHeight;
+        WiiUGx2Real SourceHeight;
 
         /// Per-quad tint applied during sampling.
         WiiUGx2Color Color;

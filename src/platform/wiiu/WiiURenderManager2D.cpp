@@ -456,8 +456,8 @@ namespace helengine::wiiu {
             return;
         }
 
-        float borderThickness = commandList->GetRoundedRectBorderThickness(payloadIndex);
-        borderThickness = std::max(0.0f, std::min(borderThickness, std::min(bounds.Z, bounds.W) * 0.5f));
+        RealEvaluation borderThickness = commandList->GetRoundedRectBorderThickness(payloadIndex);
+        borderThickness = std::max(RealEvaluation(0), std::min(borderThickness, std::min(RealEvaluation(bounds.Z), RealEvaluation(bounds.W)) * 0.5f));
         CaptureSolidQuad2D(bounds.X, bounds.Y, bounds.Z, bounds.W, commandList->GetRoundedRectFillColor(payloadIndex), clipRect, logicalFrameWidth, logicalFrameHeight);
         if (borderThickness <= 0.0f) {
             return;
@@ -466,12 +466,12 @@ namespace helengine::wiiu {
         byte4 borderColor = commandList->GetRoundedRectBorderColor(payloadIndex);
         CaptureSolidQuad2D(bounds.X, bounds.Y, bounds.Z, borderThickness, borderColor, clipRect, logicalFrameWidth, logicalFrameHeight);
         CaptureSolidQuad2D(bounds.X, bounds.Y + bounds.W - borderThickness, bounds.Z, borderThickness, borderColor, clipRect, logicalFrameWidth, logicalFrameHeight);
-        CaptureSolidQuad2D(bounds.X, bounds.Y + borderThickness, borderThickness, std::max(0.0f, bounds.W - (borderThickness * 2.0f)), borderColor, clipRect, logicalFrameWidth, logicalFrameHeight);
-        CaptureSolidQuad2D(bounds.X + bounds.Z - borderThickness, bounds.Y + borderThickness, borderThickness, std::max(0.0f, bounds.W - (borderThickness * 2.0f)), borderColor, clipRect, logicalFrameWidth, logicalFrameHeight);
+        CaptureSolidQuad2D(bounds.X, bounds.Y + borderThickness, borderThickness, std::max(RealEvaluation(0), bounds.W - (borderThickness * 2.0f)), borderColor, clipRect, logicalFrameWidth, logicalFrameHeight);
+        CaptureSolidQuad2D(bounds.X + bounds.Z - borderThickness, bounds.Y + borderThickness, borderThickness, std::max(RealEvaluation(0), bounds.W - (borderThickness * 2.0f)), borderColor, clipRect, logicalFrameWidth, logicalFrameHeight);
     }
 
     /// Captures one solid logical-space rectangle into the current GX2 frame.
-    void WiiURenderManager2D::CaptureSolidQuad2D(float x, float y, float width, float height, byte4 color, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
+    void WiiURenderManager2D::CaptureSolidQuad2D(RealEvaluation x, RealEvaluation y, RealEvaluation width, RealEvaluation height, byte4 color, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
         if (width <= 0.0f || height <= 0.0f || logicalFrameWidth == 0U || logicalFrameHeight == 0U) {
             return;
         }
@@ -493,7 +493,7 @@ namespace helengine::wiiu {
     }
 
     /// Captures one textured logical-space rectangle into the current GX2 frame.
-    void WiiURenderManager2D::CaptureTexturedQuad2D(float x, float y, float width, float height, float rotationRadians, const float4& sourceRect, byte4 color, RuntimeTexture* texture, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
+    void WiiURenderManager2D::CaptureTexturedQuad2D(RealEvaluation x, RealEvaluation y, RealEvaluation width, RealEvaluation height, RealEvaluation rotationRadians, const float4& sourceRect, byte4 color, RuntimeTexture* texture, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight) {
         if (texture == nullptr) {
             throw new ArgumentNullException("texture");
         } else if (width <= 0.0f || height <= 0.0f || logicalFrameWidth == 0U || logicalFrameHeight == 0U) {

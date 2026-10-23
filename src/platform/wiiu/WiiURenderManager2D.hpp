@@ -146,10 +146,10 @@ namespace helengine::wiiu {
         void CaptureRoundedRectCommand(RenderCommandList2D* commandList, int32_t payloadIndex, float4 clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight);
 
         /// Captures one solid logical-space rectangle into the current GX2 frame.
-        void CaptureSolidQuad2D(float x, float y, float width, float height, byte4 color, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight);
+        void CaptureSolidQuad2D(RealEvaluation x, RealEvaluation y, RealEvaluation width, RealEvaluation height, byte4 color, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight);
 
         /// Captures one textured logical-space rectangle into the current GX2 frame.
-        void CaptureTexturedQuad2D(float x, float y, float width, float height, float rotationRadians, const float4& sourceRect, byte4 color, RuntimeTexture* texture, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight);
+        void CaptureTexturedQuad2D(RealEvaluation x, RealEvaluation y, RealEvaluation width, RealEvaluation height, RealEvaluation rotationRadians, const float4& sourceRect, byte4 color, RuntimeTexture* texture, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight);
 
         /// Submits the exact resolved corners without reconstructing an angle or scale.
         void CaptureTexturedQuad2D(const SpriteQuad2D& quad, const float4& sourceRect, byte4 color, RuntimeTexture* texture, const float4& clipRect, std::uint16_t logicalFrameWidth, std::uint16_t logicalFrameHeight);
