@@ -3,9 +3,14 @@
 
 #include "diagnostic_triangle_shader_bin.h"
 #include "diagnostic_square_shader_bin.h"
+#if !defined(HELENGINE_WIIU_HAS_STANDARD_SHADERS)
+#error Wii U native build must derive Standard shader availability from the cooked inventory.
+#endif
+#if HELENGINE_WIIU_HAS_STANDARD_SHADERS
 #include "ForwardStandard_shader_bin.h"
 #include "ForwardStandardShadowed_shader_bin.h"
 #include "ShadowDepth_shader_bin.h"
+#endif
 #include "scene_opaque_lit_shader_bin.h"
 #include "ui_quad_shader_bin.h"
 
@@ -405,9 +410,11 @@ namespace helengine::wiiu {
         AppendInitializationTrace("[WiiUFile] GX2 initialize: scene opaque resources begin.\n");
         InitializeSceneOpaqueResources();
         AppendInitializationTrace("[WiiUFile] GX2 initialize: scene opaque resources completed.\n");
+#if HELENGINE_WIIU_HAS_STANDARD_SHADERS
         AppendInitializationTrace("[WiiUFile] GX2 initialize: shared StandardShader resources begin.\n");
         InitializeStandardShaderResources();
         AppendInitializationTrace("[WiiUFile] GX2 initialize: shared StandardShader resources completed.\n");
+#endif
         AppendInitializationTrace("[WiiUFile] GX2 initialize: UI quad resources begin.\n");
         InitializeUiQuadResources();
         AppendInitializationTrace("[WiiUFile] GX2 initialize: UI quad resources completed.\n");
@@ -466,8 +473,9 @@ namespace helengine::wiiu {
             throw std::runtime_error("Wii U GX2 presenter requires foreground graphics ownership before rendering.");
         } else if (!AreSceneOpaqueResourcesInitialized) {
             throw std::runtime_error("Wii U GX2 presenter must initialize opaque scene resources before 3D frame rendering.");
-        } else if (!AreStandardShaderResourcesInitialized || !AreDirectionalShadowResourcesInitialized) {
-            throw std::runtime_error("Wii U GX2 presenter must initialize StandardShader directional-shadow resources before 3D frame rendering.");
+        } else if ((!frame3D.GetDrawCommands().empty() || frame3D.GetHasDirectionalShadow())
+            && (!AreStandardShaderResourcesInitialized || !AreDirectionalShadowResourcesInitialized)) {
+            throw std::runtime_error("Wii U GX2 3D draw requires the complete cooked Standard shader group and initialized directional-shadow resources.");
         } else if (!AreUiQuadResourcesInitialized) {
             throw std::runtime_error("Wii U GX2 presenter must initialize UI quad resources before 2D frame rendering.");
         }
@@ -1093,6 +1101,7 @@ namespace helengine::wiiu {
 
     /// Initializes the generated StandardShader variants and validates their stable vertex-input contract.
     void WiiUGx2Presenter::InitializeStandardShaderResources() {
+#if HELENGINE_WIIU_HAS_STANDARD_SHADERS
         if (AreStandardShaderResourcesInitialized) {
             return;
         }
@@ -1201,6 +1210,9 @@ namespace helengine::wiiu {
             DestroyStandardShaderResources();
             throw;
         }
+#else
+        throw std::runtime_error("Wii U GX2 package does not contain the cooked Standard shader group required for 3D drawing.");
+#endif
     }
 
     /// Releases all generated StandardShader variants after the GPU has finished using them.
