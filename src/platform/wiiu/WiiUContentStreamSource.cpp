@@ -30,7 +30,7 @@ namespace helengine::wiiu {
     /// </summary>
     /// <param name="assetPath">Canonical cooked-relative asset path.</param>
     /// <returns>Readable stream for the mapped package path.</returns>
-    Stream* WiiUContentStreamSource::OpenRead(std::string assetPath) {
+    Stream* WiiUContentStreamSource::OpenRead(HeCppString assetPath) {
         if (assetPath == CanonicalStandardMaterialPath) {
             assetPath = PackagedStandardMaterialAliasPath;
         }

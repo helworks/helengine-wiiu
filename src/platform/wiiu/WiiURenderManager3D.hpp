@@ -43,22 +43,22 @@ namespace helengine::wiiu {
         ::RuntimeMaterial* BuildMaterialFromCooked(::PlatformMaterialAsset* materialAsset) override;
 
         /// Builds one concrete Wii U runtime material from a cooked Wii U material asset path using the legacy path-based generated-core contract.
-        ::RuntimeMaterial* BuildMaterialFromCooked(std::string cookedAssetPath);
+        ::RuntimeMaterial* BuildMaterialFromCooked(HeCppString cookedAssetPath);
 
         /// Builds one concrete Wii U runtime material from a cooked Wii U material asset path using the current content-stream-based generated-core contract.
-        ::RuntimeMaterial* BuildMaterialFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource);
+        ::RuntimeMaterial* BuildMaterialFromCooked(HeCppString cookedAssetPath, ::IContentStreamSource* contentStreamSource);
 
         /// Builds one concrete Wii U runtime material from a raw authored material path using the legacy generated-core contract that still passes a content root path.
-        ::RuntimeMaterial* BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string contentRootPath, std::string materialAssetPath);
+        ::RuntimeMaterial* BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string contentRootPath, HeCppString materialAssetPath);
 
         /// Builds one concrete Wii U runtime material from a raw authored material path using the current generated-core contract.
-        ::RuntimeMaterial* BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string materialAssetPath);
+        ::RuntimeMaterial* BuildMaterialFromRawAsset(::ContentManager* assetContentManager, HeCppString materialAssetPath) override;
 
         /// Builds one placeholder runtime model from a cooked Wii U model asset path using the legacy path-based generated-core contract.
-        ::RuntimeModel* BuildModelFromCooked(std::string cookedAssetPath);
+        ::RuntimeModel* BuildModelFromCooked(HeCppString cookedAssetPath);
 
         /// Builds one placeholder runtime model from a cooked Wii U model asset path using the current content-stream-based generated-core contract.
-        ::RuntimeModel* BuildModelFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource);
+        ::RuntimeModel* BuildModelFromCooked(HeCppString cookedAssetPath, ::IContentStreamSource* contentStreamSource) override;
 
         /// Builds one placeholder runtime model from a raw authored model asset.
         ::RuntimeModel* BuildModelFromRaw(::ModelAsset* data) override;
@@ -119,13 +119,13 @@ namespace helengine::wiiu {
         static float4x4 CreateDirectionalShadowViewProjection(CameraComponent* camera, const WiiUGx23DDirectionalLightState& directionalLightState);
 
         /// Creates one concrete Wii U runtime material from the supplied material fields.
-        WiiURuntimeMaterial* CreateRuntimeMaterial(std::string runtimeMaterialId, float4 baseColor, float roughness, float metallic, float specular, float4 emissiveColor, bool isLit, bool isDoubleSided);
+        WiiURuntimeMaterial* CreateRuntimeMaterial(HeCppString runtimeMaterialId, float4 baseColor, float roughness, float metallic, float specular, float4 emissiveColor, bool isLit, bool isDoubleSided);
 
         /// Builds one GX2 texture handle from a cooked runtime texture payload path.
-        static WiiUGx2TextureHandle BuildTextureHandleFromCooked(std::string cookedAssetPath);
+        static WiiUGx2TextureHandle BuildTextureHandleFromCooked(HeCppString cookedAssetPath);
 
         /// Builds one GX2 texture handle from a cooked runtime texture payload path through the content-stream contract.
-        static WiiUGx2TextureHandle BuildTextureHandleFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource);
+        static WiiUGx2TextureHandle BuildTextureHandleFromCooked(HeCppString cookedAssetPath, ::IContentStreamSource* contentStreamSource);
 
         /// Builds one GX2 texture handle from one shared-engine texture payload.
         static WiiUGx2TextureHandle BuildTextureHandleFromRaw(::TextureAsset* data);

@@ -85,7 +85,7 @@ namespace helengine::wiiu {
     }
 
     /// Rebuilds one platform-owned cooked texture payload into a CPU-readable Wii U runtime texture.
-    ::RuntimeTexture* WiiURenderManager2D::BuildTextureFromCooked(std::string cookedAssetPath) {
+    ::RuntimeTexture* WiiURenderManager2D::BuildTextureFromCooked(HeCppString cookedAssetPath) {
         if (cookedAssetPath.empty()) {
             throw new ArgumentException("Wii U cooked texture path is required.", "cookedAssetPath");
         }
@@ -112,7 +112,7 @@ namespace helengine::wiiu {
     }
 
     /// Rebuilds one platform-owned cooked texture payload into a CPU-readable Wii U runtime texture through the content-stream-based generated-core contract.
-    ::RuntimeTexture* WiiURenderManager2D::BuildTextureFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {
+    ::RuntimeTexture* WiiURenderManager2D::BuildTextureFromCooked(HeCppString cookedAssetPath, ::IContentStreamSource* contentStreamSource) {
         if (contentStreamSource == nullptr) {
             throw new ArgumentNullException("contentStreamSource");
         }

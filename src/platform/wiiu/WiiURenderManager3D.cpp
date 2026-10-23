@@ -209,13 +209,13 @@ namespace helengine::wiiu {
     }
 
     /// Builds one concrete Wii U runtime material from a cooked Wii U material asset path.
-    ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromCooked(std::string cookedAssetPath) {
+    ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromCooked(HeCppString cookedAssetPath) {
         if (String::IsNullOrWhiteSpace(cookedAssetPath)) {
             throw new ArgumentException("Cooked material asset path must be provided.", "cookedAssetPath");
         }
 
         WiiUStandardShaderMaterial standardShaderMaterial;
-        if (WiiUStandardShaderMaterialReader::TryRead(cookedAssetPath, standardShaderMaterial)) {
+        if (WiiUStandardShaderMaterialReader::TryRead(cookedAssetPath.raw(), standardShaderMaterial)) {
             WiiURuntimeMaterial* runtimeMaterial = BuildStandardShaderRuntimeMaterial(standardShaderMaterial);
             auto runtimeMaterialGuard = he_cpp_make_scope_exit([&]() {
                 if (runtimeMaterial != nullptr) {
@@ -268,7 +268,7 @@ namespace helengine::wiiu {
     }
 
     /// Builds one concrete Wii U runtime material from a cooked Wii U material asset path through the content-stream-based generated-core contract.
-    ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {
+    ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromCooked(HeCppString cookedAssetPath, ::IContentStreamSource* contentStreamSource) {
         if (contentStreamSource == nullptr) {
             throw new ArgumentNullException("contentStreamSource");
         }
@@ -339,7 +339,7 @@ namespace helengine::wiiu {
     }
 
     /// Builds one concrete Wii U runtime material from a raw authored material path through the legacy generated-core contract that still passes a content root path.
-    ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string contentRootPath, std::string materialAssetPath) {
+    ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string contentRootPath, HeCppString materialAssetPath) {
         if (assetContentManager == nullptr) {
             throw new ArgumentNullException("assetContentManager");
         }
@@ -352,7 +352,7 @@ namespace helengine::wiiu {
     }
 
     /// Builds one concrete Wii U runtime material from a raw authored material path through the current generated-core contract.
-    ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromRawAsset(::ContentManager* assetContentManager, std::string materialAssetPath) {
+    ::RuntimeMaterial* WiiURenderManager3D::BuildMaterialFromRawAsset(::ContentManager* assetContentManager, HeCppString materialAssetPath) {
         if (assetContentManager == nullptr) {
             throw new ArgumentNullException("assetContentManager");
         }
@@ -373,7 +373,7 @@ namespace helengine::wiiu {
     }
 
     /// Builds one runtime model from a cooked Wii U model asset path by copying the authored mesh payload into a Wii U-owned geometry container.
-    ::RuntimeModel* WiiURenderManager3D::BuildModelFromCooked(std::string cookedAssetPath) {
+    ::RuntimeModel* WiiURenderManager3D::BuildModelFromCooked(HeCppString cookedAssetPath) {
         if (String::IsNullOrWhiteSpace(cookedAssetPath)) {
             throw new ArgumentException("Cooked model asset path must be provided.", "cookedAssetPath");
         }
@@ -401,7 +401,7 @@ namespace helengine::wiiu {
     }
 
     /// Builds one runtime model from a cooked Wii U model asset path through the content-stream-based generated-core contract.
-    ::RuntimeModel* WiiURenderManager3D::BuildModelFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {
+    ::RuntimeModel* WiiURenderManager3D::BuildModelFromCooked(HeCppString cookedAssetPath, ::IContentStreamSource* contentStreamSource) {
         if (contentStreamSource == nullptr) {
             throw new ArgumentNullException("contentStreamSource");
         }
@@ -806,7 +806,7 @@ namespace helengine::wiiu {
 
     /// Creates one concrete Wii U runtime material from the supplied material fields.
     WiiURuntimeMaterial* WiiURenderManager3D::CreateRuntimeMaterial(
-        std::string runtimeMaterialId,
+        HeCppString runtimeMaterialId,
         float4 baseColor,
         float roughness,
         float metallic,
@@ -827,7 +827,7 @@ namespace helengine::wiiu {
     }
 
     /// Builds one GX2 texture handle from a cooked runtime texture payload path.
-    WiiUGx2TextureHandle WiiURenderManager3D::BuildTextureHandleFromCooked(std::string cookedAssetPath) {
+    WiiUGx2TextureHandle WiiURenderManager3D::BuildTextureHandleFromCooked(HeCppString cookedAssetPath) {
         if (String::IsNullOrWhiteSpace(cookedAssetPath)) {
             throw new ArgumentException("Cooked texture asset path must be provided.", "cookedAssetPath");
         }
@@ -854,7 +854,7 @@ namespace helengine::wiiu {
     }
 
     /// Builds one GX2 texture handle from a cooked runtime texture payload path through the content-stream contract.
-    WiiUGx2TextureHandle WiiURenderManager3D::BuildTextureHandleFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource) {
+    WiiUGx2TextureHandle WiiURenderManager3D::BuildTextureHandleFromCooked(HeCppString cookedAssetPath, ::IContentStreamSource* contentStreamSource) {
         if (contentStreamSource == nullptr) {
             throw new ArgumentNullException("contentStreamSource");
         }

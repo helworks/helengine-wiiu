@@ -79,10 +79,10 @@ namespace helengine::wiiu {
         ~WiiURenderManager2D() override;
 
         /// Rebuilds one platform-owned cooked texture payload into a CPU-readable Wii U runtime texture using the legacy path-based generated-core contract.
-        ::RuntimeTexture* BuildTextureFromCooked(std::string cookedAssetPath);
+        ::RuntimeTexture* BuildTextureFromCooked(HeCppString cookedAssetPath);
 
         /// Rebuilds one platform-owned cooked texture payload into a CPU-readable Wii U runtime texture using the current content-stream-based generated-core contract.
-        ::RuntimeTexture* BuildTextureFromCooked(std::string cookedAssetPath, ::IContentStreamSource* contentStreamSource);
+        ::RuntimeTexture* BuildTextureFromCooked(HeCppString cookedAssetPath, ::IContentStreamSource* contentStreamSource) override;
 
         /// Rebuilds one shared-engine texture asset into a GX2-backed Wii U runtime texture.
         ::RuntimeTexture* BuildTextureFromRaw(::TextureAsset* data) override;

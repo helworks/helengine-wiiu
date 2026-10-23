@@ -123,10 +123,10 @@ namespace helengine::wiiu {
         ActiveVoiceState voice = {};
         voice.VoiceId = NextVoiceId++;
         voice.ChannelCount = asset->Channels;
-        voice.BusId = NormalizeBusId(
+        voice.BusId = NormalizeBusId((
             request != nullptr && !request->BusId.empty()
                 ? request->BusId
-                : asset->DefaultBusId);
+                : asset->DefaultBusId).raw());
         voice.BaseGain = ClampGain(request != nullptr ? request->Gain : 1.0f);
         voice.Looping = request != nullptr ? request->Loop : asset->DefaultLoop;
         voice.Paused = false;
@@ -238,15 +238,15 @@ namespace helengine::wiiu {
         ActiveVoicesById.erase(voiceIterator);
     }
 
-    void WiiUAudioBackend::SetBusGain(std::string busId, float gain) {
-        BusGainsById[NormalizeBusId(std::move(busId))] = ClampGain(gain);
+    void WiiUAudioBackend::SetBusGain(HeCppString busId, float gain) {
+        BusGainsById[NormalizeBusId(busId.raw())] = ClampGain(gain);
         for (auto& voiceEntry : ActiveVoicesById) {
             ApplyVoicePlaybackState(voiceEntry.second);
         }
     }
 
-    void WiiUAudioBackend::SetBusPaused(std::string busId, bool paused) {
-        std::string normalizedBusId = NormalizeBusId(std::move(busId));
+    void WiiUAudioBackend::SetBusPaused(HeCppString busId, bool paused) {
+        std::string normalizedBusId = NormalizeBusId(busId.raw());
         if (paused) {
             PausedBusIds.insert(normalizedBusId);
         } else {

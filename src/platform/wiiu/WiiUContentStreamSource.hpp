@@ -29,7 +29,7 @@ namespace helengine::wiiu {
         /// </summary>
         /// <param name="assetPath">Canonical cooked-relative asset path.</param>
         /// <returns>Readable stream for the mapped package path.</returns>
-        Stream* OpenRead(std::string assetPath) override;
+        Stream* OpenRead(HeCppString assetPath) override;
 
     private:
         /// <summary>
