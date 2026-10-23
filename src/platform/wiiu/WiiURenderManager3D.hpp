@@ -95,7 +95,7 @@ namespace helengine::wiiu {
         static WiiUGx2Color ConvertClearColor(float4 clearColor);
 
         /// Converts one normalized float color channel into one 8-bit color channel.
-        static std::uint8_t ConvertColorChannel(float value);
+        static std::uint8_t ConvertColorChannel(RealEvaluation value);
 
         /// Builds one view matrix from the active runtime camera transform.
         static float4x4 CreateViewMatrix(CameraComponent* camera);

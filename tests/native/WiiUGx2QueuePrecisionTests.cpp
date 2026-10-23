@@ -6,6 +6,7 @@
 #define HE_CPP_REAL_STORAGE_BITS HELENGINE_WIIU_TEST_STORAGE_BITS
 #define HE_CPP_REAL_ARITHMETIC_BITS HELENGINE_WIIU_TEST_ARITHMETIC_BITS
 #include "Real.hpp"
+#include "platform/wiiu/WiiUGx23DRenderFrame.hpp"
 #endif
 
 #include "platform/wiiu/WiiUGx2QuadGeometry.hpp"
@@ -21,6 +22,10 @@ int main() {
     static_assert(std::is_same_v<decltype(WiiUGx2QuadCommand::X), Real>);
     static_assert(std::is_same_v<decltype(WiiUGx2ClipRect::Width), Real>);
     static_assert(std::is_same_v<decltype(WiiUGx2QuadCommand::CornerX)::value_type, Real>);
+    static_assert(std::is_same_v<decltype(WiiUGx23DCameraState::NearPlaneDistance), Real>);
+    static_assert(std::is_same_v<decltype(WiiUGx23DCameraState::FarPlaneDistance), Real>);
+    static_assert(std::is_same_v<decltype(WiiUGx23DDirectionalLightState::ShadowDistance), Real>);
+    static_assert(std::is_same_v<decltype(WiiUGx23DDirectionalShadowState::Strength), Real>);
 #else
     static_assert(std::is_same_v<decltype(WiiUGx2QuadCommand::X), float>);
 #endif

@@ -2037,7 +2037,7 @@ namespace helengine::wiiu {
         }
 
         float4x4 projectionMatrix;
-        float4x4::CreatePerspectiveFieldOfView__out4(static_cast<float>(SceneDrivenFieldOfViewRadians), static_cast<float>(static_cast<double>(targetWidth) / static_cast<double>(targetHeight)), cameraState.NearPlaneDistance, cameraState.FarPlaneDistance, projectionMatrix);
+        float4x4::CreatePerspectiveFieldOfView__out4(RealEvaluation(SceneDrivenFieldOfViewRadians), RealEvaluation(targetWidth) / RealEvaluation(targetHeight), cameraState.NearPlaneDistance, cameraState.FarPlaneDistance, projectionMatrix);
         float4x4 worldMatrix = drawCommand.WorldMatrix;
         float4x4 viewMatrix = cameraState.ViewMatrix;
         float4x4 worldViewMatrix;
@@ -2067,7 +2067,7 @@ namespace helengine::wiiu {
             1.0f, 0.0f, 0.0f, 0.0f,
             static_cast<float>(RealEvaluation(directionalColor.X)), static_cast<float>(RealEvaluation(directionalColor.Y)), static_cast<float>(RealEvaluation(directionalColor.Z)), 0.0f,
             static_cast<float>(RealEvaluation(directionalDirection.X)), static_cast<float>(RealEvaluation(directionalDirection.Y)), static_cast<float>(RealEvaluation(directionalDirection.Z)),
-            directionalShadowsEnabled ? frame.GetDirectionalShadow().Strength : 0.0f
+            directionalShadowsEnabled ? static_cast<float>(RealEvaluation(frame.GetDirectionalShadow().Strength)) : 0.0f
         };
         float shadowData[100] = {};
         shadowData[0] = directionalShadowsEnabled ? 1.0f : 0.0f;
@@ -2078,7 +2078,7 @@ namespace helengine::wiiu {
             shadowData[6] = 1.0f;
             shadowData[7] = 1.0f;
             shadowData[8] = 1.0f;
-            shadowData[9] = frame.GetDirectionalShadow().Strength;
+            shadowData[9] = static_cast<float>(RealEvaluation(frame.GetDirectionalShadow().Strength));
             shadowData[10] = 1.0f;
             shadowData[12] = static_cast<float>(RealEvaluation(shadowMatrix.M11));
             shadowData[13] = static_cast<float>(RealEvaluation(shadowMatrix.M21));
@@ -2196,8 +2196,8 @@ namespace helengine::wiiu {
 
         float4x4 projectionMatrix;
         float4x4::CreatePerspectiveFieldOfView__out4(
-            static_cast<float>(SceneDrivenFieldOfViewRadians),
-            static_cast<float>(static_cast<double>(targetWidth) / static_cast<double>(targetHeight)),
+            RealEvaluation(SceneDrivenFieldOfViewRadians),
+            RealEvaluation(targetWidth) / RealEvaluation(targetHeight),
             cameraState.NearPlaneDistance,
             cameraState.FarPlaneDistance,
             projectionMatrix);

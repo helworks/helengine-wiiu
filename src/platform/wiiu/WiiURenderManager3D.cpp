@@ -127,7 +127,7 @@ namespace helengine::wiiu {
         });
 
         RenderFrameExtractionService extractionService {};
-        RenderFrameExtractionResult* extractionResult = extractionService.Extract(cameras, objectManager->get_Drawables3D(), lights, capabilityProfile);
+        RenderFrameExtractionResult* extractionResult = extractionService.Extract(cameras, objectManager->get_Drawables3D(), lights, capabilityProfile, true);
         auto extractionResultGuard = he_cpp_make_scope_exit([&]() {
             if (extractionResult == nullptr) {
                 return;
@@ -668,14 +668,14 @@ namespace helengine::wiiu {
     }
 
     /// Converts one normalized float color channel into one 8-bit color channel.
-    std::uint8_t WiiURenderManager3D::ConvertColorChannel(float value) {
+    std::uint8_t WiiURenderManager3D::ConvertColorChannel(RealEvaluation value) {
         if (value <= 0.0f) {
             return 0U;
         } else if (value >= 1.0f) {
             return 255U;
         }
 
-        return static_cast<std::uint8_t>(value * 255.0f);
+        return static_cast<std::uint8_t>(static_cast<std::int32_t>(value * 255.0f));
     }
 
     /// Builds one view matrix from the active runtime camera transform.
@@ -756,7 +756,7 @@ namespace helengine::wiiu {
         }
 
         float4 color = light->get_Color();
-        float intensity = light->get_Intensity();
+        RealEvaluation intensity = light->get_Intensity();
         return float4(color.X * intensity, color.Y * intensity, color.Z * intensity, 0.0f);
     }
 
@@ -786,17 +786,17 @@ namespace helengine::wiiu {
             throw new InvalidOperationException("Wii U directional-shadow projection requires the camera to be attached to one entity.");
         }
 
-        const float shadowDistance = directionalLightState.ShadowDistance < 1.0f ? 1.0f : directionalLightState.ShadowDistance;
+        const RealEvaluation shadowDistance = directionalLightState.ShadowDistance < 1.0f ? RealEvaluation(1) : RealEvaluation(directionalLightState.ShadowDistance);
         float3 cameraPosition = camera->get_Parent()->get_Position();
         float3 cameraForward = float4::RotateVector(float3(0.0f, 0.0f, -1.0f), camera->get_Parent()->get_Orientation());
         float3 lightDirection(-directionalLightState.Direction.X, -directionalLightState.Direction.Y, -directionalLightState.Direction.Z);
         float3 target = cameraPosition + (cameraForward * (shadowDistance * 0.5f));
         float3 lightPosition = target + (lightDirection * shadowDistance);
-        const float dotUp = (lightDirection.X * 0.0f) + (lightDirection.Y * 1.0f) + (lightDirection.Z * 0.0f);
-        float3 up = std::fabs(dotUp) > 0.99f ? float3(0.0f, 0.0f, 1.0f) : float3::get_UnitY();
+        const RealEvaluation dotUp = (lightDirection.X * 0.0f) + (lightDirection.Y * 1.0f) + (lightDirection.Z * 0.0f);
+        float3 up = RealMath::Abs(dotUp) > 0.99f ? float3(0.0f, 0.0f, 1.0f) : float3::get_UnitY();
         float4x4 viewMatrix;
         float4x4::CreateLookAt__ref0_ref1_ref2_out3(lightPosition, target, up, viewMatrix);
-        const float halfDistance = shadowDistance * 0.5f;
+        const RealEvaluation halfDistance = shadowDistance * 0.5f;
         float4x4 projectionMatrix;
         float4x4::CreateOrthographicOffCenter__out6(-halfDistance, halfDistance, -halfDistance, halfDistance, 0.1f, shadowDistance * 2.0f, projectionMatrix);
         float4x4 lightViewProjection;
@@ -922,12 +922,6 @@ namespace helengine::wiiu {
         std::vector<std::uint16_t> indexData;
         const int32_t positionCount = data->Positions->get_Length();
         Array<float2>* texCoords = data->TexCoords;
-        float minX = 0.0f;
-        float minY = 0.0f;
-        float minZ = 0.0f;
-        float maxX = 0.0f;
-        float maxY = 0.0f;
-        float maxZ = 0.0f;
         positionData.reserve(static_cast<std::size_t>(positionCount) * 4U);
         normalData.reserve(static_cast<std::size_t>(positionCount) * 3U);
         texCoordData.reserve(static_cast<std::size_t>(positionCount) * 2U);
@@ -941,42 +935,15 @@ namespace helengine::wiiu {
             const float2 texCoord = texCoords != nullptr
                 ? (*texCoords)[positionIndex]
                 : float2(0.0f, 0.0f);
-            if (positionIndex == 0) {
-                minX = position.X;
-                minY = position.Y;
-                minZ = position.Z;
-                maxX = position.X;
-                maxY = position.Y;
-                maxZ = position.Z;
-            } else {
-                if (position.X < minX) {
-                    minX = position.X;
-                }
-                if (position.Y < minY) {
-                    minY = position.Y;
-                }
-                if (position.Z < minZ) {
-                    minZ = position.Z;
-                }
-                if (position.X > maxX) {
-                    maxX = position.X;
-                }
-                if (position.Y > maxY) {
-                    maxY = position.Y;
-                }
-                if (position.Z > maxZ) {
-                    maxZ = position.Z;
-                }
-            }
-            positionData.push_back(position.X);
-            positionData.push_back(position.Y);
-            positionData.push_back(position.Z);
+            positionData.push_back(static_cast<float>(RealEvaluation(position.X)));
+            positionData.push_back(static_cast<float>(RealEvaluation(position.Y)));
+            positionData.push_back(static_cast<float>(RealEvaluation(position.Z)));
             positionData.push_back(1.0f);
-            normalData.push_back(normal.X);
-            normalData.push_back(normal.Y);
-            normalData.push_back(normal.Z);
-            texCoordData.push_back(texCoord.X);
-            texCoordData.push_back(texCoord.Y);
+            normalData.push_back(static_cast<float>(RealEvaluation(normal.X)));
+            normalData.push_back(static_cast<float>(RealEvaluation(normal.Y)));
+            normalData.push_back(static_cast<float>(RealEvaluation(normal.Z)));
+            texCoordData.push_back(static_cast<float>(RealEvaluation(texCoord.X)));
+            texCoordData.push_back(static_cast<float>(RealEvaluation(texCoord.Y)));
         }
 
         if (data->Indices16 != nullptr && data->Indices16->get_Length() > 0) {

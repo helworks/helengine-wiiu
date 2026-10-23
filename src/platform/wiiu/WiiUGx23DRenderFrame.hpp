@@ -23,10 +23,10 @@ namespace helengine::wiiu {
         float4 Viewport;
 
         /// The active scene camera near plane distance.
-        float NearPlaneDistance;
+        Real NearPlaneDistance;
 
         /// The active scene camera far plane distance.
-        float FarPlaneDistance;
+        Real FarPlaneDistance;
     };
 
     /// Stores one captured Wii U directional light state consumed by the GX2 presenter.
@@ -41,10 +41,10 @@ namespace helengine::wiiu {
         bool ShadowsEnabled;
 
         /// The authored maximum directional-shadow distance in world units.
-        float ShadowDistance;
+        Real ShadowDistance;
 
         /// The authored directional-shadow visibility strength.
-        float ShadowStrength;
+        Real ShadowStrength;
     };
 
     /// Stores one captured Wii U 3D draw command consumed by the GX2 presenter.
@@ -65,7 +65,7 @@ namespace helengine::wiiu {
         float4x4 LightViewProjection;
 
         /// The authored visibility strength applied by the shared StandardShader.
-        float Strength;
+        Real Strength;
 
         /// The caster draw commands selected by the shared render-frame extractor.
         std::vector<WiiUGx23DDrawCommand> ShadowCasterCommands;
