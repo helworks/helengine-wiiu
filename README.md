@@ -16,6 +16,8 @@ dotnet run --project ..\helengine\tools\build-waiter\helengine.buildwaiter.cspro
 
 The Build Waiter returns successfully only after `helengine_wiiu.wuhb` is fresh and non-empty.
 
+When publishing the builder outside its repository, set `HELENGINE_WIIU_REPOSITORY_ROOT` to the absolute path of the real Wii U source checkout. The override must contain `Makefile` and `src/main.cpp`; invalid overrides fail explicitly. Without an override, the established installed assembly layout remains supported.
+
 ## Run In Emulator
 
 ```powershell

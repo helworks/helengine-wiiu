@@ -31,7 +31,24 @@ public static class WiiUBuilderPaths {
     /// </summary>
     /// <returns>Absolute repository root path.</returns>
     public static string ResolveRepositoryRootPath() {
-        string assemblyDirectoryPath = Path.GetDirectoryName(typeof(WiiUBuilderPaths).Assembly.Location)
+        return ResolveRepositoryRootPath(Environment.GetEnvironmentVariable("HELENGINE_WIIU_REPOSITORY_ROOT"), typeof(WiiUBuilderPaths).Assembly.Location);
+    }
+
+    /// <summary>Validates an explicit real source checkout for isolated builder publications, preserving the installed layout otherwise.</summary>
+    /// <param name="configuredRoot">Optional absolute HELENGINE_WIIU_REPOSITORY_ROOT override.</param>
+    /// <param name="assemblyLocation">Installed builder assembly path used only when no override was supplied.</param>
+    /// <returns>The absolute Wii U native source repository root.</returns>
+    internal static string ResolveRepositoryRootPath(string configuredRoot, string assemblyLocation) {
+        if (!string.IsNullOrWhiteSpace(configuredRoot)) {
+            string root = configuredRoot.Trim();
+            if (!Path.IsPathFullyQualified(root)) throw new InvalidOperationException("HELENGINE_WIIU_REPOSITORY_ROOT must name an absolute Wii U source repository.");
+            root = Path.GetFullPath(root);
+            if (!File.Exists(Path.Combine(root, "Makefile")) || !File.Exists(Path.Combine(root, "src", "main.cpp"))) {
+                throw new InvalidOperationException($"HELENGINE_WIIU_REPOSITORY_ROOT '{root}' does not contain the Wii U Makefile and native main.cpp.");
+            }
+            return root;
+        }
+        string assemblyDirectoryPath = Path.GetDirectoryName(assemblyLocation)
             ?? throw new InvalidOperationException("The Wii U builder assembly directory could not be resolved.");
         return Path.GetFullPath(Path.Combine(assemblyDirectoryPath, "..", "..", "..", ".."));
     }
